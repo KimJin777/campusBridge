@@ -53,3 +53,26 @@ def test_metrics():
     r2 = {"run": run(ms=12000), "judge": judge(RULE, run(), Grade(missing_key_facts=["a"]))}
     m = metrics([r1, r2])
     assert m["accuracy"] == 0.5 and m["recall_at_5"] == 1.0 and m["latency_ms"]["mean"] == 8000
+
+
+def test_recall_at_5_does_not_credit_citation_outside_top_five():
+    retrieved = tuple((f"rule-{i}", "article") for i in range(1, 7))
+    item = {
+        **RULE,
+        "expected_evidence_ids": {"any_of": ["rule-6"]},
+    }
+    result = judge(item, run(retrieved=retrieved, cited=("rule-6",)), Grade())
+    assert not result["criteria"]["retrieval"]
+
+
+def test_unlabeled_metrics_have_no_accuracy_and_keep_workflow_rates():
+    result = {
+        "labeled": False,
+        "run": run(),
+        "judge": {"correct": True, "criteria": {"citation": True}},
+    }
+    measured = metrics([result])
+    assert measured["accuracy"] is None
+    assert measured["labeled_items"] == 0
+    assert measured["answer_with_citation_rate"] == 1.0
+    assert measured["workflow_criteria_rate"] == 1.0

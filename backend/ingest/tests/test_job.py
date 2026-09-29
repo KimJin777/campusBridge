@@ -95,6 +95,7 @@ def test_upload_documents_ids_and_fields():
     sd = docs[0]["structData"]
     assert (
         sd["article_id"] == "doc:doc-1:1"
+        and sd["parent_document_id"] == "doc-1"
         and sd["source_kind"] == "guide"
         and sd["access"] == "public"
     )

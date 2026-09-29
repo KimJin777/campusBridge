@@ -166,7 +166,7 @@ def judge(item: dict[str, Any], run: dict[str, Any], grade: Grade | None) -> dic
     last = run["turns"][-1]
     need = TYPE_CRITERIA.get(item.get("type", "oos"), TYPE_CRITERIA["rule"])
     ids = [r["id"] for r in last["retrieved"]]
-    top5 = set(ids[:5]) | set(last["cited"])
+    top5 = set(ids[:5])
     res: dict[str, bool] = {}
     if "retrieval" in need:
         exp = item.get("expected_evidence_ids") or {}
@@ -216,23 +216,47 @@ def _ratio(num: int, den: int) -> float | None:
     return round(num / den, 3) if den else None
 
 
+def has_reference_labels(item: dict[str, Any]) -> bool:
+    """Whether correctness can be compared with a human-authored reference."""
+    if item.get("type") == "oos":
+        return True
+    evidence = item.get("expected_evidence_ids") or {}
+    return bool(
+        evidence.get("any_of")
+        or evidence.get("all_of")
+        or item.get("expected_source_kinds")
+        or item.get("key_facts")
+        or item.get("forbidden_facts")
+        or item.get("expected_dept")
+    )
+
+
 def metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
     lat = sorted(t["elapsed_ms"] for r in results for t in r["run"]["turns"])
     with_ret = [r for r in results if "retrieval" in r["judge"]["criteria"]]
     answers = [r for r in results if r["run"]["turns"][-1]["outcome"] == "answer"]
+    labeled = [r for r in results if r.get("labeled", True)]
+    workflow_values = [
+        passed
+        for r in results
+        for criterion, passed in r["judge"]["criteria"].items()
+        if criterion in {"citation", "action", "oos_fallback"}
+    ]
     total = sum(t["verify_total"] for r in results for t in r["run"]["turns"])
     kept = sum(t["verify_kept"] for r in results for t in r["run"]["turns"])
     return {
         "items": len(results),
-        "correct": sum(r["judge"]["correct"] for r in results),
-        "accuracy": _ratio(sum(r["judge"]["correct"] for r in results), len(results)),
+        "labeled_items": len(labeled),
+        "correct": sum(r["judge"]["correct"] for r in labeled),
+        "accuracy": _ratio(sum(r["judge"]["correct"] for r in labeled), len(labeled)),
         "recall_at_5": _ratio(
             sum(r["judge"]["criteria"]["retrieval"] for r in with_ret), len(with_ret)
         ),
         "verified_retention": _ratio(kept, total),
-        "citation_rate": _ratio(
+        "answer_with_citation_rate": _ratio(
             sum(bool(r["run"]["turns"][-1]["cited"]) for r in answers), len(answers)
         ),
+        "workflow_criteria_rate": _ratio(sum(workflow_values), len(workflow_values)),
         "latency_ms": {
             "mean": round(statistics.mean(lat)) if lat else None,
             "p50": round(statistics.median(lat)) if lat else None,
@@ -260,10 +284,13 @@ def write_report(set_name: str, commit: str, results: list[dict[str, Any]]) -> P
         "",
         "| 지표 | 값 |",
         "|---|---|",
-        f"| 정답률 | {m['accuracy']} ({m['correct']}/{m['items']}) |",
+        f"| 정답률 | {m['accuracy']} ({m['correct']}/{m['labeled_items']}) |"
+        if m["accuracy"] is not None
+        else "| 정답률 | — (참조 라벨 없음) |",
         f"| Recall@5 | {m['recall_at_5']} |",
         f"| Verified Retention | {m['verified_retention']} |",
-        f"| 근거 인용 포함률 | {m['citation_rate']} |",
+        f"| 답변 중 근거 인용 포함률 | {m['answer_with_citation_rate']} |",
+        f"| 워크플로 기준 충족률 | {m['workflow_criteria_rate']} |",
         f"| 응답 시간 평균·p50·p95(ms) | {lat['mean']} · {lat['p50']} · {lat['p95']} |",
         "",
         "## 오답 목록",
@@ -271,7 +298,7 @@ def write_report(set_name: str, commit: str, results: list[dict[str, Any]]) -> P
         "|---|---|---|---|",
     ]
     for r in results:
-        if not r["judge"]["correct"]:
+        if r.get("labeled", True) and not r["judge"]["correct"]:
             failed = ", ".join(k for k, v in r["judge"]["criteria"].items() if not v)
             last = r["run"]["turns"][-1]
             outcome = f"{last['outcome']} {last['fallback_reason'] or ''}".strip()
@@ -321,6 +348,7 @@ async def evaluate(set_name: str, limit: int | None, use_cache: bool) -> Path:
         result = {
             "id": item["id"],
             "question": item["question"],
+            "labeled": has_reference_labels(item),
             "run": run,
             "judge": judge(item, run, grade),
             "grade_reason": grade.reason if grade else "",

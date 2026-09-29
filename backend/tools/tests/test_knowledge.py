@@ -155,6 +155,36 @@ async def test_search_fails_closed_when_denylist_is_unavailable() -> None:
 
 
 @pytest.mark.asyncio
+async def test_search_filters_legacy_upload_chunk_by_parent_document_id() -> None:
+    client = _SearchClient(
+        {
+            "rule": [],
+            "guide": [
+                (
+                    "upload-doc-abc-1",
+                    {
+                        "article_id": "doc:doc-abc:1",
+                        "source_kind": "guide",
+                        "body": "이미 색인된 교내 문서",
+                    },
+                )
+            ],
+        }
+    )
+
+    result = await search_academic_knowledge(
+        "교내 문서",
+        ["guide"],
+        settings=_settings(),
+        search_client_factory=lambda: client,
+        firestore_client_factory=lambda: _Firestore({"doc-abc"}),
+    )
+
+    assert result.ok
+    assert result.items == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("query,kinds", [("", ["rule"]), ("휴학", []), ("휴학", ["notice"])])
 async def test_search_rejects_bad_input(query, kinds) -> None:
     result = await search_academic_knowledge(query, kinds, settings=_settings())

@@ -681,6 +681,15 @@ class FirestoreAdminStore:
                 f"{action}_by": actor.email,
                 f"{action}_at": now,
             }
+            if rule.job_action:
+                changes.update(
+                    {
+                        "dispatch_from_status": before.get("status"),
+                        "job_operation_name": None,
+                        "job_error_code": None,
+                        "job_dispatch_status": "pending",
+                    }
+                )
             if rule.disable:
                 tx.set(
                     deny_ref,
@@ -720,31 +729,50 @@ class FirestoreAdminStore:
         error_code: str | None = None,
     ) -> dict[str, Any]:
         ref = self.db.collection("documents").document(document_id)
-        now = datetime.now(UTC)
-        changes = {
-            "job_action": action,
-            "job_operation_name": operation_name,
-            "job_error_code": error_code,
-            "updated_at": now,
-        }
-        batch = self.db.batch()
-        batch.set(ref, changes, merge=True)
-        batch.set(
-            self.db.collection("admin_audit").document(str(uuid4())),
-            self._audit_payload(
-                actor=actor,
-                action=f"document.{action}.dispatch",
-                target=document_id,
-                before=None,
-                after=changes,
-                reason=f"{action} 작업 시작",
-                request_id=request_id,
-                result="failed" if error_code else "success",
-            ),
-        )
-        await batch.commit()
-        snapshot = await ref.get()
-        return {"id": document_id, **_safe_value(snapshot.to_dict() or {})}
+
+        @self._fs.async_transactional
+        async def txn(tx) -> dict[str, Any]:
+            snapshot = await ref.get(transaction=tx)
+            if not snapshot.exists:
+                raise AppError("BAD_REQUEST", "문서를 찾지 못했습니다.")
+            before = snapshot.to_dict() or {}
+            now = datetime.now(UTC)
+            changes: dict[str, Any] = {
+                "job_action": action,
+                "job_operation_name": operation_name,
+                "job_error_code": error_code,
+                "job_dispatch_status": "failed" if error_code else "started",
+                "updated_at": now,
+            }
+            # 디스패치 실패는 같은 request_id로 다시 시도할 수 있도록 직전 안정
+            # 상태로 원자적으로 되돌린다. archive/purge denylist는 별도 문서이므로
+            # 의도적으로 유지해 검색 노출이 다시 열리지 않게 한다.
+            if (
+                error_code
+                and before.get("last_request_id") == request_id
+                and before.get("last_action") == action
+                and not before.get("job_operation_name")
+                and before.get("dispatch_from_status")
+            ):
+                changes["status"] = before["dispatch_from_status"]
+            after = {**before, **changes}
+            tx.set(ref, changes, merge=True)
+            tx.set(
+                self.db.collection("admin_audit").document(str(uuid4())),
+                self._audit_payload(
+                    actor=actor,
+                    action=f"document.{action}.dispatch",
+                    target=document_id,
+                    before=before,
+                    after=after,
+                    reason=f"{action} 작업 시작",
+                    request_id=request_id,
+                    result="failed" if error_code else "success",
+                ),
+            )
+            return {"id": document_id, **_safe_value(after)}
+
+        return await txn(self.db.transaction())
 
     async def save_place(
         self,

@@ -55,6 +55,7 @@ class LifecycleStore(FakeStore):
         self.current = current
         self.transitions: list[tuple[str, str]] = []
         self.jobs: list[tuple[str, str | None]] = []
+        self.denylisted = False
 
     async def transition_document(self, document_id, action, **kw):
         rule, replay = check_transition(
@@ -65,17 +66,31 @@ class LifecycleStore(FakeStore):
             confirm_document_id=kw.get("confirm_document_id"),
         )
         if not replay:
+            previous_status = self.current["status"]
             self.current = {
                 **self.current,
                 "status": rule.to_status,
                 "last_request_id": kw["request_id"],
+                "last_action": action,
+                "dispatch_from_status": previous_status,
+                "job_operation_name": None,
+                "job_error_code": None,
             }
+            if rule.disable:
+                self.denylisted = True
             self.transitions.append((document_id, action))
         return {"id": document_id, **self.current}, replay
 
     async def mark_document_job(self, document_id, action, **kw):
         self.jobs.append((action, kw.get("error_code")))
-        return {"id": document_id, **self.current, "job_error_code": kw.get("error_code")}
+        self.current = {
+            **self.current,
+            "job_operation_name": kw.get("operation_name"),
+            "job_error_code": kw.get("error_code"),
+        }
+        if kw.get("error_code"):
+            self.current["status"] = self.current["dispatch_from_status"]
+        return {"id": document_id, **self.current}
 
 
 BODY = {"reason": "학생처 승인 확인", "request_id": "req-00000001"}
@@ -100,10 +115,46 @@ def test_reject_needs_no_job_and_bad_action_is_422():
     assert c.post("/api/admin/documents/doc-1/destroy", json=BODY).status_code == 422
 
 
-def test_purge_without_confirmation_is_400_and_job_failure_is_recorded():
+def test_purge_without_confirmation_is_400():
     store = LifecycleStore({"status": "archived"})
     c = _client(store, launcher=FakeLauncher(fail=True))
     r = c.post("/api/admin/documents/doc-1/purge", json=BODY)
     assert r.status_code == 400 and store.transitions == []
-    r = c.post("/api/admin/documents/doc-1/purge", json={**BODY, "confirm_document_id": "doc-1"})
-    assert r.status_code == 500 and store.jobs == [("purge", "JOB_START_FAILED")]
+
+
+@pytest.mark.parametrize(
+    ("action", "initial", "body", "transitional"),
+    [
+        ("publish", dict(READY), BODY, "publishing"),
+        ("archive", {"status": "published"}, BODY, "archived"),
+        (
+            "purge",
+            {"status": "archived"},
+            {**BODY, "confirm_document_id": "doc-1"},
+            "purging",
+        ),
+    ],
+)
+def test_document_dispatch_failure_can_retry_same_request(
+    action: str,
+    initial: dict[str, Any],
+    body: dict[str, Any],
+    transitional: str,
+):
+    store, launcher = LifecycleStore(initial), FakeLauncher(fail=True)
+    c = _client(store, launcher=launcher)
+
+    first = c.post(f"/api/admin/documents/doc-1/{action}", json=body)
+    assert first.status_code == 500
+    assert store.current["status"] == initial["status"]
+    assert store.jobs == [(action, "JOB_START_FAILED")]
+    if action in {"archive", "purge"}:
+        assert store.denylisted  # 실패 복구 뒤에도 긴급 회수는 유지한다.
+
+    launcher.fail = False
+    retried = c.post(f"/api/admin/documents/doc-1/{action}", json=body)
+    assert retried.status_code == 200
+    assert retried.json()["status"] == transitional
+    assert retried.json()["reused"] is False
+    assert launcher.calls == [("doc-1", action), ("doc-1", action)]
+    assert store.jobs[-1] == (action, None)

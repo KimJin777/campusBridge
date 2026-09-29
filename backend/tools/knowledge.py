@@ -78,6 +78,25 @@ def _load_disabled_ids(client: Any, document_ids: Sequence[str]) -> set[str]:
     return disabled
 
 
+def _denylist_keys(document_id: str, data: dict[str, Any]) -> set[str]:
+    """Return every denylist key that can identify a search result.
+
+    New upload chunks carry ``parent_document_id``.  Older indexed chunks do
+    not, so retain compatibility with the stable ``doc:{parent}:{chunk}``
+    evidence-id format.
+    """
+    article_id = str(data.get("article_id") or document_id)
+    keys = {document_id, article_id}
+    parent = str(data.get("parent_document_id") or "").strip()
+    if not parent and article_id.startswith("doc:"):
+        parent, separator, chunk = article_id.removeprefix("doc:").rpartition(":")
+        if not separator or not parent or not chunk.isdigit():
+            parent = ""
+    if parent:
+        keys.add(parent)
+    return keys
+
+
 def _rule_title(data: dict[str, Any]) -> str:
     """근거 카드 제목: "경남대학교 학칙 제38조(휴학)" — 부칙은 "… 부칙"."""
     rule = str(data.get("rule_name") or "규정")
@@ -133,8 +152,7 @@ def _merge_results(
         per_kind[kind] = [
             _as_evidence(document_id, data, kind)
             for document_id, data in rows
-            if document_id not in disabled_ids
-            and str(data.get("article_id") or document_id) not in disabled_ids
+            if not (_denylist_keys(document_id, data) & disabled_ids)
             and str(data.get("body") or "").strip()
         ]
 
@@ -222,7 +240,7 @@ async def search_academic_knowledge(
         ident
         for _, rows, _ in successful
         for document_id, data in rows
-        for ident in {document_id, str(data.get("article_id") or document_id)}
+        for ident in _denylist_keys(document_id, data)
     ]
     try:
         fs_factory = firestore_client_factory or (lambda: _firestore_factory(settings))

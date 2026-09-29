@@ -13,10 +13,23 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
-        "version": "0.5.0",
+        "version": "0.5.1",
         "date": "2026-09-29",
         "deployed_at": None,
         "revision": None,
+        "title": "문서 회수·작업 재시도 안전성 및 평가 지표 보정",
+        "items": [
+            "교내 문서 archive/purge 직후 부모 문서 denylist를 검색 청크에 적용",
+            "문서 Job 디스패치 실패 시 안정 상태로 복구하고 같은 요청 ID 재시도 허용",
+            "라벨 없는 평가 세트의 정답률을 미산출하고 워크플로·인용 지표를 분리",
+            "Recall@5를 실제 검색 상위 5개 결과만으로 계산",
+        ],
+    },
+    {
+        "version": "0.5.0",
+        "date": "2026-09-29",
+        "deployed_at": "2026-09-29T10:43:18Z",
+        "revision": "campusbridge-web-00004-2tn (+ Job campusbridge-ingest)",
         "title": "학생 화면 디자인 개편",
         "items": [
             "Academic Nexus 디자인 토큰을 적용한 학생 화면·모바일 반응형·다크 모드",

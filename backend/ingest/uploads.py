@@ -89,6 +89,9 @@ def build_upload_documents(doc_id: str, meta: dict[str, object], chunks: list[st
     for n, body in enumerate(chunks, start=1):
         data = {
             "article_id": f"doc:{doc_id}:{n}",
+            # 긴급 회수 denylist는 원본 문서 단위다. 검색 청크에서도 부모를 직접
+            # 확인할 수 있어야 archive/purge 직후 비동기 색인 삭제 전에도 숨겨진다.
+            "parent_document_id": doc_id,
             "article_title": title if len(chunks) == 1 else f"{title} ({n}/{len(chunks)})",
             "rule_name": title,
             "kind": "upload",
