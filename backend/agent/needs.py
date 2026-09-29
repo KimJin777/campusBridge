@@ -47,14 +47,24 @@ def notice_keyword(topic: str | None) -> str:
 
 
 RELATIVE_DAYS = (("모레", 2), ("내일", 1), ("어제", -1), ("오늘", 0))
+WEEK_SHIFT = (("지난주", -7), ("저번주", -7), ("지난 주", -7), ("다음주", 7), ("다음 주", 7))
+WEEKDAYS = ("월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일")
 
 
 def target_day(query: str, today: date) -> date:
-    """'내일 학식' 같은 상대 날짜를 실제 날짜로(20문항 #17: 내일을 물어도 오늘 식단을 가져옴)."""
+    """'내일 학식'·'지난주 목요일 식단' 같은 상대 날짜를 실제 날짜로(#17, 교수님 #629)."""
     for word, delta in RELATIVE_DAYS:
         if word in query:
             return today + timedelta(days=delta)
-    return today
+    base = today
+    for word, delta in WEEK_SHIFT:
+        if word in query:
+            base = today + timedelta(days=delta)
+            break
+    for i, name in enumerate(WEEKDAYS):
+        if name in query or f"{name[0]}요" in query.replace(" ", ""):
+            return base - timedelta(days=base.weekday()) + timedelta(days=i)
+    return base
 
 
 def semester_window(today: date) -> tuple[date, date]:

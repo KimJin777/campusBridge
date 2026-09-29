@@ -13,6 +13,19 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.10.0",
+        "date": "2026-09-30",
+        "deployed_at": None,
+        "revision": None,
+        "title": "식단 DB — 메뉴를 직접 답변",
+        "items": [
+            "매일 수집이 학교 식단 페이지의 최근 주간 식단표(학생식당·푸드코트)를 읽어 날짜·끼니별 메뉴를 저장(campus_menus)",
+            "PDF 표는 좌표로 요일 열을 가르고 AI가 끼니 구획만 판단(모든 행 배정 검증), 글자 없는 스캔 PDF는 AI가 이미지를 판독",
+            "식단 질문에 '원문 확인' 대신 실제 메뉴로 답변(DB에 없을 때만 원문 안내)",
+            "'지난주·다음주·요일' 날짜 표현 해석(예: 지난주 화요일 학식)",
+        ],
+    },
+    {
         "version": "0.9.1",
         "date": "2026-09-30",
         "deployed_at": None,

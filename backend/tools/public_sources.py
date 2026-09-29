@@ -457,6 +457,51 @@ def _menu_items(payload: bytes, target: date, source_url: str) -> list[Evidence]
     return items
 
 
+_menu_db: Any = None
+
+
+async def _menu_from_db(target: date, settings: Settings) -> list[Evidence]:
+    """campus_menus(매일 수집이 식단 PDF를 읽어 저장)에서 해당 날짜 메뉴.
+
+    없거나 실패하면 빈 목록(기존 원문 안내로 넘어감).
+    """
+    global _menu_db
+    if not settings.gcp_project_id:
+        return []
+    try:
+        if _menu_db is None:
+            from google.cloud import firestore
+
+            _menu_db = firestore.AsyncClient(
+                project=settings.gcp_project_id, database=settings.firestore_db
+            )
+        items: list[Evidence] = []
+        for cafeteria in ("학생식당", "푸드코트"):
+            snap = (
+                await _menu_db.collection("campus_menus")
+                .document(f"{cafeteria}_{target.isoformat()}")
+                .get()
+            )
+            if not snap.exists:
+                continue
+            d = snap.to_dict() or {}
+            lines = [f"{target.isoformat()} {cafeteria} 식단 ({d.get('week_title', '')})"]
+            lines += [f"{s['name']}: {', '.join(s['items'])}" for s in d.get("sections", [])]
+            items.append(
+                Evidence(
+                    id=f"menu:{target.isoformat()}:{cafeteria}",
+                    kind="menu",
+                    title=f"{target.isoformat()} {cafeteria} 식단",
+                    text="\n".join(lines),
+                    url=d.get("source_url"),
+                    meta={"as_of": str(d.get("updated_at") or ""), "source": "campus_menus"},
+                )
+            )
+        return items
+    except Exception:  # noqa: BLE001 — DB가 없으면 기존 원문 안내로
+        return []
+
+
 async def get_menu(
     day: date | str | None = None,
     *,
@@ -471,6 +516,9 @@ async def get_menu(
     cached = _cached(cache_key, timedelta(hours=6))
     if cached is not None:
         return cached
+    stored = await _menu_from_db(target, settings)  # 교수님 #634: DB에 저장한 메뉴로 답한다
+    if stored:
+        return _remember(cache_key, ToolResult(ok=True, items=stored, as_of=utc_now()))
     urls = (f"{BASE_URL}/ko/4454/subview.do", f"{BASE_URL}/ko/8978/subview.do")
     try:
         payloads = await asyncio.gather(*(_fetch(url, settings, client) for url in urls))

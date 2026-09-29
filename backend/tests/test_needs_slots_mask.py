@@ -103,3 +103,15 @@ def test_target_day_and_semester_window():
     assert semester_window(today) == (date(2026, 9, 1), date(2027, 2, 28))
     assert semester_window(date(2027, 1, 10)) == (date(2026, 9, 1), date(2027, 2, 28))
     assert semester_window(date(2026, 4, 1)) == (date(2026, 3, 1), date(2026, 8, 31))
+
+
+def test_target_day_weeks_and_weekdays():
+    from datetime import date
+
+    from backend.agent.needs import target_day
+
+    today = date(2026, 9, 30)  # 수요일
+    assert target_day("지난주 식단", today) == date(2026, 9, 23)
+    assert target_day("다음 주 메뉴", today) == date(2026, 10, 7)
+    assert target_day("목요일 학식", today) == date(2026, 10, 1)
+    assert target_day("지난주 월요일 메뉴", today) == date(2026, 9, 21)

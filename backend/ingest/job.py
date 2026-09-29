@@ -53,6 +53,7 @@ class JobDeps:
     docs: Docs
     index: Index
     events: Callable[[], dict[str, int]] | None = None  # 일정 캘린더 수집(운영에서만 주입)
+    menus: Callable[[], dict[str, int]] | None = None  # 식단 PDF → campus_menus(교수님 #634)
 
 
 # 수집 중복 방지(2026-09-29 스케줄러 중복 실행 사고): 다른 수집이 이 시간 안에 갱신됐으면 건너뛴다
@@ -204,7 +205,7 @@ def run_ingestion(
     from backend.ingest.manifest import load_manifest
     from backend.ingest.registry import collect_rules
 
-    wanted = set(source_ids) or {"rules", "academic_guides", "events"}
+    wanted = set(source_ids) or {"rules", "academic_guides", "events", "menus"}
     stats: dict[str, Any] = {"added": 0, "changed": 0, "rejected": 0, "processed": 0, "total": 0}
     _run(deps, run_id, status="running", phase="registry", started_at=_now())
 
@@ -275,6 +276,14 @@ def run_ingestion(
         except Exception as exc:  # noqa: BLE001 — 일정 수집 실패가 규정 수집 결과를 막지 않게
             log.exception("events collection failed")
             stats["events_error"] = type(exc).__name__
+
+    if "menus" in wanted and deps.menus is not None:
+        _run(deps, run_id, phase="menus")
+        try:
+            stats["menus"] = deps.menus()
+        except Exception as exc:  # noqa: BLE001 — 식단 실패가 다른 수집 결과를 막지 않게
+            log.exception("menu collection failed")
+            stats["menus_error"] = type(exc).__name__
 
     _run(deps, run_id, status="success", phase="done", finished_at=_now(), **stats)
     return stats
@@ -455,6 +464,28 @@ def main() -> int:
         return out
 
     deps.events = events
+
+    from backend.ingest.menus import (
+        collect_menus,
+        live_layout_llm,
+        live_menu_sources,
+        live_ocr,
+    )
+
+    def menus() -> dict[str, int]:
+        list_weeks, download = live_menu_sources(settings)
+        now = _now()
+        return collect_menus(
+            deps.docs,
+            today=now.astimezone(KST).date(),
+            now=now,
+            list_weeks=list_weeks,
+            download=download,
+            layout_llm=live_layout_llm(settings),
+            ocr=live_ocr(settings),
+        )
+
+    deps.menus = menus
     try:
         with tempfile.TemporaryDirectory(prefix="cb-ingest-") as tmp:
             run_ingestion(run_id, sources, deps, Path(tmp))
