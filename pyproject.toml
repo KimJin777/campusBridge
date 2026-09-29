@@ -1,0 +1,55 @@
+[project]
+name = "campusbridge"
+version = "0.1.0"
+description = "Evidence-grounded campus information agent"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "beautifulsoup4>=4.13,<5",
+  "fastapi>=0.116,<1",
+  "feedparser>=6.0,<7",
+  "google-auth>=2.40,<3",
+  "google-cloud-aiplatform>=1.111,<2",
+  "google-cloud-discoveryengine>=0.13,<1",
+  "google-cloud-firestore>=2.21,<3",
+  "google-cloud-storage>=3.3,<4",
+  "httpx>=0.28,<1",
+  "langchain-core>=0.3.79,<2",
+  "langchain-google-vertexai>=2.0.28,<4",
+  "langgraph>=0.6.7,<2",
+  "pydantic>=2.11,<3",
+  "pydantic-settings>=2.10,<3",
+  "python-multipart>=0.0.20,<1",
+  "pyyaml>=6.0,<7",
+  "uvicorn[standard]>=0.35,<1",
+]
+
+[project.optional-dependencies]
+ingest = [
+  "pyhwp==0.1b15",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4,<10",
+  "pytest-asyncio>=1.1,<2",
+  "pytest-cov>=6.2,<8",
+  "respx>=0.22,<1",
+  "ruff>=0.12,<1",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+asyncio_mode = "auto"
+pythonpath = ["."]
+testpaths = ["backend/tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+

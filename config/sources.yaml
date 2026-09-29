@@ -1,0 +1,71 @@
+version: 1
+
+collection:
+  default_mode: approved
+  min_interval_seconds: 1
+  user_agent: "CampusBridge/0.1 (contest; contact: ${COLLECTION_CONTACT_EMAIL})"
+  recursive_crawl: false
+
+sources:
+  rule_registry:
+    source_kind: rule
+    base_url: "https://yz.kyungnam.ac.kr/rule/"
+    allowed_hosts: ["yz.kyungnam.ac.kr"]
+    status: pending_selector_validation
+
+  academic_guides:
+    source_kind: guide
+    allowed_hosts: ["www.kyungnam.ac.kr"]
+    pages:
+      - {id: exam_grade, path: "/ko/4389/subview.do"}
+      - {id: course_registration, path: "/ko/4390/subview.do"}
+      - {id: retake, path: "/ko/4391/subview.do"}
+      - {id: grade_appeal, path: "/ko/4393/subview.do"}
+      - {id: grade_withdrawal, path: "/ko/4394/subview.do"}
+      - {id: transfer_major, path: "/ko/4400/subview.do"}
+      - {id: leave, path: "/ko/4401/subview.do"}
+      - {id: return, path: "/ko/4402/subview.do"}
+      - {id: graduation, path: "/ko/4407/subview.do"}
+      - {id: early_graduation, path: "/ko/4408/subview.do"}
+      - {id: graduation_delay, path: "/ko/4409/subview.do"}
+      - {id: scholarship, path: "/ko/4415/subview.do"}
+      - {id: shuttle_bus, path: "/ko/4319/subview.do"}
+      - {id: certificates, path: "/ko/6940/subview.do"}
+    content_selectors: []
+    drop_selectors: []
+    extractor_version: pending_d15
+    status: pending_selector_validation
+
+  notices:
+    source_kind: notice
+    allowed_hosts: ["www.kyungnam.ac.kr"]
+    feeds:
+      academic: "/bbs/ko/1398/rssList.do?row=50"
+      scholarship: "/bbs/ko/1407/rssList.do?row=50"
+      general: "/bbs/ko/1408/rssList.do?row=50"
+
+  academic_calendar:
+    source_kind: calendar
+    url: "https://www.kyungnam.ac.kr/ko/4293/subview.do"
+    allowed_hosts: ["www.kyungnam.ac.kr"]
+    status: pending_selector_validation
+
+  menus:
+    source_kind: menu
+    allowed_hosts: ["www.kyungnam.ac.kr"]
+    pages:
+      - {id: cafeteria, path: "/ko/4454/subview.do"}
+      - {id: food_court, path: "/ko/8978/subview.do"}
+
+  organization:
+    source_kind: org
+    url: "https://www.kyungnam.ac.kr/ko/4251/subview.do"
+    allowed_hosts: ["www.kyungnam.ac.kr"]
+    status: pending_selector_validation
+
+  campus_tour:
+    source_kind: place
+    url: "https://www.kyungnam.ac.kr/ko/8013/subview.do"
+    allowed_hosts: ["www.kyungnam.ac.kr"]
+    status: pending_d17
+

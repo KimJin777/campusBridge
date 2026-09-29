@@ -1,0 +1,11 @@
+version: 1
+
+# Only reviewed aliases belong here. Runtime learning must never update this file.
+approved_aliases: {}
+
+# High-impact terms that must be confirmed instead of automatically replaced.
+protected_confusions:
+  - ["휴학", "퇴학"]
+  - ["복학", "재입학"]
+  - ["제적", "자퇴"]
+
