@@ -13,6 +13,18 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.5.0",
+        "date": "2026-09-29",
+        "deployed_at": None,
+        "revision": None,
+        "title": "학생 화면 디자인 개편",
+        "items": [
+            "Academic Nexus 디자인 토큰을 적용한 학생 화면·모바일 반응형·다크 모드",
+            "종류별 색상 레일 근거 카드와 원문 버튼, 담당 부서 위치·전화 연결 카드",
+            "웹폰트 CSP 허용과 화면 상·하단 버전 표시",
+        ],
+    },
+    {
         "version": "0.4.1",
         "date": "2026-09-29",
         "deployed_at": None,

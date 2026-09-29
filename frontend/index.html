@@ -4,50 +4,78 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>캠퍼스 브릿지</title>
-  <meta name="description" content="학칙·학사공지·학사일정을 근거와 함께 안내하는 학생 도우미">
+  <meta name="description" content="학칙·학사공지·학사일정에서 근거를 찾아 안내하는 학생 도우미">
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap">
   <link rel="stylesheet" href="style.css">
   <script type="module" src="app.js"></script>
 </head>
 <body>
   <header class="top">
-    <h1 class="brand">캠퍼스 브릿지</h1>
-    <button type="button" id="new-thread" class="ghost" aria-label="새 대화 시작">새 대화 시작</button>
+    <div class="brand-wrap">
+      <img src="logo.svg" alt="" class="logo" width="32" height="32">
+      <h1 class="brand">캠퍼스 브릿지</h1>
+      <span class="version-pill" id="version">학사 어시스턴트</span>
+    </div>
+    <button type="button" id="new-thread" class="btn-primary small" aria-label="새 대화 시작">
+      <span class="ico" data-icon="chat"></span>새 대화 시작
+    </button>
   </header>
 
   <main id="chat" class="chat" aria-live="polite">
     <section id="welcome" class="welcome">
-      <p class="hello">학칙·학사공지·학사일정에서 근거를 찾아 안내해 드려요.</p>
-      <p class="sub">답변마다 근거 카드와 담당 부서를 함께 보여 드립니다.</p>
+      <p class="status-pill"><span class="dot"></span>학칙·학사안내 색인 · 공지·학사일정 실시간 조회</p>
+      <h2 class="hero">학칙·학사공지·학사일정에서<br><span class="hl">근거를 찾아 안내</span>해 드려요.</h2>
+      <p class="sub">답변마다 <strong>공식 규정 발췌 근거 카드</strong>와 <strong>담당 부서 연락처</strong>를 함께 보여 드립니다.</p>
+      <ul class="features">
+        <li><span class="ico" data-icon="check"></span>출처 원문 근거 표기</li>
+        <li><span class="ico" data-icon="bolt"></span>실시간 학사공지 연동</li>
+        <li><span class="ico" data-icon="phone"></span>담당 부서 연결</li>
+      </ul>
+      <p class="chips-label"><span class="ico" data-icon="help"></span>자주 묻는 학사 질문</p>
       <div id="chips" class="chips" role="list"></div>
     </section>
     <ol id="turns" class="turns"></ol>
   </main>
 
-  <footer class="composer">
-    <p class="privacy-note">ⓘ 학번·성명·전화번호 등 개인정보를 입력하지 마세요. <a href="privacy.html">처리방침</a></p>
-    <form id="form" class="input-row" autocomplete="off">
-      <label for="input" class="sr-only">질문</label>
-      <textarea id="input" rows="1" maxlength="500" placeholder="질문을 입력하세요" required></textarea>
-      <button type="submit" id="send" aria-label="전송">전송</button>
-    </form>
-    <p class="version" id="version"></p>
+  <footer class="dock">
+    <div class="dock-inner">
+      <p class="privacy-note"><span class="ico" data-icon="info"></span>학번·성명·전화번호 등 개인정보를 입력하지 마세요. <a href="privacy.html">개인정보 처리방침</a></p>
+      <form id="form" class="input-row" autocomplete="off">
+        <label for="input" class="sr-only">질문</label>
+        <textarea id="input" rows="1" maxlength="500" placeholder="질문을 입력하세요 (예: 이번 학기 수강 정정 언제까지인가요?)" required></textarea>
+        <button type="submit" id="send" class="btn-primary" aria-label="전송">전송 <span class="ico" data-icon="up"></span></button>
+      </form>
+      <p class="site-foot"><strong>캠퍼스 브릿지 (Campus Bridge)</strong> · 공식 학칙·학사공지 근거 기반 AI 안내 <span class="version" id="version-foot"></span></p>
+    </div>
   </footer>
 
   <template id="tpl-turn">
     <li class="turn">
-      <div class="bubble user"></div>
-      <div class="bot">
-        <details class="timeline" open>
-          <summary>판단 과정</summary>
-          <ol class="steps"></ol>
-        </details>
-        <div class="cards" role="list"></div>
-        <button type="button" class="more-cards ghost" hidden>검색 후보 더 보기</button>
-        <div class="answer" tabindex="-1"></div>
-        <div class="feedback" hidden>
-          <button type="button" class="fb up" aria-label="도움이 됐어요">👍</button>
-          <button type="button" class="fb down" aria-label="도움이 안 됐어요">👎</button>
-          <span class="fb-state"></span>
+      <div class="user-row"><div class="bubble user"></div></div>
+      <div class="bot-row">
+        <span class="avatar" aria-hidden="true"><span class="ico" data-icon="bot"></span></span>
+        <div class="bot">
+          <details class="timeline" open>
+            <summary><span class="ico" data-icon="spark"></span>판단 과정</summary>
+            <ol class="steps"></ol>
+          </details>
+          <div class="answer" tabindex="-1"></div>
+          <section class="evidence-wrap" hidden>
+            <div class="evidence-head">
+              <span><span class="ico" data-icon="book"></span>공식 근거 자료</span>
+              <button type="button" class="more-cards link" hidden>검색 후보 더 보기</button>
+            </div>
+            <div class="cards" role="list"></div>
+          </section>
+          <div class="dept-slot"></div>
+          <div class="feedback" hidden>
+            <button type="button" class="fb up" aria-label="도움이 됐어요"><span class="ico" data-icon="thumbup"></span>도움이 됐어요</button>
+            <button type="button" class="fb down" aria-label="아쉬워요"><span class="ico" data-icon="thumbdown"></span>아쉬워요</button>
+            <span class="fb-state"></span>
+          </div>
         </div>
       </div>
     </li>

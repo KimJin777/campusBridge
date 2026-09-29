@@ -1,5 +1,6 @@
 // 학생 채팅 화면(상세설계 05 §1). 모든 외부 텍스트는 textContent로만 넣는다(innerHTML 금지).
 import { createSSEParser } from "./sse.js";
+import { hydrateIcons, icon, chipIcon } from "./icons.js";
 
 const SCHEMA_VERSION = 1;
 const THREAD_KEY = "campusbridge.thread_id";
@@ -85,6 +86,7 @@ function track(event, extra = {}) {
 class Turn {
   constructor(message) {
     const node = $("#tpl-turn").content.firstElementChild.cloneNode(true);
+    hydrateIcons(node);
     $(".bubble.user", node).textContent = message;
     $("#turns").append(node);
     $("#welcome").hidden = true;
@@ -129,26 +131,33 @@ class Turn {
   addCards(items) {
     for (const c of items || []) {
       if (this.cardMap.has(c.id)) continue;
-      const card = el("button", "card");
-      card.type = "button";
+      const kind = Object.hasOwn(KIND_LABEL, c.kind) ? c.kind : "guide";
+      const card = el("article", `card kind-${kind}`);
       card.setAttribute("role", "listitem");
+      card.tabIndex = -1;
       const head = el("div");
-      head.append(el("span", "num"), el("span", "kind", KIND_LABEL[c.kind] || c.kind));
+      head.className = "card-head";
+      head.append(el("span", "kind", KIND_LABEL[c.kind] || c.kind), el("span", "num"));
       card.append(head, el("div", "title", c.title), el("div", "snippet", c.snippet));
       const meta = [c.department, c.revision_date && `${c.revision_date} 개정`].filter(Boolean).join(" · ");
       if (meta) card.append(el("div", "meta", meta));
       if (c.has_table) card.append(el("div", "meta", "표 포함 — 원문 확인"));
       if (c.stale) card.append(el("div", "meta stale", "마지막 확인 정보"));
       const safe = typeof c.url === "string" && ALLOWED_LINK.test(c.url);
-      card.disabled = !safe;
-      card.addEventListener("click", () => {
+      const source = el("button", "source-link", "원문");
+      source.type = "button";
+      source.disabled = !safe;
+      source.prepend(icon("external", 14));
+      source.addEventListener("click", () => {
         if (!safe) return;
         window.open(c.url, "_blank", "noopener,noreferrer");
         track("source_click", { turn_id: this.turnId, target: c.id, card_state: card.classList.contains("cited") ? "cited" : "candidate" });
       });
+      card.append(source);
       this.cardMap.set(c.id, card);
       this.cards.append(card);
     }
+    if (this.cardMap.size) $(".evidence-wrap", this.node).hidden = false;
   }
 
   markCited(cited) {
@@ -203,11 +212,28 @@ class Turn {
   dept(d) {
     if (!d) return null;
     const box = el("div", "dept");
-    box.append(el("strong", null, `담당: ${d.name}`));
-    const parts = [d.phone, d.location_text, d.duties].filter(Boolean);
-    if (parts.length) box.append(el("div", null, parts.join(" · ")));
+    const head = el("div", "dept-head");
+    head.append(icon("building", 20), el("strong", null, d.name));
+    box.append(head);
+    if (d.location_text) box.append(el("div", "dept-location", d.location_text));
+    if (d.duties) box.append(el("div", "dept-duties", d.duties));
+    const phone = typeof d.phone === "string" ? d.phone.trim() : "";
+    const dial = phone.replace(/[^0-9+]/g, "");
+    if (phone && dial) {
+      const call = el("a", "phone-link");
+      call.href = `tel:${dial}`;
+      call.append(icon("phone", 15), document.createTextNode(phone));
+      box.append(call);
+    }
     if (d.snapshot_at) box.append(el("div", "asof", `부서 정보 확인일 ${d.snapshot_at}`));
     return box;
+  }
+
+  renderDept(d) {
+    const slot = $(".dept-slot", this.node);
+    slot.replaceChildren();
+    const dept = this.dept(d);
+    if (dept) slot.append(dept);
   }
 
   renderAnswer(a) {
@@ -237,8 +263,7 @@ class Turn {
       }
       box.append(ul);
     }
-    const dept = this.dept(a.dept);
-    if (dept) box.append(dept);
+    this.renderDept(a.dept);
     if (a.as_of) box.append(el("p", "asof", `${formatKst(a.as_of)} 기준 정보`));
     if (a.notice) box.append(el("p", "safety", a.notice));
   }
@@ -248,8 +273,8 @@ class Turn {
     this.markCited([]);
     const box = this.answer;
     box.replaceChildren(el("p", null, FALLBACK_TEXT[f.reason] || f.message));
-    const dept = this.dept(f.dept);
-    if (dept) box.append(el("p", "hint", "담당 부서에 문의해 주세요."), dept);
+    if (f.dept) box.append(el("p", "hint", "담당 부서에 문의해 주세요."));
+    this.renderDept(f.dept);
   }
 
   renderAsk(q) {
@@ -417,6 +442,7 @@ function handle(turn, event, d, retry) {
 
 // ── 초기화 ──────────────────────────────────────────────────────────────
 async function init() {
+  hydrateIcons();
   const input = $("#input");
   $("#form").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -450,10 +476,12 @@ async function init() {
       fetch("/api/suggestions").then((r) => r.json()),
     ]);
     $("#version").textContent = `v${status.version}`;
+    $("#version-foot").textContent = ` · v${status.version}`;
     for (const text of sug.items || []) {
       const b = el("button", "chip", text);
       b.type = "button";
       b.setAttribute("role", "listitem");
+      b.prepend(icon(chipIcon(text), 17));
       b.addEventListener("click", () => {
         track("chip_click", { target: text.slice(0, 200) });
         send(text); // 원클릭 시연 — 입력창을 거치지 않음

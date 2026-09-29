@@ -44,13 +44,16 @@ SSE_HEADERS = {
     "X-Accel-Buffering": "no",
 }
 CSP = (
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+    "default-src 'self'; script-src 'self'; "
+    "style-src 'self' https://fonts.googleapis.com; "
+    "font-src https://fonts.gstatic.com; img-src 'self' data:; "
     "connect-src 'self'; frame-ancestors 'none'"
 )
-# 관리자 화면만 Google 로그인(GIS) 스크립트·창·스타일을 허용한다(학생 화면은 그대로 'self'만)
+# 관리자 화면은 Google 로그인(GIS) 스크립트·창과 공통 웹폰트를 허용한다.
 ADMIN_CSP = (
     "default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; "
-    "style-src 'self' https://accounts.google.com/gsi/style; img-src 'self' data: https:; "
+    "style-src 'self' https://accounts.google.com/gsi/style https://fonts.googleapis.com; "
+    "font-src https://fonts.gstatic.com; img-src 'self' data: https:; "
     "connect-src 'self' https://accounts.google.com/gsi/; "
     "frame-src https://accounts.google.com/gsi/; frame-ancestors 'none'"
 )

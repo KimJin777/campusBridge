@@ -141,6 +141,11 @@ def test_suggestions_privacy_and_static_frontend():
     page = c.get("/")
     assert page.status_code == 200 and "캠퍼스 브릿지" in page.text
     assert "default-src 'self'" in page.headers["content-security-policy"]
+    assert (
+        "style-src 'self' https://fonts.googleapis.com"
+        in page.headers["content-security-policy"]
+    )
+    assert "font-src https://fonts.gstatic.com" in page.headers["content-security-policy"]
     assert page.headers["cache-control"] == "no-cache"
     assert c.get("/app.js").headers["cache-control"] == "no-cache"
 
@@ -188,6 +193,8 @@ def test_admin_page_csp_and_auth_config():
         page.status_code == 200
         and "accounts.google.com/gsi/client" in page.headers["content-security-policy"]
     )
+    assert "fonts.googleapis.com" in page.headers["content-security-policy"]
+    assert "fonts.gstatic.com" in page.headers["content-security-policy"]
     student = c.get("/")
     assert "accounts.google.com" not in student.headers["content-security-policy"]
     assert "google_client_id" in c.get("/api/auth/config").json()
