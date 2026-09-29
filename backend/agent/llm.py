@@ -12,7 +12,8 @@
 
 from __future__ import annotations
 
-from typing import Protocol, TypeVar
+from collections.abc import Callable
+from typing import Any, Protocol, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -38,6 +39,32 @@ class StructuredLLM(Protocol):
     async def structured(
         self, schema: type[T], system: str, user: str, *, node: str, deadline: float | None
     ) -> T: ...
+
+
+class StreamingLLM(StructuredLLM, Protocol):
+    async def stream_structured(
+        self,
+        schema: type[T],
+        system: str,
+        user: str,
+        *,
+        node: str,
+        deadline: float | None,
+        on_text: Callable[[str], None],
+    ) -> T: ...
+
+
+def _chunk_text(content: Any) -> str:
+    """스트림 조각의 텍스트(3.x는 파트 리스트로 올 수 있다 — thinking 파트는 제외)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            p if isinstance(p, str) else str(p.get("text", ""))
+            for p in content
+            if isinstance(p, str) or (isinstance(p, dict) and p.get("type", "text") == "text")
+        )
+    return ""
 
 
 PROFILE_BY_NODE = {
@@ -97,12 +124,32 @@ class GeminiLLM:
         *,
         limit: float,
         attempts: int,
+        on_text: Callable[[str], None] | None = None,
     ) -> T:
         thinking = self.s.compose_thinking if node == "compose" else self.s.classify_thinking
-        runnable = self._chat(model, thinking).with_structured_output(schema)
+        msgs = [("system", system), ("human", user)]
+        if on_text is None:
+            runnable = self._chat(model, thinking).with_structured_output(schema)
 
-        async def call():
-            return await runnable.ainvoke([("system", system), ("human", user)])
+            async def call():
+                return await runnable.ainvoke(msgs)
+
+        else:
+            # with_structured_output(json_schema)과 같은 바인딩으로 원문 JSON을 스트리밍한다
+            chat = self._chat(model, thinking).bind(
+                response_mime_type="application/json",
+                response_json_schema=schema.model_json_schema(),
+            )
+
+            async def call():
+                on_text("")  # 새 시도 → 화면 초안 초기화
+                buf = ""
+                async for chunk in chat.astream(msgs):
+                    piece = _chunk_text(chunk.content)
+                    if piece:
+                        buf += piece
+                        on_text(buf)
+                return schema.model_validate_json(buf) if buf.strip() else None
 
         try:
             out = await call_with_retry(
@@ -121,6 +168,29 @@ class GeminiLLM:
     async def structured(
         self, schema: type[T], system: str, user: str, *, node: str, deadline: float | None
     ) -> T:
+        return await self._hedged(schema, system, user, node, deadline, None)
+
+    async def stream_structured(
+        self,
+        schema: type[T],
+        system: str,
+        user: str,
+        *,
+        node: str,
+        deadline: float | None,
+        on_text: Callable[[str], None],
+    ) -> T:
+        return await self._hedged(schema, system, user, node, deadline, on_text)
+
+    async def _hedged(
+        self,
+        schema: type[T],
+        system: str,
+        user: str,
+        node: str,
+        deadline: float | None,
+        on_text: Callable[[str], None] | None,
+    ) -> T:
         profile_timeout, retries = PROFILES[PROFILE_BY_NODE.get(node, "gemini_classify")]
         fallback = self.s.gemini_fallback_model
         try:
@@ -133,6 +203,7 @@ class GeminiLLM:
                 deadline,
                 limit=PRIMARY_TIMEOUT.get(node, 5.0) if fallback else profile_timeout,
                 attempts=1 if fallback else retries + 1,
+                on_text=on_text,
             )
         except CallFailed as first:
             left = remaining(deadline)
@@ -148,6 +219,7 @@ class GeminiLLM:
                     deadline,
                     limit=profile_timeout,
                     attempts=retries + 1,
+                    on_text=on_text,
                 )
             except CallFailed as second:
                 raise _unavailable(second) from second

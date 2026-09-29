@@ -236,6 +236,19 @@ class Turn {
     if (dept) slot.append(dept);
   }
 
+  // 검증 전 초안(스트리밍) — 확정 답변이 아니므로 "검증 중"으로만 보이고 answer/fallback이 오면 교체된다
+  renderDraft(texts) {
+    const box = this.answer;
+    if (!texts?.length) {
+      box.classList.remove("drafting");
+      box.replaceChildren();
+      return;
+    }
+    box.classList.add("drafting");
+    box.replaceChildren(el("p", "draft-badge", "근거 확인 중 · 아직 확정 답변이 아닙니다"));
+    for (const t of texts) box.append(el("p", null, t));
+  }
+
   renderAnswer(a) {
     this.finishSteps();
     const order = this.markCited(a.cited || []);
@@ -405,7 +418,13 @@ async function send(message, requestId = uuid(), turn = null) {
 }
 
 function handle(turn, event, d, retry) {
+  if (event !== "draft" && event !== "status" && event !== "evidence") {
+    turn.answer.classList.remove("drafting");
+  }
   switch (event) {
+    case "draft":
+      turn.renderDraft(d.texts);
+      break;
     case "meta":
       if (d.schema_version !== SCHEMA_VERSION) turn.renderError("화면이 오래되었습니다. 새로고침해 주세요.");
       turn.turnId = d.turn_id;

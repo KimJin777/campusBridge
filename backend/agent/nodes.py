@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from backend.agent import prompts
+from backend.agent.draft_stream import draft_emitter
 from backend.agent.llm import LLMTimeout, LLMUnavailable, StructuredLLM, StructuredOutputError
 from backend.agent.needs import plan_calls
 from backend.agent.resolve import NEED_PRIORITY, resolve
@@ -376,13 +377,20 @@ class Nodes:
                 break
             calls += 1
             try:
-                out = await self.d.llm.structured(
-                    ComposeOut,
-                    prompts.COMPOSE,
-                    self._compose_prompt(state),
-                    node="compose",
-                    deadline=state.get("deadline"),
-                )
+                args = (ComposeOut, prompts.COMPOSE, self._compose_prompt(state))
+                streamer = getattr(self.d.llm, "stream_structured", None)
+                if streamer is not None:
+                    # 초안 스트리밍(검증 전 — 화면은 "검증 중"으로만 표시, verify 후 answer로 교체)
+                    out = await streamer(
+                        *args,
+                        node="compose",
+                        deadline=state.get("deadline"),
+                        on_text=draft_emitter(lambda texts: _emit("draft", texts=texts)),
+                    )
+                else:
+                    out = await self.d.llm.structured(
+                        *args, node="compose", deadline=state.get("deadline")
+                    )
                 draft = out.to_draft() if isinstance(out, ComposeOut) else out
                 break
             except StructuredOutputError:
