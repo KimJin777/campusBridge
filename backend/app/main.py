@@ -17,10 +17,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Header, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from backend.agent.nodes import AgentDeps
 from backend.agent.prompts import PROMPT_VERSION
@@ -159,6 +160,7 @@ class TurnRunner:
     graph: Any
     store: TurnStore
     settings: Settings
+    deps: Any = None
 
     def initial_state(self, req: ChatRequest, q: str, acq: Acquire) -> dict[str, Any]:
         now = time.monotonic()
@@ -317,6 +319,55 @@ class TurnRunner:
             await self.store.release(req.thread_id, req.request_id, failed=not done_ok)
 
 
+# ── 심층 점검(/api/status?deep=1) ─────────────────────────────────────────
+class _Ping(BaseModel):
+    ok: bool
+
+
+async def _timed(coro) -> dict[str, Any]:
+    t = time.monotonic()
+    try:
+        detail = await coro
+        return {"ok": True, "elapsed_ms": int((time.monotonic() - t) * 1000), **(detail or {})}
+    except Exception as e:  # noqa: BLE001 — 점검 결과로 보고
+        return {
+            "ok": False,
+            "elapsed_ms": int((time.monotonic() - t) * 1000),
+            "error": type(e).__name__,
+        }
+
+
+async def deep_checks(r: TurnRunner) -> dict[str, Any]:
+    """Gemini 1회·검색 1회·Firestore 쓰기 1회(04 §5). 결과는 구조화 필드만 반환한다."""
+    deps: AgentDeps = r.deps
+
+    async def gemini() -> dict[str, Any]:
+        out = await deps.llm.structured(
+            _Ping, "Return ok=true.", "ping", node="classify", deadline=deadline_after(15000)
+        )
+        if not out.ok:
+            raise RuntimeError("unexpected")
+        return {}
+
+    async def search() -> dict[str, Any]:
+        tool = deps.tools.get("search_academic_knowledge")
+        if tool is None:
+            raise RuntimeError("not configured")
+        args = {"query": "학칙 휴학", "kinds": ["rule"]}
+        res = await (tool.ainvoke(args) if hasattr(tool, "ainvoke") else tool(**args))
+        if not res.ok:
+            raise RuntimeError(res.error_code or "error")
+        return {"count": len(res.items)}
+
+    async def firestore() -> dict[str, Any]:
+        await r.store.add_event({"thread_id": "health", "event": "health_check"})
+        return {}
+
+    names = ("gemini", "search", "firestore")
+    results = await asyncio.gather(_timed(gemini()), _timed(search()), _timed(firestore()))
+    return dict(zip(names, results, strict=True))
+
+
 # ── 앱 ───────────────────────────────────────────────────────────────────
 def create_app(
     settings: Settings | None = None,
@@ -334,7 +385,7 @@ def create_app(
             d = lazy["deps"] or default_deps(s)
             st = lazy["store"] or default_store(s)
             lazy["store"] = st
-            lazy["runner"] = TurnRunner(graph=build_graph(d), store=st, settings=s)
+            lazy["runner"] = TurnRunner(graph=build_graph(d), store=st, settings=s, deps=d)
         return lazy["runner"]
 
     app.state.runner = runner
@@ -422,12 +473,10 @@ def create_app(
         return Response(status_code=204)
 
     @app.get("/api/status")
-    async def status(deep: int = 0) -> dict[str, Any]:
-        if deep:
-            raise AppError(
-                "UNAUTHORIZED", "관리자 인증이 필요합니다."
-            )  # 관리자 라우터 연결 후 교체
-        return {
+    async def status(
+        deep: int = 0, authorization: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        base = {
             "status": "ok",
             "version": s.app_version,
             "schema_version": SCHEMA_VERSION,
@@ -435,6 +484,16 @@ def create_app(
             "index": s.search_datastore_id,
             "time": datetime.now(UTC).isoformat(),
         }
+        if not deep:
+            return base
+        # 외부 호출·쓰기가 생기므로 관리자 인증 강제(04 §5) — 인증은 backend.admin(GPT5 소유)
+        from backend.admin.auth import require_admin
+
+        await require_admin(authorization)
+        checks = await deep_checks(runner())
+        base["checks"] = checks
+        base["status"] = "ok" if all(c["ok"] for c in checks.values()) else "degraded"
+        return base
 
     @app.get("/api/suggestions")
     async def suggestions() -> dict[str, Any]:

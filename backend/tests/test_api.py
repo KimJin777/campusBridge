@@ -142,3 +142,38 @@ def test_suggestions_privacy_and_static_frontend():
     assert "default-src 'self'" in page.headers["content-security-policy"]
     assert page.headers["cache-control"] == "no-cache"
     assert c.get("/app.js").headers["cache-control"] == "no-cache"
+
+
+def test_status_deep_requires_admin_and_runs_checks(monkeypatch):
+    import backend.admin.auth as auth
+    from backend.agent.state import ClassifyOut  # noqa: F401 — FakeLLM 재사용
+
+    monkeypatch.setenv("ADMIN_EMAILS", "admin@kyungnam.ac.kr")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "cid")
+    from backend.app.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        auth,
+        "_verify_token",
+        lambda token, aud: (
+            {"email": "admin@kyungnam.ac.kr", "email_verified": True, "sub": "1"}
+            if token == "good"
+            else (_ for _ in ()).throw(ValueError("bad"))
+        ),
+    )
+
+    class PingLLM(FakeLLM):
+        async def structured(self, schema, system, user, *, node, deadline):
+            return schema(ok=True)
+
+    c, store = client(PingLLM())
+    assert c.get("/api/status?deep=1").status_code == 401
+    assert c.get("/api/status?deep=1", headers={"Authorization": "Bearer bad"}).status_code == 401
+    r = c.get("/api/status?deep=1", headers={"Authorization": "Bearer good"})
+    body = r.json()
+    assert r.status_code == 200 and body["status"] == "ok"
+    assert set(body["checks"]) == {"gemini", "search", "firestore"}
+    assert body["checks"]["search"]["count"] == 2
+    assert store.events[-1]["event"] == "health_check"
+    get_settings.cache_clear()
