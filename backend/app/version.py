@@ -13,6 +13,17 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.6.0",
+        "date": "2026-09-29",
+        "deployed_at": None,
+        "revision": None,
+        "title": "답변 스트리밍",
+        "items": [
+            "답변 작성 중 초안을 실시간으로 표시(\"근거 확인 중\" 표시, 검증 통과 후 확정 답변으로 교체)",
+            "검증 실패·시간 초과 시 초안을 지우고 기존 대체 안내로 교체",
+        ],
+    },
+    {
         "version": "0.5.1",
         "date": "2026-09-29",
         "deployed_at": None,
