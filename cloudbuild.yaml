@@ -21,7 +21,7 @@ substitutions:
   _INGEST_SA_NAME: ingest-sa
   # 수집 요청의 식별 UA 연락처(저장소 공개 대비 기본값 비움 — 실행 시 전달)
   _CONTACT_EMAIL: ""
-  _MIN_INSTANCES: "0"
+  _MIN_INSTANCES: "1"
 
 options:
   logging: CLOUD_LOGGING_ONLY
