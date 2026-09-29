@@ -69,3 +69,18 @@ class IngestionRunRequest(BaseModel):
         if len(clean) < 8 or "/" in clean:
             raise ValueError("invalid idempotency key")
         return clean
+
+
+class DocumentActionRequest(BaseModel):
+    """교내 문서 상태 전이 요청(publish·reject·archive·purge)."""
+
+    reason: str = Field(min_length=1, max_length=300)
+    request_id: str = Field(min_length=8, max_length=100)
+    confirm_document_id: str | None = Field(default=None, max_length=100)  # purge 2단계 확인
+
+    @field_validator("reason")
+    @classmethod
+    def reason_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("blank reason")
+        return value.strip()

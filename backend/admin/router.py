@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from datetime import date
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import yaml
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
@@ -18,7 +18,12 @@ from backend.admin.document_files import (
     validate_document,
 )
 from backend.admin.jobs import JobLauncher, get_job_launcher
-from backend.admin.models import DisableRequest, IngestionRunRequest, SourcePatch
+from backend.admin.models import (
+    DisableRequest,
+    DocumentActionRequest,
+    IngestionRunRequest,
+    SourcePatch,
+)
 from backend.admin.store import AdminStore, get_admin_store
 from backend.app.config import Settings, get_settings
 from backend.domain import AppError
@@ -60,6 +65,9 @@ def _document_view(item: dict[str, Any], *, include_preview: bool = False) -> di
         "status",
         "preview_status",
         "preview_error_code",
+        "last_action",
+        "job_action",
+        "job_error_code",
         "version",
         "previous_version_id",
         "sha256",
@@ -319,6 +327,51 @@ async def get_document_preview(
     if item is None:
         raise AppError("BAD_REQUEST", "문서를 찾지 못했습니다.")
     return _document_view(item, include_preview=True)
+
+
+@router.post("/documents/{document_id}/{action}")
+async def document_action(
+    document_id: str,
+    action: Literal["publish", "reject", "archive", "purge"],
+    body: DocumentActionRequest,
+    actor: Actor,
+    store: Store,
+    launcher: Launcher,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """문서 상태 전이(04 §6). 검색 반영·삭제는 Job이 이어서 처리(웹은 직접 수집·삭제 안 함)."""
+    from backend.admin.lifecycle import TRANSITIONS
+
+    doc_id = _valid_id(document_id)
+    rule = TRANSITIONS[action]
+    if rule.job_action and not (settings.gcp_project_id and settings.ingestion_job_name):
+        raise AppError("BAD_REQUEST", "문서 처리 Job 설정이 없습니다.")
+    item, replay = await store.transition_document(
+        doc_id,
+        action,
+        actor=actor,
+        reason=body.reason,
+        request_id=body.request_id.strip(),
+        confirm_document_id=body.confirm_document_id,
+    )
+    if replay or not rule.job_action:
+        return {**_document_view(item), "reused": replay}
+    try:
+        operation = await launcher.start_document(doc_id, rule.job_action)
+    except Exception as exc:
+        await store.mark_document_job(
+            doc_id,
+            action,
+            actor=actor,
+            request_id=body.request_id.strip(),
+            operation_name=None,
+            error_code="JOB_START_FAILED",
+        )
+        raise AppError("INTERNAL", "문서 처리 작업을 시작하지 못했습니다.") from exc
+    item = await store.mark_document_job(
+        doc_id, action, actor=actor, request_id=body.request_id.strip(), operation_name=operation
+    )
+    return {**_document_view(item), "reused": False}
 
 
 @router.get("/audit")

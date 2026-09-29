@@ -94,6 +94,28 @@ class AdminStore(Protocol):
         error_code: str | None = None,
     ) -> dict[str, Any]: ...
 
+    async def transition_document(
+        self,
+        document_id: str,
+        action: str,
+        *,
+        actor: AdminActor,
+        reason: str,
+        request_id: str,
+        confirm_document_id: str | None = None,
+    ) -> tuple[dict[str, Any], bool]: ...
+
+    async def mark_document_job(
+        self,
+        document_id: str,
+        action: str,
+        *,
+        actor: AdminActor,
+        request_id: str,
+        operation_name: str | None,
+        error_code: str | None = None,
+    ) -> dict[str, Any]: ...
+
 
 class FirestoreAdminStore:
     def __init__(self, settings: Settings | None = None, client: Any = None):
@@ -459,6 +481,110 @@ class FirestoreAdminStore:
         )
         await batch.commit()
         return {"id": document_id, **_safe_value(after)}
+
+    async def transition_document(
+        self,
+        document_id: str,
+        action: str,
+        *,
+        actor: AdminActor,
+        reason: str,
+        request_id: str,
+        confirm_document_id: str | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        from backend.admin.lifecycle import check_transition
+
+        ref = self.db.collection("documents").document(document_id)
+        deny_ref = self.db.collection("disabled_document_ids").document(document_id)
+
+        @self._fs.async_transactional
+        async def txn(tx) -> tuple[dict[str, Any], bool]:
+            snapshot = await ref.get(transaction=tx)
+            if not snapshot.exists:
+                raise AppError("BAD_REQUEST", "문서를 찾지 못했습니다.")
+            before = snapshot.to_dict() or {}
+            rule, replay = check_transition(
+                action,
+                before,
+                request_id=request_id,
+                confirm_document_id=confirm_document_id,
+                document_id=document_id,
+            )
+            if replay:
+                return {"id": document_id, **_safe_value(before)}, True
+            now = datetime.now(UTC)
+            changes = {
+                "status": rule.to_status,
+                "last_action": action,
+                "last_request_id": request_id,
+                "updated_at": now,
+                f"{action}_by": actor.email,
+                f"{action}_at": now,
+            }
+            if rule.disable:
+                tx.set(
+                    deny_ref,
+                    {
+                        "reason": reason,
+                        "actor": actor.email,
+                        "created_at": now,
+                        "source": f"document.{action}",
+                    },
+                )
+            after = {**before, **changes}
+            tx.set(ref, changes, merge=True)
+            tx.set(
+                self.db.collection("admin_audit").document(str(uuid4())),
+                self._audit_payload(
+                    actor=actor,
+                    action=f"document.{action}",
+                    target=document_id,
+                    before=before,
+                    after=after,
+                    reason=reason,
+                    request_id=request_id,
+                ),
+            )
+            return {"id": document_id, **_safe_value(after)}, False
+
+        return await txn(self.db.transaction())
+
+    async def mark_document_job(
+        self,
+        document_id: str,
+        action: str,
+        *,
+        actor: AdminActor,
+        request_id: str,
+        operation_name: str | None,
+        error_code: str | None = None,
+    ) -> dict[str, Any]:
+        ref = self.db.collection("documents").document(document_id)
+        now = datetime.now(UTC)
+        changes = {
+            "job_action": action,
+            "job_operation_name": operation_name,
+            "job_error_code": error_code,
+            "updated_at": now,
+        }
+        batch = self.db.batch()
+        batch.set(ref, changes, merge=True)
+        batch.set(
+            self.db.collection("admin_audit").document(str(uuid4())),
+            self._audit_payload(
+                actor=actor,
+                action=f"document.{action}.dispatch",
+                target=document_id,
+                before=None,
+                after=changes,
+                reason=f"{action} 작업 시작",
+                request_id=request_id,
+                result="failed" if error_code else "success",
+            ),
+        )
+        await batch.commit()
+        snapshot = await ref.get()
+        return {"id": document_id, **_safe_value(snapshot.to_dict() or {})}
 
 
 def get_admin_store() -> AdminStore:
