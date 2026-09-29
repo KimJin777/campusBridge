@@ -129,3 +129,16 @@ def test_rate_limiter():
     rl = RateLimiter(per_minute=2)
     assert rl.allow("1.1.1.1", 0) and rl.allow("1.1.1.1", 1) and not rl.allow("1.1.1.1", 2)
     assert rl.allow("1.1.1.1", 61.5)
+
+
+def test_suggestions_privacy_and_static_frontend():
+    c, _ = client(FakeLLM())
+    items = c.get("/api/suggestions").json()["items"]
+    assert "휴학 신청 절차 알려 주세요" in items and len(items) == 6
+    r = c.get("/privacy", follow_redirects=False)
+    assert r.status_code in (302, 307) and r.headers["location"] == "/privacy.html"
+    page = c.get("/")
+    assert page.status_code == 200 and "캠퍼스 브릿지" in page.text
+    assert "default-src 'self'" in page.headers["content-security-policy"]
+    assert page.headers["cache-control"] == "no-cache"
+    assert c.get("/app.js").headers["cache-control"] == "no-cache"

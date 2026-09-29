@@ -24,6 +24,16 @@ def _list(name: str, default: str = "") -> tuple[str, ...]:
     return tuple(x.strip() for x in raw.split(",") if x.strip())
 
 
+DEFAULT_SUGGESTIONS = (
+    "휴학 신청 절차 알려 주세요",
+    "성적 경고 기준과 재수강 규정",
+    "오늘 학생식당 메뉴",
+    "장학금 신청 언제까지예요?",
+    "학사지원팀 어디 있어요?",
+    "오늘 주식 뭐 사면 좋을까요?",
+)
+
+
 @dataclass(frozen=True)
 class Settings:
     # GCP
@@ -79,6 +89,15 @@ class Settings:
     hard_deadline_ms: int = field(default_factory=lambda: _int("HARD_DEADLINE_MS", 25000))
 
     app_version: str = field(default_factory=lambda: _str("APP_VERSION", "0.3.0"))
+
+    # 추천 질문 칩(05 §1-3) — 시연 전 문구 교체용. "|"로 구분
+    suggestions: tuple[str, ...] = field(
+        default_factory=lambda: tuple(
+            x.strip()
+            for x in _str("SUGGESTIONS", "|".join(DEFAULT_SUGGESTIONS)).split("|")
+            if x.strip()
+        )
+    )
 
     def is_admin(self, email: str | None) -> bool:
         return bool(email) and email.lower() in self.admin_emails

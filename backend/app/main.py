@@ -19,7 +19,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.agent.nodes import AgentDeps
@@ -435,6 +435,14 @@ def create_app(
             "index": s.search_datastore_id,
             "time": datetime.now(UTC).isoformat(),
         }
+
+    @app.get("/api/suggestions")
+    async def suggestions() -> dict[str, Any]:
+        return {"items": list(s.suggestions)}
+
+    @app.get("/privacy", include_in_schema=False)
+    async def privacy() -> RedirectResponse:
+        return RedirectResponse("/privacy.html")
 
     try:  # 관리자 API(GPT5 소유)가 router를 내보내면 등록
         from backend.admin import router as admin_router  # type: ignore[attr-defined]

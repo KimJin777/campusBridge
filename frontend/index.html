@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>캠퍼스 브릿지</title>
+  <meta name="description" content="학칙·학사공지·학사일정을 근거와 함께 안내하는 학생 도우미">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <h1 class="brand">캠퍼스 브릿지</h1>
+    <button type="button" id="new-thread" class="ghost" aria-label="새 대화 시작">새 대화 시작</button>
+  </header>
+
+  <main id="chat" class="chat" aria-live="polite">
+    <section id="welcome" class="welcome">
+      <p class="hello">학칙·학사공지·학사일정에서 근거를 찾아 안내해 드려요.</p>
+      <p class="sub">답변마다 근거 카드와 담당 부서를 함께 보여 드립니다.</p>
+      <div id="chips" class="chips" role="list"></div>
+    </section>
+    <ol id="turns" class="turns"></ol>
+  </main>
+
+  <footer class="composer">
+    <p class="privacy-note">ⓘ 학번·성명·전화번호 등 개인정보를 입력하지 마세요. <a href="privacy.html">처리방침</a></p>
+    <form id="form" class="input-row" autocomplete="off">
+      <label for="input" class="sr-only">질문</label>
+      <textarea id="input" rows="1" maxlength="500" placeholder="질문을 입력하세요" required></textarea>
+      <button type="submit" id="send" aria-label="전송">전송</button>
+    </form>
+    <p class="version" id="version"></p>
+  </footer>
+
+  <template id="tpl-turn">
+    <li class="turn">
+      <div class="bubble user"></div>
+      <div class="bot">
+        <details class="timeline" open>
+          <summary>판단 과정</summary>
+          <ol class="steps"></ol>
+        </details>
+        <div class="cards" role="list"></div>
+        <button type="button" class="more-cards ghost" hidden>검색 후보 더 보기</button>
+        <div class="answer" tabindex="-1"></div>
+        <div class="feedback" hidden>
+          <button type="button" class="fb up" aria-label="도움이 됐어요">👍</button>
+          <button type="button" class="fb down" aria-label="도움이 안 됐어요">👎</button>
+          <span class="fb-state"></span>
+        </div>
+      </div>
+    </li>
+  </template>
+</body>
+</html>

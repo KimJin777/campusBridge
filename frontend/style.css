@@ -1,0 +1,139 @@
+:root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --text: #1c1c1e;
+  --muted: #6b6b70;
+  --line: #e3e3e0;
+  --accent: #1f5fbf;
+  --accent-soft: #e8f0fb;
+  --warn: #9a5b00;
+  --warn-soft: #fff4e0;
+  --err: #b3261e;
+  --user: #1f5fbf;
+  --user-text: #ffffff;
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141416;
+    --surface: #1e1e21;
+    --text: #ececef;
+    --muted: #a0a0a8;
+    --line: #34343a;
+    --accent: #7fb0ff;
+    --accent-soft: #1f2a3d;
+    --warn: #f0b35a;
+    --warn-soft: #3a2c14;
+    --err: #ff8a80;
+    --user: #3a6fd0;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  display: flex;
+  flex-direction: column;
+  max-width: 720px;
+  margin: 0 auto;
+}
+button, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .5; }
+a { color: var(--accent); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+.top {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; background: var(--bg); border-bottom: 1px solid var(--line);
+}
+.brand { font-size: 18px; margin: 0; }
+.ghost {
+  background: transparent; border: 1px solid var(--line); border-radius: 999px;
+  padding: 6px 12px; font-size: 14px;
+}
+
+.chat { flex: 1; overflow-y: auto; padding: 16px; }
+.welcome .hello { font-size: 18px; font-weight: 600; margin: 8px 0 4px; }
+.welcome .sub { color: var(--muted); margin: 0 0 16px; font-size: 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+  padding: 8px 14px; font-size: 14px; text-align: left;
+}
+.chip:hover:not(:disabled) { border-color: var(--accent); }
+
+.turns { list-style: none; margin: 0; padding: 0; }
+.turn { margin: 16px 0 24px; }
+.bubble { border-radius: var(--radius); padding: 10px 14px; white-space: pre-wrap; word-break: break-word; }
+.bubble.user {
+  background: var(--user); color: var(--user-text);
+  margin-left: auto; width: fit-content; max-width: 85%;
+}
+.bot { margin-top: 10px; }
+
+.timeline { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.timeline summary { cursor: pointer; }
+.steps { list-style: none; margin: 6px 0 0; padding: 0 0 0 4px; }
+.steps li::before { content: "⏳ "; }
+.steps li.ok::before { content: "✓ "; color: var(--accent); }
+.steps li.fail::before { content: "✕ "; color: var(--err); }
+.steps li.note::before { content: "ⓘ "; }
+
+.cards { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x mandatory; }
+.card {
+  flex: 0 0 220px; scroll-snap-align: start;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px; font-size: 13px; text-align: left; opacity: .6;
+}
+.card.cited { opacity: 1; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.card.folded { display: none; }
+.card .num { font-weight: 700; color: var(--accent); margin-right: 4px; }
+.card .kind { display: inline-block; font-size: 11px; color: var(--muted); }
+.card .title { font-weight: 600; margin: 2px 0 4px; }
+.card .snippet { color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.card .meta { margin-top: 6px; font-size: 11px; color: var(--muted); }
+.card .stale { color: var(--warn); }
+.more-cards { margin: 6px 0; font-size: 12px; }
+
+.answer { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; margin-top: 8px; }
+.answer:empty { display: none; }
+.answer:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.answer p { margin: 0 0 8px; }
+.answer .cite {
+  font-size: 11px; vertical-align: super; margin-left: 2px; padding: 0 3px;
+  border: 0; background: var(--accent-soft); color: var(--accent); border-radius: 4px;
+}
+.answer h3 { font-size: 14px; margin: 12px 0 6px; }
+.answer ol.checklist, .answer ul.actions { margin: 0 0 8px; padding-left: 20px; }
+.answer ol.checklist li { margin: 2px 0; }
+.answer .notice-box { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-bottom: 8px; }
+.answer .dept { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 8px; font-size: 14px; }
+.answer .safety, .answer .asof { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+.answer.ask { border-color: var(--accent); }
+.answer.error { border-color: var(--err); color: var(--err); }
+.choice-group { margin: 8px 0; }
+.choice-group .label { font-size: 13px; color: var(--muted); margin-right: 6px; }
+.choice { border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 4px 12px; margin: 4px 4px 0 0; font-size: 14px; }
+.choice[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+.primary { background: var(--accent); color: #fff; border: 0; border-radius: 999px; padding: 6px 16px; margin-top: 8px; }
+
+.feedback { margin-top: 6px; display: flex; gap: 6px; align-items: center; }
+.fb { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 2px 10px; }
+.fb[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.fb-state { font-size: 12px; color: var(--muted); }
+
+.composer { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); padding: 8px 16px 10px; }
+.privacy-note { font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+.input-row { display: flex; gap: 8px; align-items: flex-end; }
+.input-row textarea {
+  flex: 1; resize: none; max-height: 140px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+}
+.input-row button { background: var(--accent); color: #fff; border: 0; border-radius: 12px; padding: 10px 16px; }
+.version { margin: 6px 0 0; font-size: 11px; color: var(--muted); text-align: right; }
+.hint { font-size: 13px; color: var(--muted); margin: 6px 0; }
