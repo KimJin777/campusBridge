@@ -43,19 +43,15 @@ PY
 }
 
 T=$(uuid); R1=$(uuid)
-# 3. ask
-chat "$T" "$R1" "휴학하려면 어떻게 해야 하나요?" "$TMP/t1.txt"
-[ "$(outcome "$TMP/t1.txt")" = "ask" ] || fail "turn1 expected ask"
-echo "3 ask ok"
-# 4. answer with citation
-R2=$(uuid)
-chat "$T" "$R2" "2학년이고 장학금은 안 받아요" "$TMP/t2.txt"
-[ "$(outcome "$TMP/t2.txt")" = "answer" ] || fail "turn2 expected answer"
-grep -q '"cited": \["' "$TMP/t2.txt" || fail "answer without citation"
-echo "4 answer ok"
+# 3~4. 휴학 절차는 되묻지 않고 바로 인용 답변(0.9.0, #613 — 이전에는 학년을 되물었음)
+Q1="휴학하려면 어떻게 해야 하나요?"
+chat "$T" "$R1" "$Q1" "$TMP/t1.txt"
+[ "$(outcome "$TMP/t1.txt")" = "answer" ] || fail "turn1 expected answer (no ask for leave procedure)"
+grep -q '"cited": \["' "$TMP/t1.txt" || fail "answer without citation"
+echo "3-4 answer ok"
 # 8. replay
-chat "$T" "$R2" "2학년이고 장학금은 안 받아요" "$TMP/t2r.txt"
-grep -q '"replay": true' "$TMP/t2r.txt" || fail "replay flag"
+chat "$T" "$R1" "$Q1" "$TMP/t1r.txt"
+grep -q '"replay": true' "$TMP/t1r.txt" || fail "replay flag"
 echo "8 replay ok"
 # 5. out of scope
 chat "$(uuid)" "$(uuid)" "오늘 비트코인 사도 될까요?" "$TMP/t3.txt"
