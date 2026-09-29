@@ -226,7 +226,7 @@ a { color: var(--primary); }
 
 .dock { position: fixed; z-index: 20; inset: auto 0 0; pointer-events: none; padding: 0 16px 16px; background: linear-gradient(transparent, var(--canvas) 42%); }
 .dock-inner { width: min(100%, 840px); margin: 0 auto; padding: 11px 12px 9px; border: 1px solid color-mix(in srgb, var(--line) 82%, transparent); border-radius: 22px; background: var(--surface-glass); box-shadow: var(--shadow-3); backdrop-filter: blur(16px); pointer-events: auto; }
-.privacy-note { gap: 5px; margin: 0 4px 7px; color: var(--muted); font-size: 11px; }
+.privacy-note { gap: 5px; margin: 7px 4px 0; color: var(--muted); font-size: 11px; }
 .input-row { display: flex; align-items: flex-end; gap: 9px; }
 .input-row textarea { flex: 1; min-width: 0; max-height: 140px; resize: none; padding: 11px 13px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); outline: 0; }
 .input-row textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, .2); }
