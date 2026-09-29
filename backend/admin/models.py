@@ -2,9 +2,67 @@
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+_EMAIL = re.compile(
+    r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+"
+)
+
+
+def normalize_admin_email(value: str) -> str:
+    email = value.strip().lower()
+    local = email.partition("@")[0]
+    invalid_dots = local.startswith(".") or local.endswith(".") or ".." in local
+    if (
+        len(email) > 254
+        or len(local) > 64
+        or invalid_dots
+        or _EMAIL.fullmatch(email) is None
+    ):
+        raise ValueError("invalid email")
+    return email
+
+
+class AdminAddRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    note: str = Field(default="", max_length=300)
+    reason: str = Field(min_length=1, max_length=300)
+    request_id: str = Field(min_length=8, max_length=100)
+
+    @field_validator("email")
+    @classmethod
+    def valid_email(cls, value: str) -> str:
+        return normalize_admin_email(value)
+
+    @field_validator("note", "reason", "request_id")
+    @classmethod
+    def strip_fields(cls, value: str, info) -> str:
+        clean = value.strip()
+        if info.field_name in {"reason", "request_id"} and not clean:
+            raise ValueError("blank value")
+        if info.field_name == "request_id" and len(clean) < 8:
+            raise ValueError("short request id")
+        return clean
+
+
+class AdminRemoveRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=300)
+    request_id: str = Field(min_length=8, max_length=100)
+
+    @field_validator("reason", "request_id")
+    @classmethod
+    def strip_required(cls, value: str, info) -> str:
+        clean = value.strip()
+        if not clean:
+            raise ValueError("blank value")
+        if info.field_name == "request_id" and len(clean) < 8:
+            raise ValueError("short request id")
+        return clean
 
 
 class SourcePatch(BaseModel):

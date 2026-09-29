@@ -30,6 +30,16 @@ class FakeStore:
         )
         self.create_args = None
         self.mark_args = []
+        self.admin_rows = [
+            {
+                "id": "dynamic@example.edu",
+                "email": "dynamic@example.edu",
+                "status": "active",
+                "note": "운영",
+            }
+        ]
+        self.admin_add_args = None
+        self.admin_remove_args = None
 
     async def get_document(self, collection: str, document_id: str):
         if collection == "ingestion_runs" and document_id == "run-1":
@@ -61,6 +71,8 @@ class FakeStore:
         order_by: str,
         descending: bool = True,
     ) -> dict[str, Any]:
+        if collection == "admin_users":
+            return {"items": self.admin_rows, "next_cursor": None}
         return {
             "items": [{"id": f"{collection}-1", "order": order_by}],
             "next_cursor": cursor if limit == 1 else None,
@@ -110,6 +122,14 @@ class FakeStore:
             "preview_status": "failed" if kwargs.get("error_code") else "processing",
             "preview_error_code": kwargs.get("error_code"),
         }
+
+    async def add_admin_user(self, email: str, **kwargs):
+        self.admin_add_args = (email, kwargs)
+        return {"id": email, "email": email, "status": "active", "note": kwargs["note"]}, False
+
+    async def remove_admin_user(self, email: str, **kwargs):
+        self.admin_remove_args = (email, kwargs)
+        return {"id": email, "email": email, "status": "removed"}, False
 
 
 class FakeLauncher:
@@ -183,6 +203,72 @@ def test_admin_read_endpoints_apply_limits() -> None:
     assert stats.json() == {"days": 90, "total": 7}
     assert client.get("/api/admin/unanswered?limit=201").status_code == 422
     assert client.get("/api/admin/stats?days=91").status_code == 422
+
+
+def test_admin_list_merges_bootstrap_and_firestore_users() -> None:
+    store = FakeStore()
+    client = _client(
+        store,
+        settings=Settings(admin_emails=frozenset({"bootstrap@example.edu"})),
+    )
+
+    response = client.get("/api/admin/admins")
+
+    assert response.status_code == 200
+    assert response.json()["current_email"] == "admin@example.edu"
+    assert response.json()["items"][0] == {
+        "email": "bootstrap@example.edu",
+        "status": "active",
+        "bootstrap": True,
+    }
+    assert response.json()["items"][1]["email"] == "dynamic@example.edu"
+    assert response.json()["items"][1]["bootstrap"] is False
+
+
+def test_admin_add_normalizes_email_and_forwards_audit_context() -> None:
+    store = FakeStore()
+    client = _client(store)
+
+    response = client.post(
+        "/api/admin/admins",
+        json={
+            "email": " New.Admin@Example.EDU ",
+            "note": "산학협력단",
+            "reason": "운영 담당 추가",
+            "request_id": "request-add-1",
+        },
+    )
+
+    assert response.status_code == 201
+    assert store.admin_add_args[0] == "new.admin@example.edu"
+    assert store.admin_add_args[1]["actor"].email == "admin@example.edu"
+    assert store.admin_add_args[1]["reason"] == "운영 담당 추가"
+    assert client.post(
+        "/api/admin/admins",
+        json={
+            "email": "not-an-email",
+            "reason": "오류",
+            "request_id": "request-add-2",
+        },
+    ).status_code == 422
+
+
+def test_admin_remove_rejects_bootstrap_and_self_then_records_reason() -> None:
+    store = FakeStore()
+    client = _client(
+        store,
+        settings=Settings(admin_emails=frozenset({"bootstrap@example.edu"})),
+    )
+    body = {"reason": "담당 변경", "request_id": "request-remove-1"}
+
+    bootstrap = client.post("/api/admin/admins/bootstrap@example.edu/remove", json=body)
+    assert bootstrap.status_code == 400
+    assert client.post("/api/admin/admins/admin@example.edu/remove", json=body).status_code == 400
+    response = client.post("/api/admin/admins/dynamic@example.edu/remove", json=body)
+
+    assert response.status_code == 200
+    assert store.admin_remove_args[0] == "dynamic@example.edu"
+    assert store.admin_remove_args[1]["reason"] == "담당 변경"
 
 
 def test_source_patch_and_disable_forward_audited_context() -> None:

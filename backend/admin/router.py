@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 import yaml
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
-from backend.admin.auth import AdminActor, require_admin
+from backend.admin.auth import AdminActor, invalidate_admin_cache, require_admin
 from backend.admin.document_files import (
     DocumentStorage,
     document_id_for_request,
@@ -19,10 +19,13 @@ from backend.admin.document_files import (
 )
 from backend.admin.jobs import JobLauncher, get_job_launcher
 from backend.admin.models import (
+    AdminAddRequest,
+    AdminRemoveRequest,
     DisableRequest,
     DocumentActionRequest,
     IngestionRunRequest,
     SourcePatch,
+    normalize_admin_email,
 )
 from backend.admin.places import PlaceCreate, PlacePatch
 from backend.admin.store import AdminStore, get_admin_store
@@ -51,6 +54,13 @@ def _required_text(value: str, field_name: str) -> str:
     if not clean:
         raise AppError("BAD_REQUEST", f"{field_name} 항목은 비워 둘 수 없습니다.")
     return clean
+
+
+def _admin_email(value: str) -> str:
+    try:
+        return normalize_admin_email(value)
+    except ValueError as exc:
+        raise AppError("BAD_REQUEST", "이메일 형식이 올바르지 않습니다.") from exc
 
 
 def _document_view(item: dict[str, Any], *, include_preview: bool = False) -> dict[str, Any]:
@@ -93,6 +103,70 @@ async def list_sources(
     return await store.list_page(
         "source_configs", limit=limit, cursor=cursor, order_by="kind", descending=False
     )
+
+
+@router.get("/admins")
+async def list_admins(
+    actor: Actor,
+    store: Store,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    page = await store.list_page(
+        "admin_users", limit=200, cursor=None, order_by="email", descending=False
+    )
+    by_email: dict[str, dict[str, Any]] = {}
+    for row in page["items"]:
+        email = str(row.get("email") or row.get("id") or "").strip().lower()
+        if email:
+            by_email[email] = {**row, "email": email, "bootstrap": False}
+    for email in settings.admin_emails:
+        row = by_email.get(email, {"email": email})
+        by_email[email] = {**row, "email": email, "status": "active", "bootstrap": True}
+    items = sorted(by_email.values(), key=lambda row: (not row["bootstrap"], row["email"]))
+    return {"items": items, "current_email": actor.email}
+
+
+@router.post("/admins", status_code=201)
+async def add_admin(
+    body: AdminAddRequest,
+    actor: Actor,
+    store: Store,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    if body.email in settings.admin_emails:
+        raise AppError("BAD_REQUEST", "부트스트랩 관리자는 이미 등록되어 있습니다.")
+    item, reused = await store.add_admin_user(
+        body.email,
+        note=body.note,
+        actor=actor,
+        reason=body.reason,
+        request_id=body.request_id,
+    )
+    invalidate_admin_cache()
+    return {**item, "bootstrap": False, "reused": reused}
+
+
+@router.post("/admins/{email}/remove")
+async def remove_admin(
+    email: str,
+    body: AdminRemoveRequest,
+    actor: Actor,
+    store: Store,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    target = _admin_email(email)
+    if target in settings.admin_emails:
+        raise AppError("BAD_REQUEST", "부트스트랩 관리자는 삭제할 수 없습니다.")
+    if target == actor.email:
+        raise AppError("BAD_REQUEST", "현재 로그인한 관리자 자신은 삭제할 수 없습니다.")
+    item, reused = await store.remove_admin_user(
+        target,
+        actor=actor,
+        reason=body.reason,
+        request_id=body.request_id,
+    )
+    invalidate_admin_cache()
+    return {**item, "bootstrap": False, "reused": reused}
 
 
 @router.patch("/sources/{source_id}")

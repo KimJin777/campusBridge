@@ -128,6 +128,25 @@ class AdminStore(Protocol):
         request_id: str,
     ) -> dict[str, Any]: ...
 
+    async def add_admin_user(
+        self,
+        email: str,
+        *,
+        note: str,
+        actor: AdminActor,
+        reason: str,
+        request_id: str,
+    ) -> tuple[dict[str, Any], bool]: ...
+
+    async def remove_admin_user(
+        self,
+        email: str,
+        *,
+        actor: AdminActor,
+        reason: str,
+        request_id: str,
+    ) -> tuple[dict[str, Any], bool]: ...
+
 
 class FirestoreAdminStore:
     def __init__(self, settings: Settings | None = None, client: Any = None):
@@ -194,6 +213,135 @@ class FirestoreAdminStore:
             "result": result,
             "created_at": datetime.now(UTC),
         }
+
+    async def add_admin_user(
+        self,
+        email: str,
+        *,
+        note: str,
+        actor: AdminActor,
+        reason: str,
+        request_id: str,
+    ) -> tuple[dict[str, Any], bool]:
+        ref = self.db.collection("admin_users").document(email)
+        request_ref = self.db.collection("admin_requests").document(
+            hashlib.sha256(request_id.encode()).hexdigest()
+        )
+
+        @self._fs.async_transactional
+        async def txn(tx) -> tuple[dict[str, Any], bool]:
+            request_snapshot = await request_ref.get(transaction=tx)
+            if request_snapshot.exists:
+                request = request_snapshot.to_dict() or {}
+                if request.get("action") != "admin.add" or request.get("target") != email:
+                    raise AppError(
+                        "BAD_REQUEST", "요청 ID가 다른 관리자 변경에 이미 사용되었습니다."
+                    )
+                current = await ref.get(transaction=tx)
+                row = current.to_dict() or {} if current.exists else {}
+                return {"id": email, **_safe_value(row)}, True
+
+            snapshot = await ref.get(transaction=tx)
+            before = snapshot.to_dict() if snapshot.exists else None
+            if before and before.get("status") == "active":
+                raise AppError("BAD_REQUEST", "이미 등록된 관리자입니다.")
+            now = datetime.now(UTC)
+            after = {
+                "email": email,
+                "added_by": actor.email,
+                "added_at": now,
+                "note": note,
+                "status": "active",
+            }
+            tx.set(ref, after)
+            tx.set(
+                request_ref,
+                {
+                    "action": "admin.add",
+                    "target": email,
+                    "request_id": request_id,
+                    "created_at": now,
+                },
+            )
+            tx.set(
+                self.db.collection("admin_audit").document(str(uuid4())),
+                self._audit_payload(
+                    actor=actor,
+                    action="admin.add",
+                    target=email,
+                    before=before,
+                    after=after,
+                    reason=reason,
+                    request_id=request_id,
+                ),
+            )
+            return {"id": email, **_safe_value(after)}, False
+
+        return await txn(self.db.transaction())
+
+    async def remove_admin_user(
+        self,
+        email: str,
+        *,
+        actor: AdminActor,
+        reason: str,
+        request_id: str,
+    ) -> tuple[dict[str, Any], bool]:
+        ref = self.db.collection("admin_users").document(email)
+        request_ref = self.db.collection("admin_requests").document(
+            hashlib.sha256(request_id.encode()).hexdigest()
+        )
+
+        @self._fs.async_transactional
+        async def txn(tx) -> tuple[dict[str, Any], bool]:
+            request_snapshot = await request_ref.get(transaction=tx)
+            if request_snapshot.exists:
+                request = request_snapshot.to_dict() or {}
+                if request.get("action") != "admin.remove" or request.get("target") != email:
+                    raise AppError(
+                        "BAD_REQUEST", "요청 ID가 다른 관리자 변경에 이미 사용되었습니다."
+                    )
+                current = await ref.get(transaction=tx)
+                row = current.to_dict() or {} if current.exists else {}
+                return {"id": email, **_safe_value(row)}, True
+
+            snapshot = await ref.get(transaction=tx)
+            before = snapshot.to_dict() if snapshot.exists else None
+            if not before or before.get("status") != "active":
+                raise AppError("BAD_REQUEST", "활성 관리자 계정을 찾지 못했습니다.")
+            now = datetime.now(UTC)
+            changes = {
+                "status": "removed",
+                "removed_by": actor.email,
+                "removed_at": now,
+                "removal_reason": reason,
+            }
+            after = {**before, **changes}
+            tx.set(ref, changes, merge=True)
+            tx.set(
+                request_ref,
+                {
+                    "action": "admin.remove",
+                    "target": email,
+                    "request_id": request_id,
+                    "created_at": now,
+                },
+            )
+            tx.set(
+                self.db.collection("admin_audit").document(str(uuid4())),
+                self._audit_payload(
+                    actor=actor,
+                    action="admin.remove",
+                    target=email,
+                    before=before,
+                    after=after,
+                    reason=reason,
+                    request_id=request_id,
+                ),
+            )
+            return {"id": email, **_safe_value(after)}, False
+
+        return await txn(self.db.transaction())
 
     async def patch_source(
         self,

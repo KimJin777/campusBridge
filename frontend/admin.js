@@ -180,6 +180,7 @@ const TABS = {
   review: ["검수 대기함", viewReview],
   unanswered: ["미응답·피드백", viewUnanswered],
   stats: ["통계", viewStats],
+  admins: ["관리자", viewAdmins],
   audit: ["감사 로그", viewAudit],
   glossary: ["용어 사전", viewGlossary],
 };
@@ -562,6 +563,71 @@ async function viewStats(view) {
   add("평균 응답(ms)", s.latency_ms?.average);
   add("p95 응답(ms)", s.latency_ms?.p95);
   view.replaceChildren(tiles, el("h3", null, "일자별"), table(Object.entries(s.daily || {}).map(([d, n]) => ({ d, n: typeof n === "object" ? JSON.stringify(n) : n })), [["d", "날짜"], ["n", "건수"]]));
+}
+
+async function viewAdmins(view) {
+  const data = await api("/admins");
+  const form = el("form", "inline");
+  form.append(
+    field("관리자 이메일", "email", "email", { required: true, placeholder: "admin@example.edu" }),
+    field("메모", "note", "text", { placeholder: "소속·용도(선택)" }),
+    field("추가 사유", "reason", "text", { required: true }),
+  );
+  const submit = el("button", "act primary", "관리자 추가");
+  submit.type = "submit";
+  form.append(submit);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const values = Object.fromEntries(new FormData(form));
+    const email = String(values.email || "").trim().toLowerCase();
+    if (!confirm(`${email} 계정을 관리자로 추가할까요?`)) return;
+    submit.disabled = true;
+    try {
+      await api("/admins", {
+        method: "POST",
+        body: { ...values, email, request_id: rid() },
+      });
+      flash(`${email} 계정을 추가했습니다.`);
+      openTab("admins");
+    } catch (err) {
+      if (err.message !== "unauthorized") flash(err.message, true);
+    } finally {
+      submit.disabled = false;
+    }
+  });
+
+  const bootstrapLabel = (row) =>
+    row.bootstrap ? el("span", "status", "부트스트랩") : el("span", "hint", "화면 등록");
+  view.replaceChildren(
+    el("p", "hint", "OAuth 앱이 '테스트' 상태이면 Google 콘솔의 테스트 사용자에도 추가해야 로그인됩니다."),
+    el("p", "hint", "부트스트랩 관리자는 배포 설정값(최초·비상용)이므로 이 화면에서 삭제할 수 없습니다."),
+    form,
+    table(
+      data.items,
+      [
+        ["email", "이메일"],
+        [bootstrapLabel, "구분"],
+        [(row) => badge(row.status), "상태"],
+        ["note", "메모"],
+        ["added_by", "추가한 사람"],
+        ["added_at", "추가 시각"],
+      ],
+      (row) => [
+        !row.bootstrap && row.status === "active" && row.email !== data.current_email
+          ? btn("삭제", async () => {
+              const reason = askReason(`${row.email} 관리자 삭제`);
+              if (!reason || !confirm(`${row.email} 계정의 관리자 권한을 삭제할까요?`)) return;
+              await api(`/admins/${encodeURIComponent(row.email)}/remove`, {
+                method: "POST",
+                body: { reason, request_id: rid() },
+              });
+              flash(`${row.email} 계정의 관리자 권한을 삭제했습니다.`);
+              openTab("admins");
+            }, "act danger")
+          : null,
+      ],
+    ),
+  );
 }
 
 async function viewAudit(view) {
