@@ -170,6 +170,34 @@ def _location_text(row: dict[str, str], by_id: dict[str, dict[str, str]]) -> str
     return " ".join(part for part in parts if part)
 
 
+MAX_TENANTS = 20
+
+
+def _tenants(
+    building: dict[str, str], rows: list[dict[str, str]], by_id: dict[str, dict[str, str]]
+) -> list[tuple[str, str]]:
+    """건물 안의 검수된 부서·시설.
+
+    parent_place_id가 이 건물이거나 위치 문구가 건물 이름으로 시작하는 행.
+    """
+    bid = _first(building, "place_id", "id")
+    bname = _first(building, "name", "place_name")
+    if not bid or not bname:
+        return []
+    key = _normalize(bname)
+    out: list[tuple[str, str]] = []
+    for row in rows:
+        rid = _first(row, "place_id", "id")
+        if rid == bid:
+            continue
+        loc = _location_text(row, by_id)
+        parent = _first(row, "parent_place_id", "parent_id")
+        if parent == bid or _normalize(loc).startswith(key):
+            out.append((_first(row, "name", "place_name"), loc))
+    out.sort()
+    return [t for t in out if t[0]][:MAX_TENANTS]
+
+
 PLACES_TTL_SECONDS = 300
 _places_cache: dict[str, Any] = {"at": 0.0, "rows": []}
 
@@ -241,6 +269,7 @@ async def find_campus_location(
     matches = [row for tier, row in candidates if tier == best_tier]
     by_id = {_first(row, "place_id", "id"): row for row in rows}
     items: list[Evidence] = []
+    listed_buildings: set[str] = set()
     for row in matches:
         place_id = _first(row, "place_id", "id")
         name = _first(row, "name", "place_name")
@@ -249,6 +278,8 @@ async def find_campus_location(
         source_url = _first(row, "source_url", "url")
         source_url = source_url if source_url and is_school_url(source_url) else ""
         location = _location_text(row, by_id)
+        if _normalize(location) == _normalize(name):
+            location = ""  # "한마관: 한마관" 같은 자기 반복 방지
         meta: dict[str, Any] = {
             "kind": _first(row, "kind", "place_kind") or None,
             "parent_place_id": _first(row, "parent_place_id", "parent_id") or None,
@@ -264,6 +295,21 @@ async def find_campus_location(
                 meta={key: value for key, value in meta.items() if value is not None},
             )
         )
+        tenants = [] if _normalize(name) in listed_buildings else _tenants(row, rows, by_id)
+        if tenants:
+            listed_buildings.add(_normalize(name))
+            # "한마관에는 뭐가 있나요?" — 건물 자체가 아니라 그 안의 부서·시설을 근거로 준다
+            listed = ", ".join(f"{n}({loc})" if loc else n for n, loc in tenants)
+            items.append(
+                Evidence(
+                    id=f"place:{place_id}:tenants",
+                    kind="place",
+                    title=f"{name}에 있는 부서·시설",
+                    text=f"{name}에 있는 부서·시설: {listed}",
+                    url=source_url or None,
+                    meta={"kind": "building_tenants", "count": len(tenants)},
+                )
+            )
     if not items:
         return ToolResult.empty("해당 장소를 찾지 못했습니다")
     return ToolResult(

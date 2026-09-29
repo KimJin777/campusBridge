@@ -60,3 +60,24 @@ async def test_location_does_not_guess_when_multiple_aliases_match(tmp_path: Pat
     assert result.ok
     assert len(result.items) == 2
     assert result.message == "여러 장소가 있습니다"
+
+
+@pytest.mark.asyncio
+async def test_building_lists_units_inside_not_itself(tmp_path: Path) -> None:
+    url = "https://www.kyungnam.ac.kr/ko/8013/subview.do"
+    path = _write(
+        tmp_path / "places.csv",
+        "place_id,name,kind,parent_place_id,status,raw_location,source_url,snapshot_at\n"
+        f"hanma,한마관,building,,verified,한마관,{url},2026-09-29\n"
+        f"acad,학사관리팀,unit,,verified,한마관 2층,{url},2026-09-29\n"
+        f"lib,중앙도서관,building,,verified,,{url},2026-09-29\n"
+        f"cafe,학생식당,facility,hanma,verified,,{url},2026-09-29\n"
+        f"hidden,비공개실,unit,hanma,pending,,{url},2026-09-29\n",
+    )
+    result = await find_campus_location("한마관", settings=Settings(), path=path)
+
+    assert result.ok
+    texts = [item.text for item in result.items]
+    assert texts[0] == "한마관"  # "한마관: 한마관" 자기 반복 없음
+    assert texts[1] == "한마관에 있는 부서·시설: 학사관리팀(한마관 2층), 학생식당(한마관)"
+    assert "비공개실" not in texts[1]
