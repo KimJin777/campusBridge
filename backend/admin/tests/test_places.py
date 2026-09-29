@@ -54,6 +54,9 @@ def test_non_school_url_rejected_and_location_edit_resets_review():
         normalize_place_changes({"source_url": "https://evil.example/x"}, VERIFIED, S)
     out = normalize_place_changes({"raw_location": "본관 2층"}, VERIFIED, S)
     assert out["status"] == "pending"  # 검수된 위치를 고치면 재검수
+    phone = PlacePatch(phone="055-249-2027", reason="번호 수정", request_id="req-00000001")
+    out = normalize_place_changes(phone.model_dump(exclude_none=True), VERIFIED, S)
+    assert out["phone"] == "055-249-2027" and out["status"] == "pending"
     note_only = normalize_place_changes({"note": "전화 확인"}, VERIFIED, S)
     assert "status" not in note_only
 
@@ -65,6 +68,8 @@ def test_request_models_validate_ids_and_empty_patch():
         )
     with pytest.raises(ValueError):
         PlacePatch(reason="r", request_id="req-00000001")
+    with pytest.raises(ValueError, match="area code"):
+        PlacePatch(phone="249-2027", reason="r", request_id="req-00000001")
     ok = PlaceCreate(
         place_id="Acad_Office",
         name="학사관리팀",

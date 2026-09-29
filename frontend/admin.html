@@ -4,6 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>캠퍼스 브릿지 관리자</title>
+  <meta name="description" content="캠퍼스 브릿지 데이터와 운영 상태를 관리하는 관리자 화면">
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="admin.css">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -11,12 +16,19 @@
 </head>
 <body class="admin">
   <header class="top">
-    <h1 class="brand">캠퍼스 브릿지 관리자</h1>
+    <div class="brand-wrap">
+      <img src="logo.svg" alt="" class="logo" width="34" height="34">
+      <div>
+        <p class="admin-kicker">운영 콘솔</p>
+        <h1 class="brand">캠퍼스 브릿지 <span>관리자</span></h1>
+      </div>
+    </div>
     <span class="top-right"><button type="button" id="version-btn" class="ghost" hidden aria-label="버전 내역 보기"></button> <span id="who" class="who"></span></span>
   </header>
-  <p class="notice-line">이 화면은 운영자용입니다. 학교 부서의 별도 조치는 필요하지 않습니다.</p>
+  <p class="notice-line"><span class="ico" data-icon="info"></span>운영자 전용 화면 · 학교 부서의 별도 조치는 필요하지 않습니다.</p>
 
   <section id="login" class="panel">
+    <p class="panel-title"><span class="ico" data-icon="bot"></span>관리자 로그인</p>
     <p>허용된 관리자 계정(Google)으로 로그인해 주세요.</p>
     <div id="gsi"></div>
     <p id="login-msg" class="hint"></p>

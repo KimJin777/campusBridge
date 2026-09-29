@@ -1,6 +1,9 @@
 // 관리자 화면(상세설계 05 §3). Google ID 토큰을 메모리에만 두고 Bearer로 보낸다.
 // 모든 서버 텍스트는 textContent로만 넣는다(innerHTML 금지).
 
+import { hydrateIcons, icon } from "./icons.js";
+import { normalizePhoneInput, placeVerificationIssue, schoolSourceUrl } from "./admin-utils.js";
+
 const $ = (s, r = document) => r.querySelector(s);
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -136,7 +139,7 @@ function flash(text, err = false) {
   const b = $("#banner");
   b.hidden = false;
   b.textContent = text;
-  b.style.color = err ? "var(--err)" : "";
+  b.style.color = err ? "var(--danger)" : "";
 }
 
 function badge(status) {
@@ -171,18 +174,18 @@ function field(label, name, type = "text", extra = {}) {
 
 // ── 탭 ──────────────────────────────────────────────────────────────────
 const TABS = {
-  sources: ["데이터 출처", viewSources],
-  runs: ["수집 실행", viewRuns],
-  disable: ["긴급 회수", viewDisable],
-  documents: ["교내 문서", viewDocuments],
-  places: ["장소 표", viewPlaces],
-  phonebook: ["전화번호부", viewPhonebook],
-  review: ["검수 대기함", viewReview],
-  unanswered: ["미응답·피드백", viewUnanswered],
-  stats: ["통계", viewStats],
-  admins: ["관리자", viewAdmins],
-  audit: ["감사 로그", viewAudit],
-  glossary: ["용어 사전", viewGlossary],
+  sources: ["데이터 출처", viewSources, "book"],
+  runs: ["수집 실행", viewRuns, "retry"],
+  disable: ["긴급 회수", viewDisable, "alert"],
+  documents: ["교내 문서", viewDocuments, "book"],
+  places: ["장소 표", viewPlaces, "pin"],
+  phonebook: ["전화번호부", viewPhonebook, "phone"],
+  review: ["검수 대기함", viewReview, "check"],
+  unanswered: ["미응답·피드백", viewUnanswered, "help"],
+  stats: ["통계", viewStats, "bolt"],
+  admins: ["관리자", viewAdmins, "bot"],
+  audit: ["감사 로그", viewAudit, "info"],
+  glossary: ["용어 사전", viewGlossary, "book"],
 };
 
 function openTab(name) {
@@ -193,8 +196,9 @@ function openTab(name) {
   }
   const nav = $("#tabs");
   nav.replaceChildren();
-  for (const [key, [label]] of Object.entries(TABS)) {
-    const b = el("button", null, label);
+  for (const [key, [label, , iconName]] of Object.entries(TABS)) {
+    const b = el("button");
+    b.append(icon(iconName, 15), document.createTextNode(label));
     b.type = "button";
     b.setAttribute("role", "tab");
     b.setAttribute("aria-selected", String(key === name));
@@ -204,7 +208,7 @@ function openTab(name) {
   $("#banner").hidden = true;
   const view = $("#view");
   view.replaceChildren(el("p", "hint", "불러오는 중…"));
-  TABS[name][1](view).catch((e) => {
+  return TABS[name][1](view).catch((e) => {
     if (e.message !== "unauthorized") view.replaceChildren(el("p", "msg err", e.message));
   });
 }
@@ -383,32 +387,22 @@ async function viewPlaces(view) {
     }
   });
   const { items } = await api("/places");
+  const editor = el("div", "editor-host");
+  const openEditor = (row) => {
+    editor.replaceChildren(placeEditor(row, () => editor.replaceChildren()));
+    editor.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   view.replaceChildren(
-    el("p", "hint", "지도·좌표는 쓰지 않습니다. 검수 완료(verified)된 행만 학생 답변에 나갑니다."),
+    el("div", "section-head", "장소·부서 연락처 운영"),
+    el("p", "hint", "지도·좌표는 쓰지 않습니다. 검수 완료(verified)된 행만 학생 답변에 나갑니다. 검수된 위치·전화를 고치면 다시 검수 대기로 돌아갑니다."),
     form,
-    table(items, [["name", "이름"], ["kind", "종류"], ["raw_location", "위치"], ["phone", "대표 전화"],
-      [(r) => badge(r.status), "상태"], [(r) => sourceLink(r.source_url), "원문"], ["snapshot_at", "확인일"], ["verified_by", "검수자"]],
-      (row) => [
-        row.status !== "verified" ? btn("검수 완료", async () => {
-          const reason = askReason(`「${row.name}」 위치 검수 완료`);
-          if (!reason) return;
-          await api(`/places/${encodeURIComponent(row.place_id || row.id)}`, { method: "PATCH", body: { status: "verified", reason, request_id: rid() } });
-          openTab("places");
-        }, "act primary") : null,
-        btn("위치 수정", async () => {
-          const loc = prompt("새 위치 문구", row.raw_location || "");
-          if (!loc) return;
-          const reason = askReason("위치 수정(검수 대기로 돌아갑니다)");
-          if (!reason) return;
-          await api(`/places/${encodeURIComponent(row.place_id || row.id)}`, { method: "PATCH", body: { raw_location: loc, reason, request_id: rid() } });
-          openTab("places");
-        }),
-      ]),
+    editor,
+    placeTable(items, { onEdit: openEditor, refreshTab: "places" }),
   );
 }
 
 function sourceLink(url) {
-  if (!url || !/^https:\/\/([a-z0-9-]+\.)*kyungnam\.ac\.kr(\/|$)/i.test(url)) return el("span", null, "—");
+  if (!schoolSourceUrl(url)) return el("span", null, "—");
   const a = el("a", null, "원문");
   a.href = url;
   a.target = "_blank";
@@ -416,35 +410,99 @@ function sourceLink(url) {
   return a;
 }
 
-function pendingPlaces(rows) {
-  const wrap = el("div");
+function placeEditor(row, close) {
+  const form = el("form", "place-editor");
+  const title = el("div", "editor-title");
+  title.append(icon("pin", 18), el("strong", null, `「${row.name}」 위치·대표전화 편집`));
+  const location = field("위치(건물/층/호실)", "raw_location", "text", { placeholder: "본관 1층 101호" });
+  const phone = field("대표전화", "phone", "tel", { placeholder: "055-249-1234" });
+  const reason = field("수정 사유", "reason", "text", { required: true, placeholder: "원문 확인 후 위치·전화 수정" });
+  location.querySelector("input").value = row.raw_location || "";
+  phone.querySelector("input").value = row.phone || "";
+  const save = el("button", "act primary", "변경 저장");
+  save.type = "submit";
+  const cancel = el("button", "act", "취소");
+  cancel.type = "button";
+  cancel.addEventListener("click", close);
+  const actions = el("div", "editor-actions");
+  actions.append(save, cancel);
+  form.append(
+    title,
+    el("p", "hint", row.status === "verified" ? "저장하면 검수 상태가 pending으로 바뀝니다." : "수정 내용과 사유는 감사 로그에 남습니다."),
+    location,
+    phone,
+    reason,
+    actions,
+  );
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    save.disabled = true;
+    try {
+      const values = Object.fromEntries(new FormData(form));
+      const body = { reason: String(values.reason || "").trim(), request_id: rid() };
+      const loc = String(values.raw_location || "").trim();
+      const tel = normalizePhoneInput(values.phone);
+      if (loc !== (row.raw_location || "")) body.raw_location = loc;
+      if (tel !== (row.phone || "")) body.phone = tel;
+      if (!("raw_location" in body) && !("phone" in body)) {
+        flash("바뀐 내용이 없습니다.", true);
+        return;
+      }
+      await api(`/places/${encodeURIComponent(row.place_id || row.id)}`, { method: "PATCH", body });
+      await openTab("places");
+      flash(`「${row.name}」 위치·대표전화를 저장했습니다.`);
+    } catch (error) {
+      if (error.message !== "unauthorized") flash(error.message, true);
+    } finally {
+      save.disabled = false;
+    }
+  });
+  return form;
+}
+
+function skipSummary(skipped) {
+  const counts = new Map();
+  for (const reason of skipped) counts.set(reason, (counts.get(reason) || 0) + 1);
+  return [...counts].map(([reason, count]) => `${reason} ${count}건`).join(", ");
+}
+
+function placeTable(rows, { onEdit = null, refreshTab = "review", includeEvidence = false } = {}) {
+  const wrap = el("div", "place-table");
   if (!rows.length) {
     wrap.append(el("p", "hint", "검수 대기 항목이 없습니다."));
     return wrap;
   }
   const checked = new Set();
-  const all = el("button", "act", "전체 선택");
+  const all = el("button", "act", "대기 항목 전체 선택");
   all.type = "button";
   const go = btn("선택 항목 검수 완료", async () => {
     if (!checked.size) return flash("선택한 항목이 없습니다.", true);
     const reason = askReason(`${checked.size}건 검수 완료(원문 확인함)`);
     if (!reason) return;
     let ok = 0;
-    const failed = [];
+    const skipped = [];
     for (const id of checked) {
+      const row = rows.find((item) => (item.place_id || item.id) === id);
+      const issue = placeVerificationIssue(row || {});
+      if (issue) {
+        skipped.push(issue);
+        continue;
+      }
       try {
         await api(`/places/${encodeURIComponent(id)}`, { method: "PATCH", body: { status: "verified", reason, request_id: rid() } });
         ok += 1;
       } catch (e) {
-        failed.push(`${id}: ${e.message}`);
+        skipped.push(`서버 거부(${e.message})`);
       }
     }
-    flash(`검수 완료 ${ok}건${failed.length ? ` / 실패 ${failed.length}건 — ${failed.join("; ")}` : ""}`, failed.length > 0);
-    openTab("places");
+    const result = `성공 ${ok} · 건너뜀 ${skipped.length}${skipped.length ? ` (${skipSummary(skipped)})` : ""}`;
+    await openTab(refreshTab);
+    flash(result, skipped.length > 0);
   }, "act primary");
   const boxes = [];
-  const t = table(rows, [
+  const columns = [
     [(r) => {
+      if (r.status !== "pending") return el("span", "hint", "—");
       const cb = el("input");
       cb.type = "checkbox";
       cb.setAttribute("aria-label", `${r.name} 선택`);
@@ -453,16 +511,21 @@ function pendingPlaces(rows) {
       return cb;
     }, "선택"],
     ["name", "이름"], ["kind", "종류"], ["raw_location", "위치"], ["phone", "대표 전화"],
-    ["evidence_text", "원문 문장"], [(r) => sourceLink(r.source_url), "원문"], ["collected_by", "수집"],
-  ]);
+    [(r) => badge(r.status), "상태"],
+  ];
+  if (includeEvidence) columns.push(["evidence_text", "원문 문장"]);
+  columns.push([(r) => sourceLink(r.source_url), "원문"], ["snapshot_at", "확인일"], ["verified_by", "검수자"]);
+  const t = table(rows, columns, onEdit ? (row) => [btn("편집", () => onEdit(row))] : null);
   all.addEventListener("click", () => {
-    const on = checked.size < rows.length;
+    const on = checked.size < boxes.length;
     boxes.forEach((cb) => {
       cb.checked = on;
       cb.dispatchEvent(new Event("change"));
     });
   });
-  wrap.append(el("p", "hint", "자동 수집 결과입니다. 위치·전화가 원문 문장과 맞는지 확인한 항목만 검수 완료하세요."), all, go, t);
+  const tools = el("div", "bulk-tools");
+  tools.append(all, go);
+  wrap.append(el("p", "hint", "학교 원문 URL·확인일·위치 또는 부서 대표전화가 있고, 원문과 일치하는 항목만 검수 완료하세요."), tools, t);
   return wrap;
 }
 
@@ -534,7 +597,7 @@ async function viewReview(view) {
     el("h3", null, "검수 실패 규정(색인 제외, 이전 버전 유지)"),
     el("p", rules?.rejected_rule_nos?.length ? "msg err" : "hint", rules?.rejected_rule_nos?.length ? `규정 번호: ${rules.rejected_rule_nos.join(", ")}` : "없음"),
     el("h3", null, "장소·부서 검수 대기 — 원문 문장을 보고 맞는 것만 체크"),
-    pendingPlaces(places.items.filter((p) => p.status === "pending")),
+    placeTable(places.items.filter((p) => p.status === "pending"), { refreshTab: "review", includeEvidence: true }),
     el("h3", null, "교내 문서 검토 대기"),
     table(docs.items.filter((d) => ["staging", "publishing"].includes(d.status)), [["title", "제목"], [(r) => badge(r.status), "상태"], [(r) => badge(r.preview_status), "미리보기"], ["preview_error_code", "오류"]]),
   );
@@ -641,4 +704,5 @@ async function viewGlossary(view) {
 }
 
 window.addEventListener("hashchange", () => token && openTab(location.hash.slice(1)));
+hydrateIcons();
 initLogin();

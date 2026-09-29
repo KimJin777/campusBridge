@@ -18,7 +18,17 @@ from backend.domain import AppError
 from backend.tools.common import is_school_url
 
 PLACE_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{1,63}$")
-LOCATION_FIELDS = ("name", "aliases", "kind", "parent_place_id", "floor", "room", "raw_location")
+PHONE = re.compile(r"^0\d{1,2}-\d{3,4}-\d{4}$")
+LOCATION_FIELDS = (
+    "name",
+    "aliases",
+    "kind",
+    "parent_place_id",
+    "floor",
+    "room",
+    "raw_location",
+    "phone",
+)
 
 
 class PlaceFields(BaseModel):
@@ -29,6 +39,7 @@ class PlaceFields(BaseModel):
     floor: str | None = Field(default=None, max_length=10)
     room: str | None = Field(default=None, max_length=20)
     raw_location: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=20)
     source_url: str | None = Field(default=None, max_length=300)
     snapshot_at: date | None = None
     note: str | None = Field(default=None, max_length=300)
@@ -39,6 +50,16 @@ class PlaceFields(BaseModel):
         if values is None:
             return None
         return list(dict.fromkeys(v.strip()[:30] for v in values if v.strip()))
+
+    @field_validator("phone")
+    @classmethod
+    def valid_phone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        clean = value.strip()
+        if clean and not PHONE.fullmatch(clean):
+            raise ValueError("phone must include area code, for example 055-249-1234")
+        return clean
 
 
 class PlaceCreate(PlaceFields):
