@@ -243,14 +243,17 @@ def test_admin_add_normalizes_email_and_forwards_audit_context() -> None:
     assert store.admin_add_args[0] == "new.admin@example.edu"
     assert store.admin_add_args[1]["actor"].email == "admin@example.edu"
     assert store.admin_add_args[1]["reason"] == "운영 담당 추가"
-    assert client.post(
-        "/api/admin/admins",
-        json={
-            "email": "not-an-email",
-            "reason": "오류",
-            "request_id": "request-add-2",
-        },
-    ).status_code == 422
+    assert (
+        client.post(
+            "/api/admin/admins",
+            json={
+                "email": "not-an-email",
+                "reason": "오류",
+                "request_id": "request-add-2",
+            },
+        ).status_code
+        == 422
+    )
 
 
 def test_admin_remove_rejects_bootstrap_and_self_then_records_reason() -> None:
@@ -447,3 +450,28 @@ def test_document_preview_exposes_only_safe_fields() -> None:
     assert response.status_code == 200
     assert response.json()["preview_chunks"][0]["text"] == "안내 내용"
     assert "gcs_staging_path" not in response.json()
+
+
+def test_event_patch_forwards_audit_context_and_validates_status() -> None:
+    store = FakeStore()
+    seen: dict[str, Any] = {}
+
+    async def set_event_status(event_id, status, *, actor, reason, request_id):
+        seen.update(id=event_id, status=status, actor=actor.email, reason=reason, rid=request_id)
+        return {"id": event_id, "status": status}
+
+    store.set_event_status = set_event_status  # type: ignore[attr-defined]
+    client = _client(store)
+    body = {"status": "active", "reason": " 원문 확인 ", "request_id": "req-00000001"}
+    assert client.patch("/api/admin/events/abc123", json=body).status_code == 200
+    assert seen == {
+        "id": "abc123",
+        "status": "active",
+        "actor": "admin@example.edu",
+        "reason": "원문 확인",
+        "rid": "req-00000001",
+    }
+    bad = client.patch("/api/admin/events/abc123", json={**body, "status": "verified"})
+    assert bad.status_code == 422
+    listed = client.get("/api/admin/events").json()
+    assert listed["items"][0]["id"] == "campus_events-1"

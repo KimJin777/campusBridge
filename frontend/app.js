@@ -508,6 +508,43 @@ async function init() {
       $("#chips").append(b);
     }
   } catch {}
+  loadToday();
+}
+
+// 오늘·이번 주 학사 일정(진행 중 + 7일 안 마감). 없거나 실패하면 카드를 숨긴다
+async function loadToday() {
+  try {
+    const { items } = await fetch("/api/events/today").then((r) => r.json());
+    if (!items?.length) return;
+    const list = $("#today-list");
+    for (const e of items) {
+      const li = el("li", "today-item");
+      const badge = el("span", `today-badge${e.badge === "진행 중" ? " ongoing" : ""}`, e.badge);
+      const body = el("span", "today-body");
+      body.append(el("span", "today-title", e.title), el("span", "today-date", periodText(e)));
+      li.append(badge, body);
+      if (safeSchoolUrl(e.url)) {
+        const a = el("a", "today-link");
+        a.href = e.url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.setAttribute("aria-label", `${e.title} 원문 새 창으로 보기`);
+        a.append(icon("external", 15));
+        li.append(a);
+      }
+      list.append(li);
+    }
+    $("#today").hidden = false;
+  } catch {}
+}
+
+function periodText(e) {
+  const md = (iso) => `${iso.slice(5, 7)}.${iso.slice(8, 10)}`;
+  return e.start_date && e.start_date !== e.end_date ? `${md(e.start_date)} ~ ${md(e.end_date)}` : `~ ${md(e.end_date)}`;
+}
+
+function safeSchoolUrl(url) {
+  return /^https:\/\/([a-z0-9-]+\.)*kyungnam\.ac\.kr(\/|$)/i.test(String(url || ""));
 }
 
 init();

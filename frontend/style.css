@@ -117,6 +117,16 @@ a { color: var(--primary); }
 .features li { gap: 6px; }
 .features .ico { color: var(--primary); }
 .chips-label { justify-content: center; gap: 7px; margin: 0 0 14px; font: 600 13px/1.4 "Plus Jakarta Sans", Inter, sans-serif; color: var(--muted); }
+.today { width: min(100%, 560px); margin: 0 auto 22px; }
+.today-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.today-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-1); text-align: left; }
+.today-badge { flex: 0 0 auto; min-width: 52px; padding: 2px 8px; border-radius: 9999px; background: var(--primary); color: #fff; font-size: 12px; font-weight: 700; text-align: center; }
+.today-badge.ongoing { background: var(--primary-soft); color: var(--secondary); }
+.today-body { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.today-title { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.today-date { color: var(--muted); font-size: 12px; }
+.today-link { flex: 0 0 auto; display: inline-flex; padding: 4px; border-radius: 8px; color: var(--secondary); }
+.today-link:hover { background: var(--primary-soft); }
 .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 .chip {
   display: inline-flex;

@@ -73,7 +73,7 @@ async function initLogin() {
         initVersion();
         $("#login").hidden = true;
         $("#app").hidden = false;
-        openTab(location.hash.slice(1) || "shortcuts");
+        openTab(location.hash.slice(1) || "sources");
       } catch (e) {
         if (e.message !== "unauthorized") showLogin(e.message);
       }
@@ -174,11 +174,11 @@ function field(label, name, type = "text", extra = {}) {
 
 // ── 탭 ──────────────────────────────────────────────────────────────────
 const TABS = {
-  shortcuts: ["바로가기", viewShortcuts, "external"],
   sources: ["데이터 출처", viewSources, "book"],
   runs: ["수집 실행", viewRuns, "retry"],
   disable: ["긴급 회수", viewDisable, "alert"],
   documents: ["교내 문서", viewDocuments, "book"],
+  events: ["학사 일정", viewEvents, "calendar"],
   places: ["장소 표", viewPlaces, "pin"],
   phonebook: ["전화번호부", viewPhonebook, "phone"],
   review: ["검수 대기함", viewReview, "check"],
@@ -187,10 +187,11 @@ const TABS = {
   admins: ["관리자", viewAdmins, "bot"],
   audit: ["감사 로그", viewAudit, "info"],
   glossary: ["용어 사전", viewGlossary, "book"],
+  shortcuts: ["바로가기", viewShortcuts, "external"],
 };
 
 function openTab(name) {
-  if (!TABS[name]) name = "shortcuts";
+  if (!TABS[name]) name = "sources";
   if (location.hash.slice(1) !== name) {
     location.hash = name; // hashchange가 다시 불러 그린다(이중 로드 방지)
     return;
@@ -280,6 +281,42 @@ function sourceLinks(row) {
   const box = el("details", "src-more");
   box.append(el("summary", null, `${links.length}개 링크 보기`), list);
   return box;
+}
+
+// ── 학사 일정(#596): 공식 학사일정·공지 자동 추출분은 게시됨, AI 추출분은 검수 대기 ──────
+const EVENT_STATUS = { pending: "검수 대기", active: "게시됨", disabled: "숨김" };
+const EVENT_SOURCE = { calendar: "공식 학사일정", regex: "공지(자동 추출)", llm: "공지(AI 추출)" };
+
+async function viewEvents(view) {
+  const { items } = await api("/events");
+  const setStatus = (row, status, label) => async () => {
+    const reason = askReason(`「${row.title}」 ${label}`);
+    if (!reason) return;
+    await api(`/events/${encodeURIComponent(row.id)}`, { method: "PATCH", body: { status, reason, request_id: rid() } });
+    await openTab("events");
+    flash(`「${row.title}」 ${label} 완료`);
+  };
+  view.replaceChildren(
+    el("div", "section-head", "학사 일정"),
+    el("p", "hint", "첫 화면 '오늘·이번 주 학사 일정'에 나가는 데이터입니다. 공식 학사일정과 기간이 명확한 학사·장학 공지는 자동 게시되고, AI가 추출한 일정은 원문을 확인한 뒤 게시하세요. 매일 수집 때 갱신되며, 숨긴 일정은 다시 나타나지 않습니다."),
+  );
+  if (!items.length) {
+    view.append(el("p", "hint", "아직 수집된 일정이 없습니다. '데이터 출처'에서 변경분 다시 수집을 실행하면 채워집니다."));
+    return;
+  }
+  view.append(
+    table(
+      items,
+      [[(r) => el("span", `status${r.status === "pending" ? " warn" : r.status === "disabled" ? " err" : ""}`, EVENT_STATUS[r.status] || r.status), "상태"], ["title", "일정"],
+       [(r) => el("span", null, `${r.start_date || ""} ~ ${r.end_date}`), "기간"],
+       [(r) => el("span", null, EVENT_SOURCE[r.extracted_by] || r.extracted_by || "—"), "출처"],
+       [(r) => sourceLink(r.source_url), "원문"], ["reviewed_by", "검수자"]],
+      (row) => [
+        row.status !== "active" ? btn(row.status === "pending" ? "게시" : "다시 게시", setStatus(row, "active", "게시"), "act primary") : null,
+        row.status !== "disabled" ? btn(row.status === "pending" ? "반려" : "숨김", setStatus(row, "disabled", "숨김")) : null,
+      ],
+    ),
+  );
 }
 
 async function viewSources(view) {
@@ -461,12 +498,19 @@ async function viewPlaces(view) {
     editor.replaceChildren(placeEditor(row, () => editor.replaceChildren()));
     editor.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+  const addBlock = el("details", "block block-add");
+  const addHead = el("summary", "block-head");
+  addHead.append(icon("building", 16), document.createTextNode("새 장소 등록"), el("span", "block-sub", "목록에 없는 부서·건물을 직접 추가할 때만 펼치세요"));
+  addBlock.append(addHead, form);
+  const listBlock = el("section", "block block-list");
+  const listHead = el("div", "block-head");
+  listHead.append(icon("pin", 16), document.createTextNode(`등록된 장소 목록 (${items.length}건)`), el("span", "block-sub", "편집·검수는 여기서 합니다"));
+  listBlock.append(listHead, editor, placeTable(items, { onEdit: openEditor, refreshTab: "places" }));
   view.replaceChildren(
     el("div", "section-head", "장소·부서 연락처 운영"),
     el("p", "hint", "지도·좌표는 쓰지 않습니다. 검수 완료(verified)된 행만 학생 답변에 나갑니다. 검수된 위치·전화를 고치면 다시 검수 대기로 돌아갑니다."),
-    form,
-    editor,
-    placeTable(items, { onEdit: openEditor, refreshTab: "places" }),
+    addBlock,
+    listBlock,
   );
 }
 

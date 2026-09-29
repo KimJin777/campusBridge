@@ -138,6 +138,16 @@ class AdminStore(Protocol):
         request_id: str,
     ) -> tuple[dict[str, Any], bool]: ...
 
+    async def set_event_status(
+        self,
+        event_id: str,
+        status: str,
+        *,
+        actor: AdminActor,
+        reason: str,
+        request_id: str,
+    ) -> dict[str, Any]: ...
+
     async def remove_admin_user(
         self,
         email: str,
@@ -821,6 +831,56 @@ class FirestoreAdminStore:
                 ),
             )
             return {"id": place_id, **_safe_value(after)}
+
+        return await txn(self.db.transaction())
+
+
+    async def set_event_status(
+        self,
+        event_id: str,
+        status: str,
+        *,
+        actor: AdminActor,
+        reason: str,
+        request_id: str,
+    ) -> dict[str, Any]:
+        """일정 게시(active)·숨김(disabled) + 감사 로그(같은 트랜잭션).
+
+        재수집은 status를 덮어쓰지 않는다.
+        """
+        ref = self.db.collection("campus_events").document(event_id)
+
+        @self._fs.async_transactional
+        async def txn(tx) -> dict[str, Any]:
+            snapshot = await ref.get(transaction=tx)
+            if not snapshot.exists:
+                raise AppError("BAD_REQUEST", "일정을 찾지 못했습니다.")
+            current = snapshot.to_dict() or {}
+            if current.get("request_id") == request_id:
+                return {"id": event_id, **_safe_value(current)}  # 재전송 멱등
+            now = datetime.now(UTC)
+            out = {
+                "status": status,
+                "reviewed_by": actor.email,
+                "reviewed_at": now,
+                "request_id": request_id,
+                "updated_at": now,
+            }
+            after = {**current, **out}
+            tx.set(ref, out, merge=True)
+            tx.set(
+                self.db.collection("admin_audit").document(str(uuid4())),
+                self._audit_payload(
+                    actor=actor,
+                    action=f"event.{status}",
+                    target=event_id,
+                    before=current,
+                    after=after,
+                    reason=reason,
+                    request_id=request_id,
+                ),
+            )
+            return {"id": event_id, **_safe_value(after)}
 
         return await txn(self.db.transaction())
 

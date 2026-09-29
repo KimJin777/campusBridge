@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -51,6 +52,22 @@ class JobDeps:
     blobs: Blobs
     docs: Docs
     index: Index
+    events: Callable[[], dict[str, int]] | None = None  # 일정 캘린더 수집(운영에서만 주입)
+
+
+# 수집 중복 방지(2026-09-29 스케줄러 중복 실행 사고): 다른 수집이 이 시간 안에 갱신됐으면 건너뛴다
+ACTIVE_STATUSES = ("queued", "running")
+STALE_AFTER = dt.timedelta(hours=2)
+
+
+def run_blocks(active: dict[str, Any] | None, now: dt.datetime) -> bool:
+    """진행 중(최근 갱신)인 다른 수집이 있으면 True — 이번 실행은 건너뛴다."""
+    if not active or active.get("status") not in ACTIVE_STATUSES:
+        return False
+    updated = active.get("updated_at") or active.get("started_at")
+    if not isinstance(updated, dt.datetime):
+        return False
+    return now - updated < STALE_AFTER
 
 
 def _now() -> dt.datetime:
@@ -187,7 +204,7 @@ def run_ingestion(
     from backend.ingest.manifest import load_manifest
     from backend.ingest.registry import collect_rules
 
-    wanted = set(source_ids) or {"rules", "academic_guides"}
+    wanted = set(source_ids) or {"rules", "academic_guides", "events"}
     stats: dict[str, Any] = {"added": 0, "changed": 0, "rejected": 0, "processed": 0, "total": 0}
     _run(deps, run_id, status="running", phase="registry", started_at=_now())
 
@@ -251,6 +268,14 @@ def run_ingestion(
             if deps.index.import_jsonl(out, object_prefix=f"runs/{run_id}/guides"):
                 raise RuntimeError("IMPORT_FAILED")
 
+    if "events" in wanted and deps.events is not None:
+        _run(deps, run_id, phase="events")
+        try:
+            stats["events"] = deps.events()
+        except Exception as exc:  # noqa: BLE001 — 일정 수집 실패가 규정 수집 결과를 막지 않게
+            log.exception("events collection failed")
+            stats["events_error"] = type(exc).__name__
+
     _run(deps, run_id, status="success", phase="done", finished_at=_now(), **stats)
     return stats
 
@@ -294,6 +319,27 @@ class FirestoreDocs:
 
     def merge(self, collection: str, doc_id: str, data: dict[str, Any]) -> None:
         self.db.collection(collection).document(doc_id).set(data, merge=True)
+
+    def claim_run(self, run_id: str) -> bool:
+        """ingestion_control/active를 트랜잭션으로 선점한다. 다른 수집이 진행 중이면 False."""
+        from google.cloud import firestore
+
+        ctrl = self.db.collection("ingestion_control").document("active")
+
+        @firestore.transactional
+        def txn(tx) -> bool:
+            snap = ctrl.get(transaction=tx)
+            active_id = (snap.to_dict() or {}).get("run_id") if snap.exists else None
+            if active_id == run_id:  # 관리자 화면이 선점하고 디스패치한 실행
+                return True
+            if active_id:
+                a = self.db.collection("ingestion_runs").document(active_id).get(transaction=tx)
+                if run_blocks(a.to_dict() if a.exists else None, _now()):
+                    return False
+            tx.set(ctrl, {"run_id": run_id, "updated_at": _now()}, merge=True)
+            return True
+
+        return txn(self.db.transaction())
 
 
 class VertexIndex:
@@ -366,8 +412,39 @@ def main() -> int:
             json.dumps({"event": "document_job", "action": action, "result": str(result)[:500]})
         )
         return 0
-    run_id = os.environ.get("INGESTION_RUN_ID", f"manual-{_now():%Y%m%dT%H%M%S}")
+    dispatched = os.environ.get("INGESTION_RUN_ID")
+    run_id = dispatched or f"schedule-{_now():%Y%m%dT%H%M%S}"
     sources = [s for s in os.environ.get("SOURCE_IDS", "").split(",") if s.strip()]
+    if not deps.docs.claim_run(run_id):  # type: ignore[attr-defined]
+        log.info(json.dumps({"event": "ingestion_skipped", "run_id": run_id, "reason": "active"}))
+        return 0
+    if not dispatched:
+        _run(deps, run_id, trigger="schedule", source_ids=sources, created_at=_now())
+
+    from backend.app.config import get_settings
+    from backend.ingest.events import KST, collect_events, live_llm, live_sources
+
+    settings = get_settings()
+
+    def events() -> dict[str, int]:
+        cal, notices = live_sources(settings)
+        now = _now()
+        out = collect_events(
+            deps.docs,
+            today=now.astimezone(KST).date(),
+            now=now,
+            fetch_calendar=cal,
+            fetch_notices=notices,
+            llm_extract=live_llm(settings),
+        )
+        deps.docs.merge(
+            "source_configs",
+            "academic_calendar",
+            {"kind": "calendar", "last_success_at": now, "doc_count": sum(out.values())},
+        )
+        return out
+
+    deps.events = events
     try:
         with tempfile.TemporaryDirectory(prefix="cb-ingest-") as tmp:
             run_ingestion(run_id, sources, deps, Path(tmp))

@@ -23,6 +23,7 @@ from backend.admin.models import (
     AdminRemoveRequest,
     DisableRequest,
     DocumentActionRequest,
+    EventPatch,
     IngestionRunRequest,
     SourcePatch,
     normalize_admin_email,
@@ -495,6 +496,30 @@ async def create_place(
         settings=settings,
         actor=actor,
         reason=body.reason.strip(),
+        request_id=body.request_id.strip(),
+    )
+
+
+@router.get("/events")
+async def list_events(actor: Actor, store: Store) -> dict[str, Any]:
+    del actor
+    page = await store.list_page(
+        "campus_events", limit=300, cursor=None, order_by="end_date", descending=True
+    )
+    order = {"pending": 0, "active": 1, "disabled": 2}
+    page["items"].sort(key=lambda r: order.get(str(r.get("status")), 3))
+    return page
+
+
+@router.patch("/events/{event_id}")
+async def patch_event(
+    event_id: str, body: EventPatch, actor: Actor, store: Store
+) -> dict[str, Any]:
+    return await store.set_event_status(
+        _valid_id(event_id),
+        body.status,
+        actor=actor,
+        reason=body.reason,
         request_id=body.request_id.strip(),
     )
 

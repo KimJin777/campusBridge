@@ -144,6 +144,15 @@ body.admin .brand span { color: var(--primary); }
 .src-link .act.small { flex: 0 0 auto; padding: 3px 9px; font-size: 11px; text-decoration: none; }
 .src-more summary { cursor: pointer; color: var(--primary); font-size: 12px; }
 
+.block { margin: 14px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.block-add { border-style: dashed; background: color-mix(in srgb, var(--primary-soft) 45%, var(--surface)); }
+.block-list { border-left: 4px solid var(--primary); }
+.block-head { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 0 0 8px; font: 700 15px/1.4 "Plus Jakarta Sans", Inter, sans-serif; }
+.block-head svg { color: var(--secondary); }
+summary.block-head { margin: 0; cursor: pointer; }
+.block-add[open] summary.block-head { margin-bottom: 10px; }
+.block-sub { color: var(--muted); font: 400 12px/1.4 Inter, sans-serif; }
+
 .banner {
   margin: 12px 20px 0;
   padding: 10px 13px;

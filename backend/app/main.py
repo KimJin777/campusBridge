@@ -28,6 +28,7 @@ from backend.agent.prompts import PROMPT_VERSION
 from backend.api.schemas import SCHEMA_VERSION, ChatRequest, FeedbackRequest, TrackRequest
 from backend.app.clients import deadline_after
 from backend.app.config import Settings, get_settings
+from backend.app.events import today_events
 from backend.domain.errors import RETRY_MESSAGE, AppError
 from backend.domain.evidence import EvidenceCard
 from backend.store.base import Acquire, Completion, TurnStore
@@ -510,6 +511,10 @@ def create_app(
     @app.get("/api/suggestions")
     async def suggestions() -> dict[str, Any]:
         return {"items": list(s.suggestions)}
+
+    @app.get("/api/events/today")
+    async def events_today() -> dict[str, Any]:
+        return {"items": await today_events(s)}
 
     @app.get("/admin", include_in_schema=False)
     async def admin_page() -> RedirectResponse:

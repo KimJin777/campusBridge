@@ -18,12 +18,7 @@ def normalize_admin_email(value: str) -> str:
     email = value.strip().lower()
     local = email.partition("@")[0]
     invalid_dots = local.startswith(".") or local.endswith(".") or ".." in local
-    if (
-        len(email) > 254
-        or len(local) > 64
-        or invalid_dots
-        or _EMAIL.fullmatch(email) is None
-    ):
+    if len(email) > 254 or len(local) > 64 or invalid_dots or _EMAIL.fullmatch(email) is None:
         raise ValueError("invalid email")
     return email
 
@@ -83,6 +78,21 @@ class SourcePatch(BaseModel):
         if self.paused is None and self.schedule is None:
             raise ValueError("schedule or paused required")
         return self
+
+
+class EventPatch(BaseModel):
+    """일정 게시·숨김(#596) — 검수 대기(LLM 추출분) 승인, 잘못 뽑힌 일정 즉시 회수."""
+
+    status: Literal["active", "disabled"]
+    reason: str = Field(min_length=1, max_length=300)
+    request_id: str = Field(min_length=8, max_length=100)
+
+    @field_validator("reason")
+    @classmethod
+    def reason_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("blank reason")
+        return value.strip()
 
 
 class DisableRequest(BaseModel):
