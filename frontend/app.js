@@ -49,22 +49,12 @@ const uuid = () =>
       );
 
 // ── 상태 ────────────────────────────────────────────────────────────────
-let memoryThread = null;
-function loadThread() {
-  try {
-    const v = localStorage.getItem(THREAD_KEY);
-    if (v) return v;
-  } catch {}
-  return memoryThread;
-}
-function saveThread(v) {
-  memoryThread = v;
-  try {
-    localStorage.setItem(THREAD_KEY, v);
-  } catch {}
-}
-const state = { threadId: loadThread() || uuid(), busy: false };
-saveThread(state.threadId);
+// '새 대화 시작' 버튼을 없앴으므로(교수님 2026-09-29) 페이지를 열 때마다 새 대화로 시작한다.
+// 화면은 비어 있는데 이전 대화의 학생 조건이 조용히 이어지는 일을 막는다.
+try {
+  localStorage.removeItem(THREAD_KEY);
+} catch {}
+const state = { threadId: uuid(), busy: false };
 
 function setBusy(b) {
   state.busy = b;
@@ -479,14 +469,6 @@ async function init() {
   input.addEventListener("input", () => {
     input.style.height = "auto";
     input.style.height = `${Math.min(input.scrollHeight, 140)}px`;
-  });
-  $("#new-thread").addEventListener("click", () => {
-    if (state.busy) return;
-    state.threadId = uuid();
-    saveThread(state.threadId);
-    $("#turns").replaceChildren();
-    $("#welcome").hidden = false;
-    track("new_thread");
   });
 
   try {
