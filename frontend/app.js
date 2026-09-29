@@ -611,8 +611,7 @@ async function loadToday() {
         pill.target = "_blank";
         pill.rel = "noopener noreferrer";
       }
-      pill.title = `${e.title} (${periodText(e)})`;
-      pill.append(el("b", e.badge === "진행 중" ? "ongoing" : null, e.badge), el("span", null, e.title));
+      pill.append(el("span", "t", e.title), el("span", "d", periodText(e)));
       list.append(pill);
     }
     $("#today").hidden = false;

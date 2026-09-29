@@ -143,11 +143,11 @@ a { color: var(--primary); }
 .today:not([hidden]) { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; margin: 16px auto 0; color: var(--muted); font-size: 12px; }
 .today-label { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
 .today-list { display: contents; }
-.today-pill { display: inline-flex; align-items: center; gap: 5px; max-width: 220px; padding: 2px 9px 2px 3px; border: 1px solid var(--line); border-radius: 9999px; background: var(--surface); color: var(--text); text-decoration: none; }
-.today-pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.today-pill b { flex: 0 0 auto; padding: 0 6px; border-radius: 9999px; background: var(--primary-soft); color: var(--secondary); font-size: 11px; }
-.today-pill b.ongoing { background: color-mix(in srgb, var(--line) 50%, transparent); color: var(--muted); }
-a.today-pill:hover { border-color: var(--primary); }
+.today-pill { display: inline-flex; align-items: center; gap: 6px; max-width: 150px; padding: 2px 10px; border: 1px solid var(--line); border-radius: 9999px; background: var(--surface); color: var(--text); text-decoration: none; transition: max-width .25s ease, border-color .15s; }
+.today-pill .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-pill .d { display: none; flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.today-pill:hover, .today-pill:focus-visible { max-width: 480px; border-color: var(--primary); }
+.today-pill:hover .d, .today-pill:focus-visible .d { display: inline; }
 .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 .chip {
   display: inline-flex;
