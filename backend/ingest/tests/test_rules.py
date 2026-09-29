@@ -47,6 +47,17 @@ def test_deleted_notes_and_table_are_not_confused() -> None:
     assert validate_articles(articles).missing_main_numbers == []
 
 
+def test_plain_deleted_marker_is_not_indexed() -> None:
+    articles = split_articles(
+        "제1조(목적) 본문\n제2조 삭제 <2026.2.25.>",
+        rule_no="101",
+    )
+
+    assert articles[1].deleted is True
+    assert articles[1].body == "<2026.2.25.>"
+    assert articles[1].indexable is False
+
+
 def test_addenda_dates_ids_and_appendix_exclusion() -> None:
     text = """
 제1조(본문) 본문이다.

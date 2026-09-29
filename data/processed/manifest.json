@@ -1,0 +1,58 @@
+{
+  "155": {
+    "source_url": "https://yz.kyungnam.ac.kr/rule/rdata/00000007/reg155_2307.hwp",
+    "file_version": "2307",
+    "fetched_at": "2026-09-29T04:44:04.789313Z",
+    "etag": "\"70ed2245a6abdc1:0\"",
+    "last_modified": "Wed, 04 Mar 2026 07:12:32 GMT",
+    "content_hash": "sha256:78909b6d419fe7acd6b5d169ba5ce18dfc4de5b0111b1d6b886cce3140e2e2f7",
+    "converter": "hwp5txt 0.1b15",
+    "article_count": 52,
+    "status": "validated",
+    "license_basis": "공개 규정",
+    "index_version": null,
+    "import_job_id": null
+  },
+  "156": {
+    "source_url": "https://yz.kyungnam.ac.kr/rule/rdata/00000007/reg156_2314.hwp",
+    "file_version": "2314",
+    "fetched_at": "2026-09-29T04:44:05.860522Z",
+    "etag": "\"3050f240b3abdc1:0\"",
+    "last_modified": "Wed, 04 Mar 2026 08:45:29 GMT",
+    "content_hash": "sha256:b3864be91a70c325d29b8ec6117a7fe0c2594e21e8ae17f61cf135946e6129a0",
+    "converter": "hwp5txt 0.1b15",
+    "article_count": 45,
+    "status": "validated",
+    "license_basis": "공개 규정",
+    "index_version": null,
+    "import_job_id": null
+  },
+  "29": {
+    "source_url": "https://yz.kyungnam.ac.kr/rule/rdata/00000001/reg29_2363.hwp",
+    "file_version": "2363",
+    "fetched_at": "2026-09-29T04:44:02.657873Z",
+    "etag": "\"906c9bc0cf2fdd1:0\"",
+    "last_modified": "Wed, 19 Aug 2026 11:42:02 GMT",
+    "content_hash": "sha256:f15f1ac0688bb06091e80e608c018ad2304bd23b8c6375c7f94ca7fe034ccd72",
+    "converter": "hwp5txt 0.1b15",
+    "article_count": 199,
+    "status": "validated",
+    "license_basis": "공개 규정",
+    "index_version": null,
+    "import_job_id": null
+  },
+  "316": {
+    "source_url": "https://yz.kyungnam.ac.kr/rule/rdata/00000015/reg316_2304.hwp",
+    "file_version": "2304",
+    "fetched_at": "2026-09-29T04:44:03.736691Z",
+    "etag": "\"70441abd9eabdc1:0\"",
+    "last_modified": "Wed, 04 Mar 2026 06:18:38 GMT",
+    "content_hash": "sha256:43466fb425b1b7ad517fe3b122b37a8f1c8c5ae5010be535efc6db6912885b55",
+    "converter": "hwp5txt 0.1b15",
+    "article_count": 23,
+    "status": "validated",
+    "license_basis": "공개 규정",
+    "index_version": null,
+    "import_job_id": null
+  }
+}

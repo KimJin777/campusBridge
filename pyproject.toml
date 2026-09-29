@@ -5,6 +5,7 @@ description = "Evidence-grounded campus information agent"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "beautifulsoup4>=4.13,<5",
+  "charset-normalizer>=3.4,<4",
   "fastapi>=0.116,<1",
   "feedparser>=6.0,<7",
   "google-auth>=2.40,<3",
@@ -14,6 +15,7 @@ dependencies = [
   "google-cloud-storage>=3.3,<4",
   "httpx>=0.28,<1",
   "langchain-core>=0.3.79,<2",
+  "langchain-google-genai>=2.0.10,<5",
   "langchain-google-vertexai>=2.0.28,<4",
   "langgraph>=0.6.7,<2",
   "pydantic>=2.11,<3",
