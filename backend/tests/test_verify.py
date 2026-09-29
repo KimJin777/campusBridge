@@ -164,3 +164,13 @@ def test_adopted_not_cited_flag():
     r = Resolution(adopted={"eligibility_or_limit": ["101_main_32"]})
     _, _, flags = verify(d, [ART, GUIDE], P, r)
     assert any(f.code == "adopted_not_cited" for f in flags)
+
+
+def test_lexical_polarity_word_is_flagged_internal():
+    ev = Evidence(id="x", kind="article", title="t", text="수업연한초과자의 휴학은 제한된다.")
+    d = Draft(
+        sentences=[s("수업연한초과자도 휴학이 허용됩니다.", ["x"], ["수업연한초과자의 휴학은"])]
+    )
+    out, _, flags = verify(d, [ev], P)
+    assert len(out.sentences) == 1
+    assert any(f.code == "risky_token" and f.public_action == "internal_only" for f in flags)
