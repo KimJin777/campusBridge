@@ -2,7 +2,7 @@ import asyncio
 import time
 
 from backend.agent.graph import build_graph
-from backend.agent.llm import LLMUnavailable, StructuredOutputError
+from backend.agent.llm import LLMTimeout, LLMUnavailable, StructuredOutputError
 from backend.agent.nodes import AgentDeps
 from backend.agent.state import ActCall, ActOut, ClassifyOut
 from backend.domain import (
@@ -318,3 +318,9 @@ def test_stream_custom_events_order():
     assert events[0] == "status" and "evidence" in events
     assert events.index("evidence") < events.index("answer")
     assert events[-1] == "answer"
+
+
+def test_compose_timeout_is_deadline_fallback_not_error():
+    llm = FakeLLM(classify=leave_classify(), fail={"compose": LLMTimeout("slow")})
+    out = run(deps(llm), state())
+    assert out["outcome"] == "fallback" and out["fallback_reason"] == "deadline"

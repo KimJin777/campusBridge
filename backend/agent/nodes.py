@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from backend.agent import prompts
-from backend.agent.llm import LLMUnavailable, StructuredLLM, StructuredOutputError
+from backend.agent.llm import LLMTimeout, LLMUnavailable, StructuredLLM, StructuredOutputError
 from backend.agent.needs import plan_calls
 from backend.agent.resolve import NEED_PRIORITY, resolve
 from backend.agent.slots import ask_text, choices_for, missing_slots, required_slots
@@ -139,11 +139,11 @@ class Nodes:
                 break
             except StructuredOutputError:
                 continue
-            except LLMUnavailable:
+            except LLMUnavailable as e:
                 return {
                     "llm_calls_count": calls,
                     "outcome": "error",
-                    "error_code": "LLM_UNAVAILABLE",
+                    "error_code": "TIMEOUT" if isinstance(e, LLMTimeout) else "LLM_UNAVAILABLE",
                 }
         if out is None:
             return {"llm_calls_count": calls, "outcome": "error", "error_code": "INTERNAL"}
@@ -387,6 +387,9 @@ class Nodes:
                 break
             except StructuredOutputError:
                 continue
+            except LLMTimeout:
+                # 근거는 확보했지만 시간 안에 답을 못 만듦 → 설계상 fallback(deadline)(02 §7)
+                return {"llm_calls_count": calls, "fallback_reason": "deadline"}
             except LLMUnavailable:
                 return {
                     "llm_calls_count": calls,

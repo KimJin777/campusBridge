@@ -1,4 +1,4 @@
-from backend.agent.verify import check_sentence, normalize, verify
+from backend.agent.verify import check_sentence, date_variants, normalize, verify
 from backend.domain import Draft, DraftSentence, Evidence, Profile, Resolution
 
 ART = Evidence(
@@ -191,3 +191,19 @@ def test_iso_calendar_date_matches_korean_date_in_sentence():
         "일반휴학 접수는 10월 9일에 마감됩니다.", ["cal:1"], ["수업일수 1/3선(일반휴학 접수마감)"]
     )
     assert check_sentence(wrong, {"cal:1": ev}, P) == "number_mismatch"
+
+
+def test_notice_dotted_dates_match_korean_dates():
+    ev = Evidence(
+        id="n:1",
+        kind="notice",
+        title="복학 등록",
+        text="복학예정자는 2026. 9. 23.(수) 09:00부터 9. 29.(화) 16:00까지 등록금을 납부",
+    )
+    q = ["등록금을 납부"]
+    ok = s("복학예정자는 9월 23일부터 9월 29일까지 등록금을 납부해야 합니다.", ["n:1"], q)
+    assert check_sentence(ok, {"n:1": ev}, P) is None
+    bad = s("복학예정자는 9월 30일까지 등록금을 납부해야 합니다.", ["n:1"], q)
+    assert check_sentence(bad, {"n:1": ev}, P) == "number_mismatch"
+    dec = Evidence(id="a", kind="article", title="t", text="평점평균이 1.50에 미만인 학생")
+    assert "1월50일" not in normalize(date_variants(dec.text))

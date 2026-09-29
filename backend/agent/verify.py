@@ -32,7 +32,9 @@ NUM_FACT = re.compile(
 )
 CITATION_MARK = re.compile(r"제\s*\d+\s*(?:조(?:\s*의\s*\d+)?|항|호|장|절|편)")
 _STRIP = re.compile(r"[\s\W_]+", re.UNICODE)
-ISO_DATE = re.compile(r"(\d{4})[-./](\d{1,2})[-./](\d{1,2})")
+ISO_DATE = re.compile(r"(\d{4})\s*[-./]\s*(\d{1,2})\s*[-./]\s*(\d{1,2})")
+# 연도 없는 공지 표기 "9. 29." — 끝 점까지 있어야 날짜로 본다(소수 "1.50"과 구분)
+MONTH_DAY = re.compile(r"(?<![\d.])(\d{1,2})\.\s*(\d{1,2})\.(?!\d)")
 
 
 def date_variants(text: str) -> str:
@@ -45,6 +47,10 @@ def date_variants(text: str) -> str:
     for y, m, d in ISO_DATE.findall(text):
         mo, da = int(m), int(d)
         extra.append(f"{y}년{mo}월{da}일 {mo}월{da}일 {mo}월 {da}일 {y}년")
+    for m, d in MONTH_DAY.findall(text):
+        mo, da = int(m), int(d)
+        if 1 <= mo <= 12 and 1 <= da <= 31:
+            extra.append(f"{mo}월{da}일 {mo}월 {da}일")
     return text + (" " + " ".join(extra) if extra else "")
 
 
