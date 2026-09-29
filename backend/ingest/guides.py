@@ -87,7 +87,8 @@ def extract_sections(
         return page_title, []
     head_ids = {id(h): i for i, h in enumerate(headings, start=1)}
     buckets: dict[int, list[str]] = {i: [] for i in head_ids.values()}
-    current: int | None = None
+    buckets[0] = []  # 첫 절 제목 앞 서두(Gemini 리뷰: 누락 방지) → "개요" 절
+    current: int = 0
     for text in root.find_all(string=True):
         t = text.strip()
         if not t:
@@ -96,14 +97,16 @@ def extract_sections(
         if owner is not None:
             current = owner  # 절 제목 자체는 본문에 넣지 않음(아래에서 앞에 붙임)
             continue
-        if current is not None:
-            buckets[current].append(t)
+        buckets[current].append(t)
     links: dict[int, list[Tag]] = {i: [] for i in head_ids.values()}
     for a in root.find_all("a", href=True):
         prev = a.find_previous("h3", class_="objHeading_h3")
         if prev is not None and id(prev) in head_ids:
             links[head_ids[id(prev)]].append(a)
     sections: list[dict[str, object]] = []
+    intro = "\n".join(buckets[0])
+    if len(intro) >= MIN_SECTION_CHARS:
+        sections.append({"n": 0, "heading": "개요", "body": f"개요\n{intro}", "links": []})
     for h in headings:
         n = head_ids[id(h)]
         body = "\n".join(buckets[n])

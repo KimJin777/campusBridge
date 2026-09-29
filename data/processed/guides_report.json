@@ -1,56 +1,56 @@
 {
   "pages": 14,
-  "documents": 53,
+  "documents": 65,
   "per_page": {
     "exam_grade": {
       "status": "ok",
       "title": "시험 및 성적",
-      "sections": 3
+      "sections": 4
     },
     "course_registration": {
       "status": "ok",
       "title": "수강신청",
-      "sections": 6
+      "sections": 7
     },
     "retake": {
       "status": "ok",
       "title": "재수강 및 재이수",
-      "sections": 4
+      "sections": 5
     },
     "grade_appeal": {
       "status": "ok",
       "title": "성적열람 및 이의신청",
-      "sections": 2
+      "sections": 3
     },
     "grade_withdrawal": {
       "status": "ok",
       "title": "성적철회",
-      "sections": 4
+      "sections": 5
     },
     "transfer_major": {
       "status": "ok",
       "title": "전과",
-      "sections": 5
+      "sections": 6
     },
     "leave": {
       "status": "ok",
       "title": "휴학",
-      "sections": 4
+      "sections": 5
     },
     "return": {
       "status": "ok",
       "title": "복학",
-      "sections": 3
+      "sections": 4
     },
     "graduation": {
       "status": "ok",
       "title": "졸업",
-      "sections": 2
+      "sections": 3
     },
     "early_graduation": {
       "status": "ok",
       "title": "조기졸업",
-      "sections": 2
+      "sections": 3
     },
     "graduation_delay": {
       "status": "ok",
@@ -65,17 +65,17 @@
     "shuttle_bus": {
       "status": "ok",
       "title": "통학버스안내",
-      "sections": 9
+      "sections": 10
     },
     "certificates": {
       "status": "ok",
       "title": "증명서 신청종류",
-      "sections": 5
+      "sections": 6
     }
   },
   "import": {
-    "gcs_uri": "gs://campusbridge-510101-rules/guides/articles-v1/20260929T070507Z/guides.jsonl",
-    "operation": "projects/171234524211/locations/global/collections/default_collection/dataStores/rules-articles/branches/0/operations/import-documents-9232899843978050759",
+    "gcs_uri": "gs://campusbridge-510101-rules/guides/articles-v1/20260929T072015Z/guides.jsonl",
+    "operation": "projects/171234524211/locations/global/collections/default_collection/dataStores/rules-articles/branches/0/operations/import-documents-11116661933435486334",
     "errors": []
   }
 }

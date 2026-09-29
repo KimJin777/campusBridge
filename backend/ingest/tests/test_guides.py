@@ -45,3 +45,15 @@ def test_page_without_content_root_yields_nothing():
         )[1]
         == []
     )
+
+
+def test_intro_before_first_heading_becomes_overview_section():
+    html = (
+        '<html><title>복학</title><div id="_contentBuilder">'
+        "<p>복학은 휴학기간 만료 전 등록 및 복학절차를 이행해야 하며 학사관리팀에서 처리한다.</p>"
+        '<h3 class="objHeading_h3">복학 절차</h3><p>학생정보시스템에서 복학을 신청한 뒤 정해진 기간 안에 등록금을 납부한다.</p>'
+        "</div></html>"
+    )
+    _, secs = extract_sections(html, page_id="return", page_url="u", allowed_hosts=set())
+    assert secs[0]["n"] == 0 and secs[0]["heading"] == "개요"
+    assert "복학절차를 이행" in secs[0]["body"] and secs[1]["n"] == 1
