@@ -38,9 +38,7 @@ def _serving_config(settings: Settings) -> str:
 
 def _search_factory(settings: Settings) -> Any:
     endpoint = f"{settings.search_location}-discoveryengine.googleapis.com"
-    return discoveryengine.SearchServiceClient(
-        client_options=ClientOptions(api_endpoint=endpoint)
-    )
+    return discoveryengine.SearchServiceClient(client_options=ClientOptions(api_endpoint=endpoint))
 
 
 def _firestore_factory(settings: Settings) -> Any:
@@ -80,12 +78,25 @@ def _load_disabled_ids(client: Any, document_ids: Sequence[str]) -> set[str]:
     return disabled
 
 
+def _rule_title(data: dict[str, Any]) -> str:
+    """근거 카드 제목: "경남대학교 학칙 제38조(휴학)" — 부칙은 "… 부칙"."""
+    rule = str(data.get("rule_name") or "규정")
+    if data.get("kind") == "addenda":
+        return f"{rule} 부칙"
+    no = data.get("article_no")
+    if no is None:
+        return str(data.get("article_title") or rule)
+    branch = f"의{data['article_branch']}" if data.get("article_branch") else ""
+    title = f"({data['article_title']})" if data.get("article_title") else ""
+    return f"{rule} 제{no}조{branch}{title}"
+
+
 def _as_evidence(document_id: str, data: dict[str, Any], kind: SourceKind) -> Evidence:
     if kind == "guide":
         title = str(data.get("title") or data.get("article_title") or "학사안내")
         evidence_kind = "guide"
     else:
-        title = str(data.get("article_title") or data.get("rule_name") or "규정")
+        title = _rule_title(data)
         evidence_kind = "article"
     body = str(data.get("body") or "").strip()
     meta_keys = (
@@ -101,7 +112,8 @@ def _as_evidence(document_id: str, data: dict[str, Any], kind: SourceKind) -> Ev
     )
     meta = {key: data[key] for key in meta_keys if data.get(key) is not None}
     return Evidence(
-        id=document_id,
+        # Vertex ID는 [A-Za-z0-9_-]만 허용 → 설계 근거 ID(guide:leave:2 등)는 article_id
+        id=str(data.get("article_id") or document_id),
         kind=evidence_kind,
         title=title,
         text=body,
@@ -121,7 +133,9 @@ def _merge_results(
         per_kind[kind] = [
             _as_evidence(document_id, data, kind)
             for document_id, data in rows
-            if document_id not in disabled_ids and str(data.get("body") or "").strip()
+            if document_id not in disabled_ids
+            and str(data.get("article_id") or document_id) not in disabled_ids
+            and str(data.get("body") or "").strip()
         ]
 
     merged: list[Evidence] = []
@@ -154,8 +168,10 @@ async def search_academic_knowledge(
     normalized_query = truncate(query, 100)
     fallback_query = truncate(original_query, 100)
     normalized_kinds = list(dict.fromkeys(kinds))
-    if not normalized_query or not normalized_kinds or any(
-        kind not in {"rule", "guide"} for kind in normalized_kinds
+    if (
+        not normalized_query
+        or not normalized_kinds
+        or any(kind not in {"rule", "guide"} for kind in normalized_kinds)
     ):
         return ToolResult.fail("BAD_INPUT", "검색어와 검색 종류를 확인해 주세요")
     if not settings.gcp_project_id or not settings.search_datastore_id:
@@ -202,7 +218,12 @@ async def search_academic_knowledge(
             "학사 근거 검색을 완료하지 못했습니다",
         )
 
-    document_ids = [document_id for _, rows, _ in successful for document_id, _ in rows]
+    document_ids = [
+        ident
+        for _, rows, _ in successful
+        for document_id, data in rows
+        for ident in {document_id, str(data.get("article_id") or document_id)}
+    ]
     try:
         fs_factory = firestore_client_factory or (lambda: _firestore_factory(settings))
         disabled_ids = await asyncio.to_thread(_load_disabled_ids, fs_factory(), document_ids)

@@ -76,6 +76,13 @@ def build_search_schema() -> dict[str, object]:
                 "retrievable": True,
             },
             "preflight_revision": retrievable,
+            # 학사안내(guide) 필드(D15, 2026-09-29)
+            "phone": retrievable,
+            "fetched_at": retrievable,
+            "page_modified": retrievable,
+            "links": retrievable,
+            "extractor_version": retrievable,
+            "index_version": retrievable,
         },
     }
 
@@ -174,9 +181,7 @@ def _import_documents(
                 input_uris=[gcs_uri],
                 data_schema="document",
             ),
-            reconciliation_mode=(
-                discoveryengine.ImportDocumentsRequest.ReconciliationMode.FULL
-            ),
+            reconciliation_mode=(discoveryengine.ImportDocumentsRequest.ReconciliationMode.FULL),
         )
     )
     operation_name = operation.operation.name
@@ -230,10 +235,7 @@ def _search(
             page_size=5,
         )
     )
-    return [
-        (result.document.id, dict(result.document.struct_data))
-        for result in islice(pager, 5)
-    ]
+    return [(result.document.id, dict(result.document.struct_data)) for result in islice(pager, 5)]
 
 
 def _wait_for_search(engine_name: str, expected_id: str, *, timeout: float = 600) -> None:
@@ -293,10 +295,14 @@ def run_spike(
         )
         ids = [document_id for document_id, _ in results]
         recall_hits += expected_id in ids
-        exact_bodies = exact_bodies and bool(results) and all(
-            document_id in local_by_id
-            and data.get("body") == local_by_id[document_id].get("body")
-            for document_id, data in results
+        exact_bodies = (
+            exact_bodies
+            and bool(results)
+            and all(
+                document_id in local_by_id
+                and data.get("body") == local_by_id[document_id].get("body")
+                for document_id, data in results
+            )
         )
         metadata_restored = metadata_restored and all(
             all(field in data for field in ("body", "source_url", "department", "revision_date"))
@@ -339,8 +345,7 @@ def run_spike(
     if second_errors:
         raise RuntimeError(f"overwrite import failed: {second_errors}")
     overwrite_ok = (
-        _get_document(data_store_name, "29_main_38").get("preflight_revision")
-        == "overwrite-v2"
+        _get_document(data_store_name, "29_main_38").get("preflight_revision") == "overwrite-v2"
     )
 
     criteria = {
@@ -425,10 +430,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         report_path=args.report,
         manifest_path=args.manifest,
     )
-    print(
-        f"passed={report['passed']} recall={report['recall_at_5']} "
-        f"report={args.report}"
-    )
+    print(f"passed={report['passed']} recall={report['recall_at_5']} report={args.report}")
     return 0 if report["passed"] else 1
 
 

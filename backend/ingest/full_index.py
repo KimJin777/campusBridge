@@ -88,7 +88,15 @@ def build_documents(
     return documents, per_rule
 
 
-def import_index(*, project: str, bucket: str, data_store_id: str, engine_id: str, source: Path):
+def import_index(
+    *,
+    project: str,
+    bucket: str,
+    data_store_id: str,
+    engine_id: str,
+    source: Path,
+    object_prefix: str = "index",
+):
     """GCS 업로드 후 INCREMENTAL 가져오기(같은 ID는 덮어쓰기, 빠진 규정은 기존 유지)."""
     from google.cloud import discoveryengine_v1 as discoveryengine
 
@@ -102,7 +110,7 @@ def import_index(*, project: str, bucket: str, data_store_id: str, engine_id: st
         project=project,
         bucket=bucket,
         source=source,
-        object_name=f"index/{INDEX_VERSION}/{stamp}/articles.jsonl",
+        object_name=f"{object_prefix}/{INDEX_VERSION}/{stamp}/{source.name}",
     )
     _, _, _, document_client, _ = _clients()
     operation = document_client.import_documents(
@@ -113,7 +121,7 @@ def import_index(*, project: str, bucket: str, data_store_id: str, engine_id: st
         )
     )
     response = operation.result(timeout=1800)
-    errors = [s.error_message for s in response.error_samples]
+    errors = [s.message for s in response.error_samples]
     return {"gcs_uri": uri, "operation": operation.operation.name, "errors": errors[:20]}
 
 
