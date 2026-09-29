@@ -31,6 +31,10 @@
       <h1 class="brand">캠퍼스 브릿지</h1>
       <span class="version-pill" id="version">학사 어시스턴트</span>
     </div>
+    <div id="today" class="today" hidden>
+      <button type="button" class="today-btn" aria-expanded="false" aria-controls="today-list"><span class="ico" data-icon="calendar"></span><span class="today-word">학사 일정</span><b id="today-count"></b></button>
+      <ul id="today-list" class="today-menu"></ul>
+    </div>
   </header>
 
   <main id="chat" class="chat" aria-live="polite">
@@ -44,7 +48,6 @@
       </ul>
       <p class="chips-label"><span class="ico" data-icon="help"></span>자주 묻는 학사 질문</p>
       <div id="chips" class="chips" role="list"></div>
-      <p id="today" class="today" hidden><span class="today-label"><span class="ico" data-icon="calendar"></span>학사 일정</span><span id="today-list" class="today-list"></span></p>
     </section>
     <ol id="turns" class="turns"></ol>
   </main>

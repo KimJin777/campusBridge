@@ -80,6 +80,7 @@ class Turn {
     $(".bubble.user", node).textContent = message;
     $("#turns").append(node);
     $("#welcome").hidden = true;
+    $("#today").hidden = true; // 학사 일정 버튼은 첫 화면에서만
     this.node = node;
     this.steps = $(".steps", node);
     this.cards = $(".cards", node);
@@ -599,22 +600,39 @@ function dayListLocal(start, end) {
 }
 
 // 오늘·이번 주 학사 일정(진행 중 + 7일 안 마감). 없거나 실패하면 카드를 숨긴다
+// 헤더 오른쪽 작은 '학사 일정' 버튼(첫 화면에서만). 올리거나 누르면 목록, 항목을 누르면 원문
 async function loadToday() {
   try {
     const { items } = await fetch("/api/events/today").then((r) => r.json());
-    if (!items?.length) return;
+    if (!items?.length || !$("#welcome") || $("#welcome").hidden) return;
     const list = $("#today-list");
-    for (const e of items.slice(0, 3)) {
-      const pill = el(safeSchoolUrl(e.url) ? "a" : "span", "today-pill");
-      if (pill.tagName === "A") {
-        pill.href = e.url;
-        pill.target = "_blank";
-        pill.rel = "noopener noreferrer";
+    for (const e of items) {
+      const li = el("li");
+      const row = el(safeSchoolUrl(e.url) ? "a" : "span", "today-row");
+      if (row.tagName === "A") {
+        row.href = e.url;
+        row.target = "_blank";
+        row.rel = "noopener noreferrer";
       }
-      pill.append(el("span", "t", e.title), el("span", "d", periodText(e)));
-      list.append(pill);
+      row.append(el("span", "t", e.title), el("span", "d", periodText(e)));
+      li.append(row);
+      list.append(li);
     }
-    $("#today").hidden = false;
+    $("#today-count").textContent = String(items.length);
+    const box = $("#today");
+    const btn = $(".today-btn", box);
+    btn.addEventListener("click", () => {
+      const open = !box.classList.contains("open");
+      box.classList.toggle("open", open);
+      btn.setAttribute("aria-expanded", String(open));
+    });
+    document.addEventListener("click", (ev) => {
+      if (!box.contains(ev.target)) {
+        box.classList.remove("open");
+        btn.setAttribute("aria-expanded", "false");
+      }
+    });
+    box.hidden = false;
   } catch {}
 }
 

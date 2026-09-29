@@ -140,14 +140,18 @@ a { color: var(--primary); }
   .cal-ev { display: none; }
   .cal-cell.has::after { content: ""; width: 6px; height: 6px; margin: auto auto 0; border-radius: 50%; background: var(--primary); }
 }
-.today:not([hidden]) { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; margin: 16px auto 0; color: var(--muted); font-size: 12px; }
-.today-label { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
-.today-list { display: contents; }
-.today-pill { display: inline-flex; align-items: center; gap: 6px; max-width: 150px; padding: 2px 10px; border: 1px solid var(--line); border-radius: 9999px; background: var(--surface); color: var(--text); text-decoration: none; transition: max-width .25s ease, border-color .15s; }
-.today-pill .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.today-pill .d { display: none; flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
-.today-pill:hover, .today-pill:focus-visible { max-width: 480px; border-color: var(--primary); }
-.today-pill:hover .d, .today-pill:focus-visible .d { display: inline; }
+.today { position: relative; flex: 0 0 auto; }
+.today-btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 9999px; background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; }
+.today-btn b { min-width: 18px; padding: 0 5px; border-radius: 9999px; background: var(--primary-soft); color: var(--secondary); font-size: 11px; text-align: center; }
+.today:hover .today-btn, .today.open .today-btn { border-color: var(--primary); color: var(--text); }
+.today-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; display: none; width: min(300px, calc(100vw - 32px)); margin: 0; padding: 6px; list-style: none; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-2); }
+.today:hover .today-menu, .today:focus-within .today-menu, .today.open .today-menu { display: grid; gap: 2px; }
+.today-menu::before { content: ""; position: absolute; top: -8px; right: 0; left: 0; height: 8px; } /* 버튼과 목록 사이 틈에서 hover가 끊기지 않게 */
+.today-row { display: flex; flex-direction: column; padding: 7px 9px; border-radius: 8px; color: var(--text); font-size: 13px; text-decoration: none; }
+a.today-row:hover { background: var(--primary-soft); }
+.today-row .t { font-weight: 600; }
+.today-row .d { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+@media (max-width: 480px) { .today-word { display: none; } }
 .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 .chip {
   display: inline-flex;
