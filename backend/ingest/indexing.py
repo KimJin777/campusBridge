@@ -84,6 +84,7 @@ def build_structured_document(
         "content_hash": manifest.content_hash,
         "body": article.body,
     }
+    data = {key: value for key, value in data.items() if value is not None}
     if dept_id:
         data["dept_id"] = dept_id
     return {"id": article.article_id, "structData": data}

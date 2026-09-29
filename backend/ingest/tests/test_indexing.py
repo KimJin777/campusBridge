@@ -80,6 +80,8 @@ def test_structured_document_keeps_addenda_namespace_and_date() -> None:
     assert data["kind"] == "addenda"
     assert data["addenda_date"] == "2026-08-12"
     assert "dept_id" not in data
+    assert "article_title" not in data
+    assert "article_branch" not in data
 
 
 def test_jsonl_writer_is_utf8_one_document_per_line(tmp_path: Path) -> None:

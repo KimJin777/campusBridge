@@ -1,0 +1,84 @@
+{
+  "created_at": "2026-09-29T05:01:56.415844Z",
+  "project": "campusbridge-510101",
+  "data_store_id": "rules-articles",
+  "engine_id": "rules-articles-search",
+  "index_version": "preflight-b-v1",
+  "document_count": 20,
+  "initial_import": {
+    "operation": "projects/171234524211/locations/global/collections/default_collection/dataStores/rules-articles/branches/0/operations/import-documents-3237535185359124227",
+    "gcs_uri": "gs://campusbridge-510101-rules/preflight/preflight-b-v1/articles.jsonl",
+    "elapsed_seconds": 11.825
+  },
+  "overwrite_import": {
+    "operation": "projects/171234524211/locations/global/collections/default_collection/dataStores/rules-articles/branches/0/operations/import-documents-17385144358515455327",
+    "gcs_uri": "gs://campusbridge-510101-rules/preflight/preflight-b-v1/articles-overwrite-v2.jsonl",
+    "elapsed_seconds": 14.888
+  },
+  "recall_at_5": {
+    "hits": 5,
+    "total": 5
+  },
+  "queries": [
+    {
+      "query": "학사경고 기준이 어떻게 되나요?",
+      "expected_id": "29_main_32",
+      "top5": [
+        "29_main_32",
+        "155_main_26",
+        "316_main_13",
+        "156_main_4",
+        "316_main_14"
+      ]
+    },
+    {
+      "query": "휴학은 언제까지 신청해야 하나요?",
+      "expected_id": "29_main_38",
+      "top5": [
+        "29_main_38",
+        "29_main_39",
+        "316_main_14"
+      ]
+    },
+    {
+      "query": "복학하려면 무엇을 해야 하나요?",
+      "expected_id": "29_main_39",
+      "top5": [
+        "29_main_39",
+        "29_main_38",
+        "156_main_8",
+        "316_main_14"
+      ]
+    },
+    {
+      "query": "수업이 휴강되면 보강은 어떻게 하나요?",
+      "expected_id": "316_main_14",
+      "top5": [
+        "316_main_14",
+        "316_main_9"
+      ]
+    },
+    {
+      "query": "장학금을 신청할 때 제출할 서류가 있나요?",
+      "expected_id": "156_main_6",
+      "top5": [
+        "156_main_6",
+        "155_main_24",
+        "156_main_4",
+        "156_main_8",
+        "155_main_26"
+      ]
+    }
+  ],
+  "criteria": {
+    "1_import_succeeded": true,
+    "2_public_filter": true,
+    "3_recall_at_5": true,
+    "4_metadata_restored": true,
+    "5_same_id_overwrite": true,
+    "6_exact_citation_body": true,
+    "7_table_addenda_preserved": true,
+    "8_reindex_time_recorded": true
+  },
+  "passed": true
+}

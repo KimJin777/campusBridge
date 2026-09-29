@@ -8,10 +8,10 @@
     "content_hash": "sha256:78909b6d419fe7acd6b5d169ba5ce18dfc4de5b0111b1d6b886cce3140e2e2f7",
     "converter": "hwp5txt 0.1b15",
     "article_count": 52,
-    "status": "validated",
+    "status": "indexed",
     "license_basis": "공개 규정",
-    "index_version": null,
-    "import_job_id": null
+    "index_version": "preflight-b-v1",
+    "import_job_id": "projects/171234524211/locations/global/collections/default_collection/dataStores/rules-articles/branches/0/operations/import-documents-17385144358515455327"
   },
   "156": {
     "source_url": "https://yz.kyungnam.ac.kr/rule/rdata/00000007/reg156_2314.hwp",
@@ -22,10 +22,10 @@
     "content_hash": "sha256:b3864be91a70c325d29b8ec6117a7fe0c2594e21e8ae17f61cf135946e6129a0",
     "converter": "hwp5txt 0.1b15",
     "article_count": 45,
-    "status": "validated",
+    "status": "indexed",
     "license_basis": "공개 규정",
-    "index_version": null,
-    "import_job_id": null
+    "index_version": "preflight-b-v1",
+    "import_job_id": "projects/171234524211/locations/global/collections/default_collection/dataStores/rules-articles/branches/0/operations/import-documents-17385144358515455327"
   },
   "29": {
     "source_url": "https://yz.kyungnam.ac.kr/rule/rdata/00000001/reg29_2363.hwp",
@@ -36,10 +36,10 @@
     "content_hash": "sha256:f15f1ac0688bb06091e80e608c018ad2304bd23b8c6375c7f94ca7fe034ccd72",
     "converter": "hwp5txt 0.1b15",
     "article_count": 199,
-    "status": "validated",
+    "status": "indexed",
     "license_basis": "공개 규정",
-    "index_version": null,
-    "import_job_id": null
+    "index_version": "preflight-b-v1",
+    "import_job_id": "projects/171234524211/locations/global/collections/default_collection/dataStores/rules-articles/branches/0/operations/import-documents-17385144358515455327"
   },
   "316": {
     "source_url": "https://yz.kyungnam.ac.kr/rule/rdata/00000015/reg316_2304.hwp",
@@ -50,9 +50,9 @@
     "content_hash": "sha256:43466fb425b1b7ad517fe3b122b37a8f1c8c5ae5010be535efc6db6912885b55",
     "converter": "hwp5txt 0.1b15",
     "article_count": 23,
-    "status": "validated",
+    "status": "indexed",
     "license_basis": "공개 규정",
-    "index_version": null,
-    "import_job_id": null
+    "index_version": "preflight-b-v1",
+    "import_job_id": "projects/171234524211/locations/global/collections/default_collection/dataStores/rules-articles/branches/0/operations/import-documents-17385144358515455327"
   }
 }
