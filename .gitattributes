@@ -1,0 +1,5 @@
+# 컨테이너·Cloud Build에서 쓰는 파일은 LF 고정(Windows 체크아웃 CRLF로 bash가 깨지는 것 방지)
+*.sh text eol=lf
+Dockerfile* text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
