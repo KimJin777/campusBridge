@@ -1,0 +1,81 @@
+{
+  "pages": 14,
+  "documents": 53,
+  "per_page": {
+    "exam_grade": {
+      "status": "ok",
+      "title": "시험 및 성적",
+      "sections": 3
+    },
+    "course_registration": {
+      "status": "ok",
+      "title": "수강신청",
+      "sections": 6
+    },
+    "retake": {
+      "status": "ok",
+      "title": "재수강 및 재이수",
+      "sections": 4
+    },
+    "grade_appeal": {
+      "status": "ok",
+      "title": "성적열람 및 이의신청",
+      "sections": 2
+    },
+    "grade_withdrawal": {
+      "status": "ok",
+      "title": "성적철회",
+      "sections": 4
+    },
+    "transfer_major": {
+      "status": "ok",
+      "title": "전과",
+      "sections": 5
+    },
+    "leave": {
+      "status": "ok",
+      "title": "휴학",
+      "sections": 4
+    },
+    "return": {
+      "status": "ok",
+      "title": "복학",
+      "sections": 3
+    },
+    "graduation": {
+      "status": "ok",
+      "title": "졸업",
+      "sections": 2
+    },
+    "early_graduation": {
+      "status": "ok",
+      "title": "조기졸업",
+      "sections": 2
+    },
+    "graduation_delay": {
+      "status": "ok",
+      "title": "졸업연기",
+      "sections": 1
+    },
+    "scholarship": {
+      "status": "ok",
+      "title": "장학제도안내",
+      "sections": 3
+    },
+    "shuttle_bus": {
+      "status": "ok",
+      "title": "통학버스안내",
+      "sections": 9
+    },
+    "certificates": {
+      "status": "ok",
+      "title": "증명서 신청종류",
+      "sections": 5
+    }
+  },
+  "import": {
+    "gcs_uri": "gs://campusbridge-510101-rules/guides/articles-v1/20260929T070507Z/guides.jsonl",
+    "operation": "projects/171234524211/locations/global/collections/default_collection/dataStores/rules-articles/branches/0/operations/import-documents-9232899843978050759",
+    "errors": []
+  }
+}

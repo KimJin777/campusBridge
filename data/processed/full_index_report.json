@@ -1,0 +1,967 @@
+{
+  "created_at": "2026-09-29T06:45:47.608084+00:00",
+  "index_version": "articles-v1",
+  "rules": 159,
+  "validated": 157,
+  "rejected": 2,
+  "missing_source": 0,
+  "documents": 4125,
+  "tables": 19,
+  "per_rule": {
+    "236": {
+      "status": "validated",
+      "rule_name": "경남대학교 헌장",
+      "articles": 29,
+      "documents": 29
+    },
+    "29": {
+      "status": "validated",
+      "rule_name": "경남대학교 학칙",
+      "articles": 199,
+      "documents": 199
+    },
+    "85": {
+      "status": "validated",
+      "rule_name": "대학원 학칙",
+      "articles": 108,
+      "documents": 108
+    },
+    "372": {
+      "status": "validated",
+      "rule_name": "AI･SW융합전문대학원 학칙 시행규정",
+      "articles": 62,
+      "documents": 62
+    },
+    "54": {
+      "status": "validated",
+      "rule_name": "교육대학원 학칙 시행규정",
+      "articles": 89,
+      "documents": 88
+    },
+    "86": {
+      "status": "validated",
+      "rule_name": "대학원 학칙 시행규정",
+      "articles": 80,
+      "documents": 79
+    },
+    "115": {
+      "status": "validated",
+      "rule_name": "산업경영대학원 학칙 시행규정",
+      "articles": 63,
+      "documents": 61
+    },
+    "210": {
+      "status": "validated",
+      "rule_name": "행정대학원 학칙 시행규정",
+      "articles": 61,
+      "documents": 61
+    },
+    "8": {
+      "status": "validated",
+      "rule_name": "검수 규정",
+      "articles": 30,
+      "documents": 30
+    },
+    "309": {
+      "status": "validated",
+      "rule_name": "경남대학교 기록관 운영규정",
+      "articles": 9,
+      "documents": 9
+    },
+    "12": {
+      "status": "validated",
+      "rule_name": "경남대학교 상표관리 규정",
+      "articles": 21,
+      "documents": 21
+    },
+    "336": {
+      "status": "validated",
+      "rule_name": "공익신고 및 신고자 보호규정",
+      "articles": 30,
+      "documents": 30
+    },
+    "271": {
+      "status": "validated",
+      "rule_name": "교육수요자 만족도 관리 규정",
+      "articles": 13,
+      "documents": 13
+    },
+    "65": {
+      "status": "validated",
+      "rule_name": "교직원 보수 규정",
+      "articles": 34,
+      "documents": 33
+    },
+    "67": {
+      "status": "validated",
+      "rule_name": "교직원 여비 규정",
+      "articles": 38,
+      "documents": 38
+    },
+    "353": {
+      "status": "validated",
+      "rule_name": "교통안전관리 규정",
+      "articles": 25,
+      "documents": 25
+    },
+    "342": {
+      "status": "validated",
+      "rule_name": "구매 규정",
+      "articles": 27,
+      "documents": 27
+    },
+    "76": {
+      "status": "validated",
+      "rule_name": "규정류관리 규정",
+      "articles": 31,
+      "documents": 31
+    },
+    "81": {
+      "status": "validated",
+      "rule_name": "노사협의회 운영규정",
+      "articles": 25,
+      "documents": 25
+    },
+    "275": {
+      "status": "validated",
+      "rule_name": "당직 및 비상근무 규정",
+      "articles": 7,
+      "documents": 7
+    },
+    "96": {
+      "status": "validated",
+      "rule_name": "문서관리 규정",
+      "articles": 52,
+      "documents": 52
+    },
+    "343": {
+      "status": "validated",
+      "rule_name": "물품관리 규정",
+      "articles": 20,
+      "documents": 20
+    },
+    "104": {
+      "status": "validated",
+      "rule_name": "보안업무 규정",
+      "articles": 47,
+      "documents": 47
+    },
+    "106": {
+      "status": "validated",
+      "rule_name": "복지시설 운영규정",
+      "articles": 20,
+      "documents": 20
+    },
+    "111": {
+      "status": "validated",
+      "rule_name": "사무분장 규정",
+      "articles": 118,
+      "documents": 109
+    },
+    "352": {
+      "status": "validated",
+      "rule_name": "산업안전보건관리 규정",
+      "articles": 46,
+      "documents": 46
+    },
+    "121": {
+      "status": "validated",
+      "rule_name": "소방안전관리 규정",
+      "articles": 31,
+      "documents": 30
+    },
+    "124": {
+      "status": "validated",
+      "rule_name": "시설물관리 규정",
+      "articles": 33,
+      "documents": 33
+    },
+    "129": {
+      "status": "validated",
+      "rule_name": "실험실습비관리 규정",
+      "articles": 18,
+      "documents": 18
+    },
+    "132": {
+      "status": "validated",
+      "rule_name": "업무추진비 지급에 관한 규정",
+      "articles": 15,
+      "documents": 15
+    },
+    "134": {
+      "status": "validated",
+      "rule_name": "연구보조비 지급 규정",
+      "articles": 8,
+      "documents": 8
+    },
+    "218": {
+      "status": "validated",
+      "rule_name": "연구실 안전관리 규정",
+      "articles": 35,
+      "documents": 35
+    },
+    "142": {
+      "status": "validated",
+      "rule_name": "예산관리 규정",
+      "articles": 36,
+      "documents": 36
+    },
+    "145": {
+      "status": "validated",
+      "rule_name": "우편물취급 규정",
+      "articles": 14,
+      "documents": 14
+    },
+    "147": {
+      "status": "validated",
+      "rule_name": "위임전결 규정",
+      "articles": 74,
+      "documents": 74
+    },
+    "348": {
+      "status": "validated",
+      "rule_name": "인권센터 운영규정",
+      "articles": 51,
+      "documents": 51
+    },
+    "151": {
+      "status": "validated",
+      "rule_name": "자체감사 규정",
+      "articles": 40,
+      "documents": 43
+    },
+    "152": {
+      "status": "validated",
+      "rule_name": "자체평가 규정",
+      "articles": 21,
+      "documents": 21
+    },
+    "153": {
+      "status": "validated",
+      "rule_name": "장례 규정",
+      "articles": 11,
+      "documents": 11
+    },
+    "161": {
+      "status": "validated",
+      "rule_name": "정보공개 운영에 관한 규정",
+      "articles": 16,
+      "documents": 16
+    },
+    "163": {
+      "status": "validated",
+      "rule_name": "제안제도 운영규정",
+      "articles": 18,
+      "documents": 18
+    },
+    "175": {
+      "status": "validated",
+      "rule_name": "직인관리 규정",
+      "articles": 18,
+      "documents": 18
+    },
+    "181": {
+      "status": "validated",
+      "rule_name": "직제 규정",
+      "articles": 89,
+      "documents": 83
+    },
+    "215": {
+      "status": "validated",
+      "rule_name": "회의비 지급 규정",
+      "articles": 5,
+      "documents": 5
+    },
+    "216": {
+      "status": "validated",
+      "rule_name": "복지시설 운영세칙",
+      "articles": 24,
+      "documents": 24
+    },
+    "280": {
+      "status": "validated",
+      "rule_name": "강사 임용 규정",
+      "articles": 32,
+      "documents": 32
+    },
+    "26": {
+      "status": "validated",
+      "rule_name": "경남대학교 총장후보자 심사 규정",
+      "articles": 22,
+      "documents": 22
+    },
+    "40": {
+      "status": "validated",
+      "rule_name": "교수연구년제에 관한 규정",
+      "articles": 25,
+      "documents": 25
+    },
+    "47": {
+      "status": "validated",
+      "rule_name": "교원업적평가 규정",
+      "articles": 62,
+      "documents": 62
+    },
+    "49": {
+      "status": "validated",
+      "rule_name": "교원인사 규정",
+      "articles": 80,
+      "documents": 76
+    },
+    "52": {
+      "status": "validated",
+      "rule_name": "교원 해외파견 및 국외유학에 관한 규정",
+      "articles": 19,
+      "documents": 19
+    },
+    "60": {
+      "status": "validated",
+      "rule_name": "교육중심교원 인사 규정",
+      "articles": 26,
+      "documents": 26
+    },
+    "64": {
+      "status": "rejected",
+      "error": "duplicate article ids"
+    },
+    "66": {
+      "status": "validated",
+      "rule_name": "교직원 복무 규정",
+      "articles": 32,
+      "documents": 32
+    },
+    "70": {
+      "status": "validated",
+      "rule_name": "교직원 퇴직금 지급 규정",
+      "articles": 10,
+      "documents": 10
+    },
+    "71": {
+      "status": "validated",
+      "rule_name": "교직원 포상 규정",
+      "articles": 14,
+      "documents": 14
+    },
+    "109": {
+      "status": "validated",
+      "rule_name": "비전임교원 임용에 관한 규정",
+      "articles": 75,
+      "documents": 75
+    },
+    "118": {
+      "status": "validated",
+      "rule_name": "산학협력중심교원 업적평가 규정",
+      "articles": 35,
+      "documents": 35
+    },
+    "119": {
+      "status": "validated",
+      "rule_name": "산학협력중심교원 인사 규정",
+      "articles": 27,
+      "documents": 26
+    },
+    "127": {
+      "status": "validated",
+      "rule_name": "신규임용 교직원 연봉계약제 규정",
+      "articles": 13,
+      "documents": 13
+    },
+    "136": {
+      "status": "validated",
+      "rule_name": "연구원 임용에 관한 규정",
+      "articles": 18,
+      "documents": 18
+    },
+    "138": {
+      "status": "validated",
+      "rule_name": "연구중심교원 인사 규정",
+      "articles": 27,
+      "documents": 27
+    },
+    "311": {
+      "status": "validated",
+      "rule_name": "일반비정년교원 인사 규정",
+      "articles": 17,
+      "documents": 17
+    },
+    "160": {
+      "status": "validated",
+      "rule_name": "전임교원의 겸임소속에 관한 규정",
+      "articles": 7,
+      "documents": 7
+    },
+    "164": {
+      "status": "validated",
+      "rule_name": "조교인사 규정",
+      "articles": 10,
+      "documents": 10
+    },
+    "172": {
+      "status": "validated",
+      "rule_name": "직원인사 규정",
+      "articles": 72,
+      "documents": 72
+    },
+    "176": {
+      "status": "validated",
+      "rule_name": "직원인사평정 규정",
+      "articles": 34,
+      "documents": 34
+    },
+    "204": {
+      "status": "validated",
+      "rule_name": "한마공로상 포상 규정",
+      "articles": 15,
+      "documents": 15
+    },
+    "27": {
+      "status": "validated",
+      "rule_name": "경남대학교 총장후보자 심사 규정 시행세칙",
+      "articles": 14,
+      "documents": 14
+    },
+    "62": {
+      "status": "validated",
+      "rule_name": "교원 겸직허가에 관한 세칙",
+      "articles": 15,
+      "documents": 15
+    },
+    "46": {
+      "status": "validated",
+      "rule_name": "교원업적평가 결과에 대한 이의신청 및 재심사청구에 관한 세칙",
+      "articles": 14,
+      "documents": 14
+    },
+    "78": {
+      "status": "validated",
+      "rule_name": "근속기간 산정에 관한 세칙",
+      "articles": 5,
+      "documents": 5
+    },
+    "102": {
+      "status": "validated",
+      "rule_name": "별정직 연구원 임용에 관한 세칙",
+      "articles": 20,
+      "documents": 20
+    },
+    "103": {
+      "status": "validated",
+      "rule_name": "별정직 직원 임용에 관한 세칙",
+      "articles": 21,
+      "documents": 21
+    },
+    "221": {
+      "status": "validated",
+      "rule_name": "인턴직원 임용에 관한 세칙",
+      "articles": 10,
+      "documents": 10
+    },
+    "149": {
+      "status": "validated",
+      "rule_name": "임시직원 등의 퇴직금 지급에 관한 세칙",
+      "articles": 12,
+      "documents": 11
+    },
+    "150": {
+      "status": "validated",
+      "rule_name": "임시직원 임용에 관한 세칙",
+      "articles": 17,
+      "documents": 17
+    },
+    "171": {
+      "status": "validated",
+      "rule_name": "직원복무에 관한 세칙",
+      "articles": 58,
+      "documents": 58
+    },
+    "347": {
+      "status": "validated",
+      "rule_name": "SWAI교육센터 운영규정",
+      "articles": 7,
+      "documents": 7
+    },
+    "10": {
+      "status": "validated",
+      "rule_name": "경남대학교 계약학과 운영규정",
+      "articles": 28,
+      "documents": 27
+    },
+    "279": {
+      "status": "validated",
+      "rule_name": "경남대학교 공개강좌 운영규정",
+      "articles": 20,
+      "documents": 20
+    },
+    "35": {
+      "status": "validated",
+      "rule_name": "공학교육 심화프로그램에 관한 규정",
+      "articles": 11,
+      "documents": 10
+    },
+    "318": {
+      "status": "validated",
+      "rule_name": "교수학습센터 운영규정",
+      "articles": 8,
+      "documents": 8
+    },
+    "43": {
+      "status": "validated",
+      "rule_name": "교외 출강에 관한 규정",
+      "articles": 8,
+      "documents": 8
+    },
+    "44": {
+      "status": "validated",
+      "rule_name": "교원담당시수 및 강의료 지급 규정",
+      "articles": 29,
+      "documents": 29
+    },
+    "224": {
+      "status": "validated",
+      "rule_name": "교육과정 편성 및 운영 규정",
+      "articles": 29,
+      "documents": 29
+    },
+    "320": {
+      "status": "validated",
+      "rule_name": "교육성과평가센터 운영규정",
+      "articles": 6,
+      "documents": 6
+    },
+    "314": {
+      "status": "validated",
+      "rule_name": "교육혁신본부 운영규정",
+      "articles": 9,
+      "documents": 9
+    },
+    "61": {
+      "status": "validated",
+      "rule_name": "교직과정 운영규정",
+      "articles": 57,
+      "documents": 56
+    },
+    "337": {
+      "status": "validated",
+      "rule_name": "국내·외 대학 간 공동학위 및 복수학위과정 운영규정",
+      "articles": 10,
+      "documents": 10
+    },
+    "238": {
+      "status": "validated",
+      "rule_name": "국제어학센터 규정",
+      "articles": 8,
+      "documents": 8
+    },
+    "239": {
+      "status": "validated",
+      "rule_name": "글로컬인성시민센터 규정",
+      "articles": 9,
+      "documents": 9
+    },
+    "225": {
+      "status": "validated",
+      "rule_name": "돋움도약센터 운영규정",
+      "articles": 9,
+      "documents": 9
+    },
+    "95": {
+      "status": "validated",
+      "rule_name": "명예학사학위 수여 규정",
+      "articles": 7,
+      "documents": 7
+    },
+    "319": {
+      "status": "validated",
+      "rule_name": "비교과통합지원센터 운영규정",
+      "articles": 6,
+      "documents": 6
+    },
+    "354": {
+      "status": "validated",
+      "rule_name": "석･박사통합과정 운영규정",
+      "articles": 16,
+      "documents": 16
+    },
+    "316": {
+      "status": "validated",
+      "rule_name": "수업관리 규정",
+      "articles": 23,
+      "documents": 23
+    },
+    "232": {
+      "status": "validated",
+      "rule_name": "여대생커리어개발센터 운영규정",
+      "articles": 14,
+      "documents": 14
+    },
+    "322": {
+      "status": "validated",
+      "rule_name": "원격교육센터 운영규정",
+      "articles": 7,
+      "documents": 7
+    },
+    "323": {
+      "status": "validated",
+      "rule_name": "원격교육 운영규정",
+      "articles": 12,
+      "documents": 12
+    },
+    "317": {
+      "status": "validated",
+      "rule_name": "융복합전공 운영규정",
+      "articles": 34,
+      "documents": 30
+    },
+    "242": {
+      "status": "validated",
+      "rule_name": "일학습병행 특화대학(KAP) 학사제도 운영규정",
+      "articles": 21,
+      "documents": 21
+    },
+    "378": {
+      "status": "validated",
+      "rule_name": "전공설계지원센터 운영규정",
+      "articles": 6,
+      "documents": 6
+    },
+    "184": {
+      "status": "validated",
+      "rule_name": "창업교육 학사제도 운영규정",
+      "articles": 26,
+      "documents": 26
+    },
+    "237": {
+      "status": "validated",
+      "rule_name": "창의융합대학 규정",
+      "articles": 14,
+      "documents": 14
+    },
+    "193": {
+      "status": "validated",
+      "rule_name": "평생교육사과정 운영규정",
+      "articles": 9,
+      "documents": 9
+    },
+    "307": {
+      "status": "validated",
+      "rule_name": "학·석사연계과정 운영규정",
+      "articles": 16,
+      "documents": 16
+    },
+    "196": {
+      "status": "validated",
+      "rule_name": "학사운영 규정",
+      "articles": 105,
+      "documents": 105
+    },
+    "203": {
+      "status": "validated",
+      "rule_name": "학점은행제 및 시간제 운영규정",
+      "articles": 12,
+      "documents": 12
+    },
+    "212": {
+      "status": "validated",
+      "rule_name": "현장실습학기제 운영규정",
+      "articles": 40,
+      "documents": 40
+    },
+    "331": {
+      "status": "validated",
+      "rule_name": "교양교육과정 편성 및 운영 세칙",
+      "articles": 22,
+      "documents": 22
+    },
+    "57": {
+      "status": "validated",
+      "rule_name": "교육봉사활동 운영세칙",
+      "articles": 9,
+      "documents": 9
+    },
+    "283": {
+      "status": "validated",
+      "rule_name": "기계융합공학과(중소기업계약학과) 운영세칙",
+      "articles": 19,
+      "documents": 19
+    },
+    "375": {
+      "status": "validated",
+      "rule_name": "마이크로전공 교육과정 편성 및 운영세칙",
+      "articles": 14,
+      "documents": 14
+    },
+    "326": {
+      "status": "validated",
+      "rule_name": "모듈과정 편성 및 운영 세칙",
+      "articles": 8,
+      "documents": 8
+    },
+    "330": {
+      "status": "validated",
+      "rule_name": "비교과 교육과정 편성 및 운영 세칙",
+      "articles": 10,
+      "documents": 10
+    },
+    "284": {
+      "status": "validated",
+      "rule_name": "산업경영대학원 CEO과정 운영세칙",
+      "articles": 33,
+      "documents": 33
+    },
+    "247": {
+      "status": "validated",
+      "rule_name": "수업평가 및 평가결과 활용에 관한 세칙",
+      "articles": 14,
+      "documents": 14
+    },
+    "364": {
+      "status": "validated",
+      "rule_name": "스마트제조시스템공학과(중소기업계약학과) 운영세칙",
+      "articles": 28,
+      "documents": 28
+    },
+    "325": {
+      "status": "validated",
+      "rule_name": "융복합전공 교육과정 편성 및 운영 세칙",
+      "articles": 15,
+      "documents": 15
+    },
+    "346": {
+      "status": "validated",
+      "rule_name": "일반선택과정 편성 및 운영 세칙",
+      "articles": 19,
+      "documents": 19
+    },
+    "374": {
+      "status": "validated",
+      "rule_name": "자유전공학부 운영세칙",
+      "articles": 19,
+      "documents": 19
+    },
+    "324": {
+      "status": "validated",
+      "rule_name": "전공교육과정 편성 및 운영 세칙",
+      "articles": 20,
+      "documents": 20
+    },
+    "246": {
+      "status": "validated",
+      "rule_name": "졸업인증에 관한 시행세칙",
+      "articles": 16,
+      "documents": 16
+    },
+    "264": {
+      "status": "validated",
+      "rule_name": "진로지도교수제 운영세칙",
+      "articles": 17,
+      "documents": 17
+    },
+    "192": {
+      "status": "validated",
+      "rule_name": "특별학점 시행세칙",
+      "articles": 18,
+      "documents": 17
+    },
+    "345": {
+      "status": "validated",
+      "rule_name": "학점교류 수학 및 학점인정에 관한 세칙",
+      "articles": 11,
+      "documents": 11
+    },
+    "285": {
+      "status": "validated",
+      "rule_name": "행정대학원 부동산･자산관리최고위과정 운영세칙",
+      "articles": 33,
+      "documents": 33
+    },
+    "286": {
+      "status": "validated",
+      "rule_name": "행정대학원 통일미래최고위과정 운영세칙",
+      "articles": 30,
+      "documents": 30
+    },
+    "369": {
+      "status": "rejected",
+      "error": "duplicate article ids"
+    },
+    "13": {
+      "status": "validated",
+      "rule_name": "경남대학교 연구윤리 헌장",
+      "articles": 11,
+      "documents": 11
+    },
+    "24": {
+      "status": "validated",
+      "rule_name": "경남대학교 연구비 중앙관리 운영규정",
+      "articles": 19,
+      "documents": 19
+    },
+    "355": {
+      "status": "validated",
+      "rule_name": "경남대학교 연구윤리 규정",
+      "articles": 49,
+      "documents": 49
+    },
+    "135": {
+      "status": "validated",
+      "rule_name": "연구소 설치 및 운영에 관한 규정",
+      "articles": 19,
+      "documents": 19
+    },
+    "137": {
+      "status": "validated",
+      "rule_name": "연구윤리센터 운영규정",
+      "articles": 9,
+      "documents": 9
+    },
+    "18": {
+      "status": "validated",
+      "rule_name": "경남대학교 국가근로장학금 운영규정",
+      "articles": 8,
+      "documents": 8
+    },
+    "39": {
+      "status": "validated",
+      "rule_name": "교비유학장학생 관리 규정",
+      "articles": 8,
+      "documents": 8
+    },
+    "72": {
+      "status": "validated",
+      "rule_name": "국가장학금 [II유형] 운영에 관한 규정",
+      "articles": 15,
+      "documents": 15
+    },
+    "269": {
+      "status": "validated",
+      "rule_name": "대학일자리플러스센터 운영규정",
+      "articles": 10,
+      "documents": 10
+    },
+    "89": {
+      "status": "validated",
+      "rule_name": "대학입학전형 자체영향평가 등에 관한 규정",
+      "articles": 9,
+      "documents": 9
+    },
+    "114": {
+      "status": "validated",
+      "rule_name": "사회봉사센터 운영규정",
+      "articles": 13,
+      "documents": 13
+    },
+    "341": {
+      "status": "validated",
+      "rule_name": "사회봉사활동 운영규정",
+      "articles": 12,
+      "documents": 11
+    },
+    "340": {
+      "status": "validated",
+      "rule_name": "소수집단학생 지원 규정",
+      "articles": 7,
+      "documents": 7
+    },
+    "223": {
+      "status": "validated",
+      "rule_name": "외국인 유학생 및 어학연수생 관리 규정",
+      "articles": 25,
+      "documents": 25
+    },
+    "282": {
+      "status": "validated",
+      "rule_name": "유학생서비스센터 운영규정",
+      "articles": 9,
+      "documents": 9
+    },
+    "154": {
+      "status": "validated",
+      "rule_name": "장애학생 지원 규정",
+      "articles": 14,
+      "documents": 14
+    },
+    "155": {
+      "status": "validated",
+      "rule_name": "장학금 지급 규정",
+      "articles": 52,
+      "documents": 48
+    },
+    "363": {
+      "status": "validated",
+      "rule_name": "지역교육지원센터 운영규정",
+      "articles": 6,
+      "documents": 6
+    },
+    "188": {
+      "status": "validated",
+      "rule_name": "체육특기자 관리 규정",
+      "articles": 20,
+      "documents": 20
+    },
+    "199": {
+      "status": "validated",
+      "rule_name": "학생상벌 규정",
+      "articles": 36,
+      "documents": 36
+    },
+    "183": {
+      "status": "validated",
+      "rule_name": "학생창업지원센터 운영규정",
+      "articles": 8,
+      "documents": 8
+    },
+    "338": {
+      "status": "validated",
+      "rule_name": "학생활동 안전관리 규정",
+      "articles": 13,
+      "documents": 13
+    },
+    "339": {
+      "status": "validated",
+      "rule_name": "학생활동 지원 규정",
+      "articles": 7,
+      "documents": 7
+    },
+    "281": {
+      "status": "validated",
+      "rule_name": "한국어교육센터 운영규정",
+      "articles": 8,
+      "documents": 8
+    },
+    "211": {
+      "status": "validated",
+      "rule_name": "현장실습지원센터 운영규정",
+      "articles": 10,
+      "documents": 10
+    },
+    "219": {
+      "status": "validated",
+      "rule_name": "교육대학원 장학금 지급 시행세칙",
+      "articles": 14,
+      "documents": 14
+    },
+    "125": {
+      "status": "validated",
+      "rule_name": "시험부정행위자 징계에 관한 시행세칙",
+      "articles": 12,
+      "documents": 12
+    },
+    "156": {
+      "status": "validated",
+      "rule_name": "장학금 지급 규정 시행세칙",
+      "articles": 45,
+      "documents": 45
+    },
+    "200": {
+      "status": "validated",
+      "rule_name": "학생 준칙",
+      "articles": 24,
+      "documents": 24
+    }
+  },
+  "import": {
+    "gcs_uri": "gs://campusbridge-510101-rules/index/articles-v1/20260929T064556Z/articles.jsonl",
+    "operation": "projects/171234524211/locations/global/collections/default_collection/dataStores/rules-articles/branches/0/operations/import-documents-12469155660419140076",
+    "errors": []
+  }
+}
