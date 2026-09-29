@@ -30,3 +30,12 @@ def test_env_overrides_and_admin_check(monkeypatch):
 def test_admin_emails_accept_pipe_separator(monkeypatch):
     monkeypatch.setenv("ADMIN_EMAILS", "a@kyungnam.ac.kr|b@kyungnam.ac.kr")
     assert Settings().admin_emails == frozenset({"a@kyungnam.ac.kr", "b@kyungnam.ac.kr"})
+
+
+def test_app_version_comes_from_changelog(monkeypatch):
+    from backend.app.version import CHANGELOG, VERSION
+
+    monkeypatch.delenv("APP_VERSION", raising=False)
+    assert Settings().app_version == VERSION == CHANGELOG[0]["version"]
+    versions = [c["version"] for c in CHANGELOG]
+    assert versions == sorted(versions, key=lambda v: tuple(map(int, v.split("."))), reverse=True)

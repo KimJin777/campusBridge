@@ -1,6 +1,6 @@
 # campusBridge 웹 배포(상세설계 07 §3·§4·§6). MatchProf 방식: 환경 종속 값은 전부 substitutions.
 # 실행: gcloud builds submit --config cloudbuild.yaml
-#   --substitutions=_APP_VERSION=0.3.0,_ADMIN_EMAILS=a@kyungnam.ac.kr|b@kyungnam.ac.kr
+#   --substitutions=_ADMIN_EMAILS=a@kyungnam.ac.kr|b@kyungnam.ac.kr  (버전은 backend/app/version.py)
 # ⚠️ Cloud Run 공개(allow-unauthenticated)는 외부 공개 — 교수님 승인 후 실행한다.
 substitutions:
   _REGION: asia-northeast3
@@ -18,7 +18,6 @@ substitutions:
   # 관리자 이메일은 저장소(공개 예정)에 두지 않는다 — 트리거 대체 변수나 --substitutions로 전달
   _ADMIN_EMAILS: ""
   _INGESTION_JOB_NAME: ""
-  _APP_VERSION: 0.3.0
   _MIN_INSTANCES: "0"
 
 options:
@@ -68,7 +67,7 @@ steps:
       - --port=8080
       # ADMIN_EMAILS에 쉼표가 있어 구분자를 ;로 바꾼다(^;^)
       - >-
-        --set-env-vars=^;^GCP_PROJECT_ID=$PROJECT_ID;GOOGLE_CLOUD_PROJECT=$PROJECT_ID;FIRESTORE_DB=${_FIRESTORE_DB};RULES_BUCKET=${_BUCKET_NAME};SEARCH_LOCATION=global;SEARCH_DATASTORE_ID=${_DATASTORE_ID};SEARCH_SERVING_CONFIG=${_SERVING_CONFIG};GEMINI_LOCATION=${_GEMINI_LOCATION};GEMINI_MODEL=${_GEMINI_MODEL};GEMINI_FALLBACK_MODEL=${_GEMINI_FALLBACK_MODEL};GOOGLE_OAUTH_CLIENT_ID=${_OAUTH_CLIENT_ID};ADMIN_EMAILS=${_ADMIN_EMAILS};INGESTION_JOB_NAME=${_INGESTION_JOB_NAME};APP_VERSION=${_APP_VERSION}
+        --set-env-vars=^;^GCP_PROJECT_ID=$PROJECT_ID;GOOGLE_CLOUD_PROJECT=$PROJECT_ID;FIRESTORE_DB=${_FIRESTORE_DB};RULES_BUCKET=${_BUCKET_NAME};SEARCH_LOCATION=global;SEARCH_DATASTORE_ID=${_DATASTORE_ID};SEARCH_SERVING_CONFIG=${_SERVING_CONFIG};GEMINI_LOCATION=${_GEMINI_LOCATION};GEMINI_MODEL=${_GEMINI_MODEL};GEMINI_FALLBACK_MODEL=${_GEMINI_FALLBACK_MODEL};GOOGLE_OAUTH_CLIENT_ID=${_OAUTH_CLIENT_ID};ADMIN_EMAILS=${_ADMIN_EMAILS};INGESTION_JOB_NAME=${_INGESTION_JOB_NAME}
 
   - id: smoke
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
@@ -77,7 +76,7 @@ steps:
       - -c
       - |
         URL=$(gcloud run services describe ${_SERVICE_NAME} --region=${_REGION} --format='value(status.url)')
-        bash scripts/smoke.sh "$$URL" "${_APP_VERSION}"
+        bash scripts/smoke.sh "$$URL"
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/web:$BUILD_ID

@@ -485,6 +485,15 @@ async def list_audit(
     return await store.list_page("admin_audit", limit=limit, cursor=cursor, order_by="created_at")
 
 
+@router.get("/versions")
+async def list_versions(actor: Actor) -> dict[str, Any]:
+    """버전·변경 내역(backend/app/version.py 단일 원본)."""
+    del actor
+    from backend.app.version import CHANGELOG, VERSION
+
+    return {"current": VERSION, "items": CHANGELOG}
+
+
 @router.get("/glossary")
 async def get_glossary(actor: Actor) -> dict[str, Any]:
     del actor

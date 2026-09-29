@@ -25,3 +25,7 @@ form.inline input, form.inline select, form.inline textarea { font: inherit; fon
 .msg { font-size: 13px; margin: 6px 0; }
 .msg.err { color: var(--err); }
 pre.preview { white-space: pre-wrap; font-size: 12px; background: var(--bg); padding: 8px; border-radius: 8px; max-height: 240px; overflow: auto; }
+
+.top-right { display: flex; align-items: center; gap: 8px; }
+section.tile { margin: 8px 0; }
+section.tile ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }

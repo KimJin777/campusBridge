@@ -67,6 +67,7 @@ async function initLogin() {
       try {
         await api("/glossary"); // 허용 목록 검증(서버)
         $("#who").textContent = decodeEmail(credential);
+        initVersion();
         $("#login").hidden = true;
         $("#app").hidden = false;
         openTab(location.hash.slice(1) || "sources");
@@ -495,6 +496,34 @@ async function viewPhonebook(view) {
       [() => stats.with_phone, "번호 있음"], [() => stats.added, "추가"], [() => stats.removed, "삭제"], ["error_code", "실패 원인"]]),
     form,
   );
+}
+
+async function initVersion() {
+  const v = await api("/versions");
+  const b = $("#version-btn");
+  b.textContent = `v${v.current}`;
+  b.hidden = false;
+  b.onclick = () => showVersions(v);
+}
+
+function showVersions(v) {
+  const view = $("#view");
+  const wrap = el("div");
+  wrap.append(el("h3", null, `버전 내역 — 현재 코드 v${v.current}`));
+  for (const it of v.items) {
+    const box = el("section", "tile");
+    const head = el("div");
+    head.append(el("strong", null, `v${it.version}`), el("span", "hint", ` ${it.date} · `));
+    head.append(it.deployed_at ? badge(`배포됨 ${fmt(it.deployed_at)}`) : el("span", "status warn", "미배포"));
+    box.append(head, el("div", null, it.title));
+    if (it.revision) box.append(el("div", "hint", `Cloud Run 리비전: ${it.revision}`));
+    const ul = el("ul");
+    for (const line of it.items || []) ul.append(el("li", null, line));
+    box.append(ul);
+    wrap.append(box);
+  }
+  document.querySelectorAll("#tabs button").forEach((x) => x.setAttribute("aria-selected", "false"));
+  view.replaceChildren(wrap);
 }
 
 async function viewReview(view) {

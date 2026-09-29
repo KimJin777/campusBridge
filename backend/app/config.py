@@ -36,6 +36,12 @@ DEFAULT_SUGGESTIONS = (
 )
 
 
+def _version() -> str:
+    from backend.app.version import VERSION
+
+    return VERSION
+
+
 @dataclass(frozen=True)
 class Settings:
     # GCP
@@ -98,7 +104,8 @@ class Settings:
     soft_budget_ms: int = field(default_factory=lambda: _int("SOFT_BUDGET_MS", 10000))
     hard_deadline_ms: int = field(default_factory=lambda: _int("HARD_DEADLINE_MS", 25000))
 
-    app_version: str = field(default_factory=lambda: _str("APP_VERSION", "0.3.0"))
+    # 버전은 backend/app/version.py가 단일 원본(환경값 APP_VERSION은 비상용 덮어쓰기)
+    app_version: str = field(default_factory=lambda: _str("APP_VERSION") or _version())
 
     # 추천 질문 칩(05 §1-3) — 시연 전 문구 교체용. "|"로 구분
     suggestions: tuple[str, ...] = field(
