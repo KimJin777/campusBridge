@@ -25,3 +25,8 @@ def test_env_overrides_and_admin_check(monkeypatch):
     assert s.max_tool_calls == 3
     assert s.is_admin("a@kyungnam.ac.kr") and s.is_admin("B@KYUNGNAM.AC.KR")
     assert not s.is_admin("x@gmail.com") and not s.is_admin(None)
+
+
+def test_admin_emails_accept_pipe_separator(monkeypatch):
+    monkeypatch.setenv("ADMIN_EMAILS", "a@kyungnam.ac.kr|b@kyungnam.ac.kr")
+    assert Settings().admin_emails == frozenset({"a@kyungnam.ac.kr", "b@kyungnam.ac.kr"})

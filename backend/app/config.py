@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 
@@ -21,7 +22,8 @@ def _int(name: str, default: int) -> int:
 
 def _list(name: str, default: str = "") -> tuple[str, ...]:
     raw = os.environ.get(name, default)
-    return tuple(x.strip() for x in raw.split(",") if x.strip())
+    # 쉼표 또는 | 구분(Windows gcloud.cmd에서 치환값 쉼표가 깨지는 문제 회피)
+    return tuple(x.strip() for x in re.split(r"[,|]", raw) if x.strip())
 
 
 DEFAULT_SUGGESTIONS = (

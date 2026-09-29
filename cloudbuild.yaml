@@ -1,6 +1,6 @@
 # campusBridge 웹 배포(상세설계 07 §3·§4·§6). MatchProf 방식: 환경 종속 값은 전부 substitutions.
 # 실행: gcloud builds submit --config cloudbuild.yaml
-#   --substitutions=^;^_APP_VERSION=0.3.0;_ADMIN_EMAILS=a@kyungnam.ac.kr,b@kyungnam.ac.kr
+#   --substitutions=_APP_VERSION=0.3.0,_ADMIN_EMAILS=a@kyungnam.ac.kr|b@kyungnam.ac.kr
 # ⚠️ Cloud Run 공개(allow-unauthenticated)는 외부 공개 — 교수님 승인 후 실행한다.
 substitutions:
   _REGION: asia-northeast3
