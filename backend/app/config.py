@@ -50,6 +50,8 @@ class Settings:
 
     # classify·act의 thinking 수준(3.x 모델). 2026-09-29 실측: low ≈ 2.2초 안정, 기본값 ≈ 4.6초
     classify_thinking: str = field(default_factory=lambda: _str("GEMINI_CLASSIFY_THINKING", "low"))
+    # compose도 low: 실측 기본값 9.2초·인용 누락 ↔ low 2.7초·인용 정상(2026-09-29, 실제 규정 20조)
+    compose_thinking: str = field(default_factory=lambda: _str("GEMINI_COMPOSE_THINKING", "low"))
 
     # Vertex AI Search
     search_location: str = field(default_factory=lambda: _str("SEARCH_LOCATION", "global"))

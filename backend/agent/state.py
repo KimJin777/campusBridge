@@ -7,7 +7,15 @@ from typing import Annotated, Any, Literal, TypedDict
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 
-from backend.domain.answer import Answer, Draft, Fallback, Resolution, ReviewFlag, VerifyReport
+from backend.domain.answer import (
+    Answer,
+    Draft,
+    DraftSentence,
+    Fallback,
+    Resolution,
+    ReviewFlag,
+    VerifyReport,
+)
 from backend.domain.evidence import Evidence, EvidenceNeed
 from backend.domain.thread import Correction, LastTurn, PendingQuestion, Profile
 
@@ -97,3 +105,29 @@ class ActOut(BaseModel):
     """보충 act의 구조화 출력 — 서버가 검증·정규화한 뒤 pending_tool_calls에 넣는다."""
 
     calls: list[ActCall] = Field(default_factory=list, max_length=4)
+
+
+class CitedSentence(BaseModel):
+    """compose 출력 문장 — 인용이 빈 문장은 스키마 단계에서 거부해 재시도한다(실측 사고 대응)."""
+
+    text: str
+    cite_ids: list[str] = Field(min_length=1)
+    supporting_quotes: list[str] = Field(min_length=1)
+
+
+class ComposeOut(BaseModel):
+    """compose의 구조화 출력. 검증 전 Draft로 바꿔 verify에 넘긴다."""
+
+    sentences: list[CitedSentence] = Field(min_length=1)
+    checklist: list[CitedSentence] = Field(default_factory=list)
+    next_actions: list[CitedSentence] = Field(default_factory=list)
+
+    def to_draft(self) -> Draft:
+        def conv(xs: list[CitedSentence]) -> list[DraftSentence]:
+            return [DraftSentence(**x.model_dump()) for x in xs]
+
+        return Draft(
+            sentences=conv(self.sentences),
+            checklist=conv(self.checklist),
+            next_actions=conv(self.next_actions),
+        )

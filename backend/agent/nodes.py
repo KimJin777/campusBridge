@@ -17,7 +17,7 @@ from backend.agent.llm import LLMUnavailable, StructuredLLM, StructuredOutputErr
 from backend.agent.needs import plan_calls
 from backend.agent.resolve import NEED_PRIORITY, resolve
 from backend.agent.slots import ask_text, choices_for, missing_slots, required_slots
-from backend.agent.state import ActOut, ClassifyOut, ToolCall, TurnState
+from backend.agent.state import ActOut, ClassifyOut, ComposeOut, ToolCall, TurnState
 from backend.agent.verify import SUPPRESSED_TEMPLATE, verify
 from backend.app.clients import remaining
 from backend.domain.answer import (
@@ -375,13 +375,14 @@ class Nodes:
                 break
             calls += 1
             try:
-                draft = await self.d.llm.structured(
-                    Draft,
+                out = await self.d.llm.structured(
+                    ComposeOut,
                     prompts.COMPOSE,
                     self._compose_prompt(state),
                     node="compose",
                     deadline=state.get("deadline"),
                 )
+                draft = out.to_draft() if isinstance(out, ComposeOut) else out
                 break
             except StructuredOutputError:
                 continue

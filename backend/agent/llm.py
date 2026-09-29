@@ -75,7 +75,7 @@ class GeminiLLM:
     async def _once(
         self, model: str, schema: type[T], system: str, user: str, node: str, deadline: float | None
     ) -> T:
-        thinking = self.s.classify_thinking if node in ("classify", "act") else None
+        thinking = self.s.compose_thinking if node == "compose" else self.s.classify_thinking
         runnable = self._chat(model, thinking).with_structured_output(schema)
 
         async def call():
