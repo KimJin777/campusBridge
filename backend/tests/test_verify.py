@@ -174,3 +174,20 @@ def test_lexical_polarity_word_is_flagged_internal():
     out, _, flags = verify(d, [ev], P)
     assert len(out.sentences) == 1
     assert any(f.code == "risky_token" and f.public_action == "internal_only" for f in flags)
+
+
+def test_iso_calendar_date_matches_korean_date_in_sentence():
+    ev = Evidence(
+        id="cal:1",
+        kind="calendar",
+        title="일정",
+        text="2026-10-08 수업일수 1/3선(일반휴학 접수마감)",
+    )
+    ok = s(
+        "일반휴학 접수는 10월 8일에 마감됩니다.", ["cal:1"], ["수업일수 1/3선(일반휴학 접수마감)"]
+    )
+    assert check_sentence(ok, {"cal:1": ev}, P) is None
+    wrong = s(
+        "일반휴학 접수는 10월 9일에 마감됩니다.", ["cal:1"], ["수업일수 1/3선(일반휴학 접수마감)"]
+    )
+    assert check_sentence(wrong, {"cal:1": ev}, P) == "number_mismatch"

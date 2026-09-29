@@ -32,6 +32,20 @@ NUM_FACT = re.compile(
 )
 CITATION_MARK = re.compile(r"제\s*\d+\s*(?:조(?:\s*의\s*\d+)?|항|호|장|절|편)")
 _STRIP = re.compile(r"[\s\W_]+", re.UNICODE)
+ISO_DATE = re.compile(r"(\d{4})[-./](\d{1,2})[-./](\d{1,2})")
+
+
+def date_variants(text: str) -> str:
+    """근거의 ISO 날짜(2026-10-08)를 한국어 표기(10월8일 등)로도 대조되게 덧붙인다.
+
+    학사일정 도구는 ISO로, 모델은 "10월 8일"로 쓴다(2026-09-29 실측: 전 문장 number_mismatch).
+    값은 그대로이고 표기만 늘리므로 없는 숫자를 허용하지 않는다.
+    """
+    extra = []
+    for y, m, d in ISO_DATE.findall(text):
+        mo, da = int(m), int(d)
+        extra.append(f"{y}년{mo}월{da}일 {mo}월{da}일 {mo}월 {da}일 {y}년")
+    return text + (" " + " ".join(extra) if extra else "")
 
 
 def normalize(t: str) -> str:
@@ -57,7 +71,7 @@ def check_sentence(s: DraftSentence, ev: dict[str, Evidence], profile: Profile) 
             return "quote_too_short"
         if nq not in normalize(ev[cid].text):
             return "quote_not_found"
-    cited_text = normalize(" ".join(ev[c].text for c in s.cite_ids))
+    cited_text = normalize(date_variants(" ".join(ev[c].text for c in s.cite_ids)))
     allowed = {normalize(f"{v}{u}") for v, u in profile_numbers(profile)}
     body = CITATION_MARK.sub(" ", s.text)
     for m in NUM_FACT.finditer(body):

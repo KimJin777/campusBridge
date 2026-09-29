@@ -63,3 +63,14 @@ def test_mask():
     assert "[학번]" in m and "[전화]" in m and "[이메일]" in m and "[이름]" in m
     assert "2학년" in m
     assert mask("2026-2학기 휴학") == "2026-2학기 휴학"
+
+
+def test_notice_board_selection():
+    calls = plan_calls([], search_query="최근 장학 공지", topic="장학 공지", intent="notice")
+    assert calls[0]["args"] == {"board": "scholarship", "keyword": ""}
+    calls = plan_calls(
+        ["current_deadline"], search_query="국가장학금 신청 기한", topic="국가장학금"
+    )
+    assert calls[-1]["args"] == {"board": "scholarship", "keyword": "국가장학금"}
+    calls = plan_calls(["current_deadline"], search_query="휴학 신청 기한", topic="휴학")
+    assert calls[-1]["args"] == {"board": "academic", "keyword": "휴학"}

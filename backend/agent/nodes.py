@@ -210,6 +210,7 @@ class Nodes:
             search_query=state.get("search_query") or state.get("effective_query", ""),
             original_query=state.get("normalized_query"),
             topic=state.get("topic"),
+            intent=state.get("intent"),
         )
         needs = state.get("evidence_needs", [])
         _emit(

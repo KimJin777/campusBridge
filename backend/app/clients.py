@@ -40,14 +40,25 @@ class CallFailed(Exception):
 
 
 def status_of(exc: BaseException) -> int | None:
-    """SDK마다 다른 HTTP 상태 표기를 하나로 읽는다(httpx·google-genai·google-api-core)."""
-    for attr in ("status_code", "code"):
-        v = getattr(exc, attr, None)
+    """SDK마다 다른 HTTP 상태 표기를 하나로 읽는다(httpx·google-genai·google-api-core).
+
+    LangChain은 429를 자체 예외(GoogleRateLimitError)로 감싸고 원인을 __cause__에 둔다
+    → 원인 체인을 따라가며 찾는다(2026-09-29 실측: 감싼 예외에서 상태를 못 읽어 재시도 누락).
+    """
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        for attr in ("status_code", "code"):
+            v = getattr(cur, attr, None)
+            if isinstance(v, int) and not isinstance(v, bool):
+                return v
+        resp = getattr(cur, "response", None)
+        v = getattr(resp, "status_code", None)
         if isinstance(v, int):
             return v
-    resp = getattr(exc, "response", None)
-    v = getattr(resp, "status_code", None)
-    return v if isinstance(v, int) else None
+        cur = cur.__cause__ or cur.__context__
+    return None
 
 
 def _retryable(exc: BaseException, retry_on: tuple[int, ...]) -> bool:

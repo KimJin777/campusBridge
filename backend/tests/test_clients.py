@@ -112,3 +112,21 @@ def test_status_of_reads_response_attribute():
         response = Resp()
 
     assert status_of(E()) == 502
+
+
+def test_status_of_follows_cause_chain_for_wrapped_rate_limit():
+    class Wrapped(Exception):
+        pass
+
+    try:
+        try:
+            raise HttpErr(429)
+        except HttpErr as inner:
+            raise Wrapped("rate limited") from inner
+    except Wrapped as e:
+        wrapped = e
+    assert status_of(wrapped) == 429
+
+    fn, calls = flaky([wrapped])
+    assert run(call_with_retry(fn, timeout=1, attempts=2, sleep=no_sleep)) == "ok"
+    assert calls["n"] == 2
