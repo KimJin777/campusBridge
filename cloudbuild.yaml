@@ -17,7 +17,10 @@ substitutions:
   _OAUTH_CLIENT_ID: 171234524211-4clnkts6hg4se3vppq6mdd4f34oo4mgc.apps.googleusercontent.com
   # 관리자 이메일은 저장소(공개 예정)에 두지 않는다 — 트리거 대체 변수나 --substitutions로 전달
   _ADMIN_EMAILS: ""
-  _INGESTION_JOB_NAME: ""
+  _INGESTION_JOB_NAME: campusbridge-ingest
+  _INGEST_SA_NAME: ingest-sa
+  # 수집 요청의 식별 UA 연락처(저장소 공개 대비 기본값 비움 — 실행 시 전달)
+  _CONTACT_EMAIL: ""
   _MIN_INSTANCES: "0"
 
 options:
@@ -44,6 +47,38 @@ steps:
   - id: push
     name: gcr.io/cloud-builders/docker
     args: [push, "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/web:$BUILD_ID"]
+
+  - id: build-ingest
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - Dockerfile.ingest
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/ingest:$BUILD_ID
+      - .
+
+  - id: push-ingest
+    name: gcr.io/cloud-builders/docker
+    args: [push, "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/ingest:$BUILD_ID"]
+
+  - id: deploy-ingest-job
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - deploy
+      - ${_INGESTION_JOB_NAME}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/ingest:$BUILD_ID
+      - --region=${_REGION}
+      - --service-account=${_INGEST_SA_NAME}@$PROJECT_ID.iam.gserviceaccount.com
+      - --cpu=1
+      - --memory=2Gi
+      - --task-timeout=3600
+      - --max-retries=0
+      - >-
+        --set-env-vars=^;^GCP_PROJECT_ID=$PROJECT_ID;GOOGLE_CLOUD_PROJECT=$PROJECT_ID;FIRESTORE_DB=${_FIRESTORE_DB};RULES_BUCKET=${_BUCKET_NAME};SEARCH_DATASTORE_ID=${_DATASTORE_ID};SEARCH_ENGINE_ID=${_SERVING_CONFIG};COLLECTION_CONTACT_EMAIL=${_CONTACT_EMAIL}
 
   - id: deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
@@ -80,3 +115,4 @@ steps:
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/web:$BUILD_ID
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/ingest:$BUILD_ID

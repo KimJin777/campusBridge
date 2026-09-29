@@ -30,7 +30,13 @@ from pydantic import BaseModel, Field
 EVAL_DIR = Path(__file__).resolve().parent
 REPORTS = EVAL_DIR / "reports"
 CACHE = EVAL_DIR / "cache"
-SETS = {"dev": "dev.jsonl", "oos": "oos.jsonl", "final": "final.jsonl", "sample": "sample.jsonl"}
+SETS = {
+    "dev": "dev.jsonl",
+    "oos": "oos.jsonl",
+    "final": "final.jsonl",
+    "sample": "sample.jsonl",
+    "questions20": "questions20.jsonl",
+}
 TYPE_CRITERIA = {  # 06 §3-1 적용표(●=필수)
     "rule": {"retrieval", "key_facts", "no_errors", "citation"},
     "procedure": {"retrieval", "key_facts", "no_errors", "citation", "action"},
@@ -270,6 +276,20 @@ def write_report(set_name: str, commit: str, results: list[dict[str, Any]]) -> P
             last = r["run"]["turns"][-1]
             outcome = f"{last['outcome']} {last['fallback_reason'] or ''}".strip()
             lines.append(f"| {r['id']} | {failed} | {outcome} | {r.get('grade_reason', '')} |")
+    lines += ["", "## 문항별 답변(사람 검토용)"]
+    for r in results:
+        last = r["run"]["turns"][-1]
+        turns = " → ".join(t["outcome"] or "?" for t in r["run"]["turns"])
+        ms = " + ".join(str(t["elapsed_ms"]) for t in r["run"]["turns"])
+        body = last["text"] or f"(답변 없음: {last['fallback_reason'] or last['outcome']})"
+        lines += [
+            "",
+            f"### {r['id']} — {turns} · {ms}ms · 인용 {len(last['cited'])}"
+            f" · 담당 {last['dept'] or '—'}",
+            f"> {r.get('question', '')}",
+            "",
+            body.replace("\n", "  \n"),
+        ]
     base.with_suffix(".md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return base
 
@@ -300,6 +320,7 @@ async def evaluate(set_name: str, limit: int | None, use_cache: bool) -> Path:
             grade = await llm_grade(item, last["text"], last["cited_text"])
         result = {
             "id": item["id"],
+            "question": item["question"],
             "run": run,
             "judge": judge(item, run, grade),
             "grade_reason": grade.reason if grade else "",

@@ -45,8 +45,8 @@ def required_slots(topic: str | None, query: str = "", intent: str | None = None
     hay = f"{topic or ''} {query}"
     for keys, slots in TOPIC_SLOTS:
         if any(k in hay for k in keys):
-            if keys in PROCEDURE_ONLY and intent not in (None, "procedure"):
-                return []
+            if intent not in (None, "procedure"):
+                return []  # 교수님 질문리스트 실측: 규정·일정 질문에 학년을 되묻는 마찰 제거
             return list(slots)
     return []
 

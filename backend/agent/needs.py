@@ -25,8 +25,24 @@ def notice_board(topic: str | None, query: str = "") -> str:
 
 def notice_keyword(topic: str | None) -> str:
     """게시판 이름과 겹치는 일반어는 키워드에서 뺀다(예: "장학 공지" → "")."""
-    t = (topic or "").replace("공지", "").strip()
-    return "" if t in ("장학", "학사", "일반", "") else t
+    words = [w for w in (topic or "").replace("공지사항", " ").replace("공지", " ").split()]
+    # "이번 주 주요 학교 공지" 같은 일반어만 남으면 전체 최신 공지(키워드 없음)
+    generic = {
+        "장학",
+        "학사",
+        "일반",
+        "주요",
+        "학교",
+        "이번",
+        "주",
+        "최근",
+        "새",
+        "사항",
+        "소식",
+        "안내",
+    }
+    words = [w for w in words if w not in generic]
+    return " ".join(words)
 
 
 def plan_calls(

@@ -79,4 +79,12 @@ def test_notice_board_selection():
 def test_leave_slots_only_for_procedure_questions():
     assert required_slots("휴학", intent="procedure") == ["grade", "scholarship"]
     assert required_slots("휴학", "휴학 최대 몇 학기", intent="rule") == []
-    assert required_slots("수강철회", intent="rule") == ["grade"]
+    assert required_slots("수강철회", intent="rule") == []  # 규정·일정 질문은 되묻지 않음
+    assert required_slots("수강철회", intent="procedure") == ["grade"]
+
+
+def test_generic_notice_topic_means_latest_notices():
+    from backend.agent.needs import notice_keyword
+
+    assert notice_keyword("이번 주 주요 학교 공지사항") == ""
+    assert notice_keyword("근로장학생 모집 공지") == "근로장학생 모집"
