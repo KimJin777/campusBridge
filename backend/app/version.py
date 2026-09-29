@@ -13,6 +13,18 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.11.0",
+        "date": "2026-09-30",
+        "deployed_at": None,
+        "revision": None,
+        "title": "교내 행사 — 포스터 판독·날짜 확인 필요",
+        "items": [
+            "본문이 포스터 이미지뿐인 행사 공지는 AI가 포스터를 읽어 날짜를 추출(검수 대기)",
+            "날짜를 못 찾은 학생 행사도 관리자 '학사·행사 일정'에 '날짜 확인 필요'로 올리고, [게시] 때 기간 입력",
+            "지난 행사도 기록으로 보관('종료' 표시, 학생 화면에는 비노출)",
+        ],
+    },
+    {
         "version": "0.10.0",
         "date": "2026-09-30",
         "deployed_at": None,

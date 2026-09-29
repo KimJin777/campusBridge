@@ -28,6 +28,9 @@ BOARDS = ("academic", "scholarship")
 EVENT_BOARDS = ("general", "events")
 MAX_EVENT_LLM_PER_RUN = 40
 EVENT_LOOKBACK_DAYS = 60
+POSTER_BODY_CHARS = 80  # 본문 글자가 이보다 적으면 포스터 이미지로 판단
+MAX_POSTER_IMAGES = 2
+MAX_POSTER_BYTES = 4_000_000
 DATE_LABELS = ("행사일", "신청 기간", "신청 마감", "기간")
 
 # 날짜 한 개: 2026. 9. 29.(화) / 2026-09-29 / 9/29 / 10월 6일(월)
@@ -161,6 +164,7 @@ def upsert_event(docs: Docs, event: dict[str, Any], now: datetime) -> str:
         "source_url": event["source_url"],
         "extracted_by": event["extracted_by"],
         "date_label": event.get("date_label"),
+        "date_missing": bool(event.get("date_missing")),
         "updated_at": now,
     }
     if docs.get("campus_events", eid) is None:
@@ -179,6 +183,8 @@ def collect_events(
     llm_extract: Callable[[str], ExtractedEvent | None] | None = None,
     fetch_body: Callable[[str], str] | None = None,
     check_event: Callable[[str], EventCheck | None] | None = None,
+    fetch_images: Callable[[str], list[bytes]] | None = None,
+    check_poster: Callable[[str, list[bytes]], EventCheck | None] | None = None,
 ) -> dict[str, int]:
     """일정 수집 본체(네트워크는 주입 — 테스트 가능). 반환: 건수 통계."""
     stats = {
@@ -262,7 +268,17 @@ def collect_events(
             stats["notice_pending"] += 1
 
     if check_event is not None:
-        _collect_campus_events(docs, today, now, fetch_notices, fetch_body, check_event, stats)
+        _collect_campus_events(
+            docs,
+            today,
+            now,
+            fetch_notices,
+            fetch_body,
+            check_event,
+            stats,
+            fetch_images=fetch_images,
+            check_poster=check_poster,
+        )
     return stats
 
 
@@ -274,8 +290,16 @@ def _collect_campus_events(
     fetch_body: Callable[[str], str] | None,
     check_event: Callable[[str], EventCheck | None],
     stats: dict[str, int],
+    *,
+    fetch_images: Callable[[str], list[bytes]] | None = None,
+    check_poster: Callable[[str, list[bytes]], EventCheck | None] | None = None,
 ) -> None:
-    """교내 행사: 새 공지만 1회 LLM 판정 → 대상이면 날짜를 붙여 게시/검수 대기."""
+    """교내 행사: 새 공지만 1회 판정 → 대상이면 날짜를 붙여 게시/검수 대기.
+
+    교수님 2026-09-30: 본문이 포스터 이미지뿐이면 AI가 이미지를 읽고(B),
+    그래도 날짜를 못 찾은 학생 행사는 '날짜 확인 필요'로 관리자 목록에 올린다(A).
+    지난 행사도 기록으로 남긴다(학생 화면은 종료일이 지난 일정을 보이지 않음).
+    """
     left = MAX_EVENT_LLM_PER_RUN
     for board in EVENT_BOARDS:
         for n in fetch_notices(board):
@@ -283,7 +307,9 @@ def _collect_campus_events(
             published: date = n.get("published") or today
             if published < today - timedelta(days=EVENT_LOOKBACK_DAYS):
                 continue
-            scan_id = hashlib.sha256(f"event|{url}".encode()).hexdigest()[:20]
+            scan_id = hashlib.sha256(f"event2|{url}".encode()).hexdigest()[
+                :20
+            ]  # v2: 포스터·날짜 확인
             if docs.get("event_scans", scan_id) is not None or left <= 0:
                 continue
             left -= 1
@@ -294,23 +320,39 @@ def _collect_campus_events(
                 except Exception:  # noqa: BLE001 — 본문 없이 제목·요약으로 판정
                     body = ""
             text = f"{n['title']} {n.get('summary', '')} {body}"[:1500]
-            got = check_event(text)
+            got = None
+            if (
+                len(body) < POSTER_BODY_CHARS
+                and fetch_images is not None
+                and check_poster is not None
+            ):
+                try:
+                    images = fetch_images(url)
+                except Exception:  # noqa: BLE001
+                    images = []
+                if images:
+                    got = check_poster(text, images)  # 본문이 이미지뿐 → 포스터 판독
+                    if got is not None:
+                        stats["event_poster"] = stats.get("event_poster", 0) + 1
+            if got is None:
+                got = check_event(text)
             docs.merge("event_scans", scan_id, {"url": url, "scanned_at": now, "kind": "event"})
             if not got or not got.is_student_event:
                 stats["event_rejected"] += 1
                 continue
+            missing = False
             period = extract_period(text, published)
-            if period and period.end >= today:
+            if period:
                 start, end, by, status = period.start or published, period.end, "regex", "active"
-            else:
+            elif _iso(got.end_date) is not None:
                 end = _iso(got.end_date)
                 start = _iso(got.start_date)
-                if end is None or end < today:
-                    stats["event_rejected"] += 1
-                    continue
                 if start and not (start <= end <= start + timedelta(days=MAX_SPAN_DAYS)):
                     start = None
                 start, by, status = start or published, "llm", "pending"
+            else:
+                # 날짜를 못 찾은 학생 행사 → 관리자가 원문을 보고 날짜를 넣어 게시(A)
+                start, end, by, status, missing = published, published, "llm", "pending", True
             upsert_event(
                 docs,
                 {
@@ -323,6 +365,7 @@ def _collect_campus_events(
                     "extracted_by": by,
                     "status": status,
                     "date_label": _label(text, got.date_label),
+                    "date_missing": missing,
                 },
                 now,
             )
@@ -423,3 +466,85 @@ def live_llm(settings: Any) -> Callable[[str], ExtractedEvent | None]:
 
 def live_event_check(settings: Any) -> Callable[[str], EventCheck | None]:
     return _live_structured(settings, EventCheck, EVENT_PROMPT)
+
+
+def live_images(settings: Any) -> Callable[[str], list[bytes]]:
+    """공지 본문(.view-con)의 이미지(학교 도메인만, 최대 2장·4MB)."""
+    from urllib.parse import urljoin
+
+    from bs4 import BeautifulSoup
+
+    from backend.tools import public_sources as ps
+
+    def fetch(url: str) -> list[bytes]:
+        html = asyncio.run(ps._fetch(url, settings))
+        node = BeautifulSoup(html, "html.parser").select_one(".view-con")
+        out: list[bytes] = []
+        for img in (node.select("img[src]") if node else [])[:MAX_POSTER_IMAGES]:
+            src = urljoin(url, str(img.get("src")))
+            try:
+                data = asyncio.run(ps._fetch(src, settings))
+            except Exception:  # noqa: BLE001 — 허용 밖 도메인·실패 이미지는 건너뜀
+                continue
+            if 0 < len(data) <= MAX_POSTER_BYTES:
+                out.append(data)
+        return out
+
+    return fetch
+
+
+def _mime(data: bytes) -> str:
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:4] == b"GIF8":
+        return "image/gif"
+    return "image/webp" if data[8:12] == b"WEBP" else "image/jpeg"
+
+
+def live_poster_check(settings: Any) -> Callable[[str, list[bytes]], EventCheck | None]:
+    """포스터 이미지를 Gemini가 직접 읽어 행사 여부·날짜를 판정(결과는 검수 대기)."""
+    import base64
+
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    chat = ChatGoogleGenerativeAI(
+        vertexai=True,
+        model=settings.gemini_model,
+        project=settings.gcp_project_id or None,
+        location=settings.gemini_location,
+        temperature=0,
+        max_output_tokens=1024,
+        max_retries=1,
+        thinking_level="low",
+    ).with_structured_output(EventCheck)
+
+    def run(text: str, images: list[bytes]) -> EventCheck | None:
+        parts: list[Any] = [
+            {
+                "type": "text",
+                "text": f"공지 제목·요약: {text[:500]}\n아래는 공지 본문의 포스터 이미지입니다.",
+            }
+        ]
+        for data in images:
+            parts.append(
+                {
+                    "type": "image",
+                    "source_type": "base64",
+                    "mime_type": _mime(data),
+                    "data": base64.b64encode(data).decode(),
+                }
+            )
+        try:
+            return asyncio.run(
+                asyncio.wait_for(
+                    chat.ainvoke([SystemMessage(EVENT_PROMPT), HumanMessage(content=parts)]),
+                    timeout=90,
+                )
+            )
+        except Exception:  # noqa: BLE001 — 판독 실패는 글자 판정으로
+            return None
+
+    return run

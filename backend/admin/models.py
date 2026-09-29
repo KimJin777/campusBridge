@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -86,6 +87,17 @@ class EventPatch(BaseModel):
     status: Literal["active", "disabled"]
     reason: str = Field(min_length=1, max_length=300)
     request_id: str = Field(min_length=8, max_length=100)
+    # '날짜 확인 필요' 행사를 게시할 때 관리자가 원문을 보고 넣는 기간(선택)
+    start_date: date | None = None
+    end_date: date | None = None
+
+    @model_validator(mode="after")
+    def dates_in_order(self):
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValueError("start_date after end_date")
+        if self.start_date and not self.end_date:
+            self.end_date = self.start_date
+        return self
 
     @field_validator("reason")
     @classmethod

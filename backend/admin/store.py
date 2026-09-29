@@ -146,6 +146,8 @@ class AdminStore(Protocol):
         actor: AdminActor,
         reason: str,
         request_id: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> dict[str, Any]: ...
 
     async def remove_admin_user(
@@ -834,7 +836,6 @@ class FirestoreAdminStore:
 
         return await txn(self.db.transaction())
 
-
     async def set_event_status(
         self,
         event_id: str,
@@ -843,6 +844,8 @@ class FirestoreAdminStore:
         actor: AdminActor,
         reason: str,
         request_id: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> dict[str, Any]:
         """일정 게시(active)·숨김(disabled) + 감사 로그(같은 트랜잭션).
 
@@ -866,6 +869,18 @@ class FirestoreAdminStore:
                 "request_id": request_id,
                 "updated_at": now,
             }
+            if end_date:
+                out.update(
+                    {
+                        "start_date": start_date or end_date,
+                        "end_date": end_date,
+                        "date_missing": False,
+                    }
+                )
+            if status == "active" and current.get("date_missing") and not end_date:
+                raise AppError(
+                    "BAD_REQUEST", "날짜 확인이 필요한 행사입니다. 기간을 입력해 주세요."
+                )
             after = {**current, **out}
             tx.set(ref, out, merge=True)
             tx.set(

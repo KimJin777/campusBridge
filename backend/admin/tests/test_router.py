@@ -456,7 +456,8 @@ def test_event_patch_forwards_audit_context_and_validates_status() -> None:
     store = FakeStore()
     seen: dict[str, Any] = {}
 
-    async def set_event_status(event_id, status, *, actor, reason, request_id):
+    async def set_event_status(event_id, status, *, actor, reason, request_id, **kw):
+        seen.update(kw)
         seen.update(id=event_id, status=status, actor=actor.email, reason=reason, rid=request_id)
         return {"id": event_id, "status": status}
 
@@ -465,6 +466,8 @@ def test_event_patch_forwards_audit_context_and_validates_status() -> None:
     body = {"status": "active", "reason": " 원문 확인 ", "request_id": "req-00000001"}
     assert client.patch("/api/admin/events/abc123", json=body).status_code == 200
     assert seen == {
+        "start_date": None,
+        "end_date": None,
         "id": "abc123",
         "status": "active",
         "actor": "admin@example.edu",
@@ -475,3 +478,25 @@ def test_event_patch_forwards_audit_context_and_validates_status() -> None:
     assert bad.status_code == 422
     listed = client.get("/api/admin/events").json()
     assert listed["items"][0]["id"] == "campus_events-1"
+
+
+def test_event_patch_with_dates_for_date_missing_event() -> None:
+    store = FakeStore()
+    seen: dict[str, Any] = {}
+
+    async def set_event_status(event_id, status, *, actor, reason, request_id, **kw):
+        seen.update(kw)
+        return {"id": event_id, "status": status}
+
+    store.set_event_status = set_event_status  # type: ignore[attr-defined]
+    client = _client(store)
+    body = {
+        "status": "active",
+        "reason": "원문 확인",
+        "request_id": "req-00000002",
+        "start_date": "2026-10-07",
+    }
+    assert client.patch("/api/admin/events/e1", json=body).status_code == 200
+    assert seen == {"start_date": "2026-10-07", "end_date": "2026-10-07"}
+    bad = {**body, "start_date": "2026-10-10", "end_date": "2026-10-01"}
+    assert client.patch("/api/admin/events/e1", json=bad).status_code == 422

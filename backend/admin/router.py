@@ -521,6 +521,8 @@ async def patch_event(
         actor=actor,
         reason=body.reason,
         request_id=body.request_id.strip(),
+        start_date=body.start_date.isoformat() if body.start_date else None,
+        end_date=body.end_date.isoformat() if body.end_date else None,
     )
 
 

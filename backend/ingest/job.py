@@ -437,7 +437,9 @@ def main() -> int:
         collect_events,
         live_body,
         live_event_check,
+        live_images,
         live_llm,
+        live_poster_check,
         live_sources,
     )
 
@@ -455,6 +457,8 @@ def main() -> int:
             llm_extract=live_llm(settings),
             fetch_body=live_body(settings),
             check_event=live_event_check(settings),
+            fetch_images=live_images(settings),
+            check_poster=live_poster_check(settings),
         )
         deps.docs.merge(
             "source_configs",

@@ -178,7 +178,7 @@ const TABS = {
   runs: ["수집 실행", viewRuns, "retry"],
   disable: ["긴급 회수", viewDisable, "alert"],
   documents: ["교내 문서", viewDocuments, "book"],
-  events: ["학사 일정", viewEvents, "calendar"],
+  events: ["학사·행사 일정", viewEvents, "calendar"],
   places: ["장소 표", viewPlaces, "pin"],
   phonebook: ["전화번호부", viewPhonebook, "phone"],
   review: ["검수 대기함", viewReview, "check"],
@@ -288,18 +288,34 @@ const EVENT_STATUS = { pending: "검수 대기", active: "게시됨", disabled: 
 const EVENT_SOURCE = { calendar: "공식 학사일정", regex: "공지(자동 추출)", llm: "공지(AI 추출)" };
 const EVENT_CATEGORY = { calendar: "학사일정", academic: "학사공지", scholarship: "장학", event: "교내 행사" };
 
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 async function viewEvents(view) {
   const { items } = await api("/events");
   const setStatus = (row, status, label) => async () => {
+    const body = { status, request_id: rid() };
+    if (status === "active" && row.date_missing) {
+      // 날짜 확인 필요 행사: 원문을 보고 기간을 넣어야 게시된다
+      const raw = prompt(`「${row.title}」 기간을 입력하세요 (예: 2026-10-07 또는 2026-10-01~2026-10-10)`, "");
+      if (!raw) return;
+      const m = raw.replace(/\s/g, "").match(/^(\d{4}-\d{2}-\d{2})(?:~(\d{4}-\d{2}-\d{2}))?$/);
+      if (!m) return flash("날짜 형식이 올바르지 않습니다. 예: 2026-10-01~2026-10-10", true);
+      body.start_date = m[1];
+      body.end_date = m[2] || m[1];
+    }
     const reason = askReason(`「${row.title}」 ${label}`);
     if (!reason) return;
-    await api(`/events/${encodeURIComponent(row.id)}`, { method: "PATCH", body: { status, reason, request_id: rid() } });
+    body.reason = reason;
+    await api(`/events/${encodeURIComponent(row.id)}`, { method: "PATCH", body });
     await openTab("events");
     flash(`「${row.title}」 ${label} 완료`);
   };
   view.replaceChildren(
     el("div", "section-head", "학사 일정"),
-    el("p", "hint", "첫 화면 '오늘·이번 주 학사 일정'에 나가는 데이터입니다. 공식 학사일정과 기간이 명확한 학사·장학 공지는 자동 게시되고, AI가 추출한 일정은 원문을 확인한 뒤 게시하세요. 매일 수집 때 갱신되며, 숨긴 일정은 다시 나타나지 않습니다."),
+    el("p", "hint", "첫 화면 '학교 일정'에 나가는 데이터입니다(학사일정·학사/장학 공지·교내 행사). 기간이 명확한 일정은 자동 게시되고, AI가 추출하거나 포스터에서 읽은 일정은 원문을 확인한 뒤 게시하세요. '날짜 확인 필요' 행사는 [게시] 때 기간을 입력합니다. 종료된 일정은 기록으로 남고 학생 화면에는 나오지 않습니다."),
   );
   if (!items.length) {
     view.append(el("p", "hint", "아직 수집된 일정이 없습니다. '데이터 출처'에서 변경분 다시 수집을 실행하면 채워집니다."));
@@ -308,8 +324,8 @@ async function viewEvents(view) {
   view.append(
     table(
       items,
-      [[(r) => el("span", `status${r.status === "pending" ? " warn" : r.status === "disabled" ? " err" : ""}`, EVENT_STATUS[r.status] || r.status), "상태"], ["title", "일정"],
-       [(r) => el("span", null, `${r.start_date || ""} ~ ${r.end_date}`), "기간"],
+      [[(r) => el("span", `status${r.status === "pending" ? " warn" : r.status === "disabled" ? " err" : ""}`, r.status === "pending" && r.date_missing ? "날짜 확인 필요" : EVENT_STATUS[r.status] || r.status), "상태"], ["title", "일정"],
+       [(r) => el("span", r.end_date < todayIso() && !r.date_missing ? "hint" : null, r.date_missing ? "— (원문 확인)" : `${r.start_date || ""} ~ ${r.end_date}${r.end_date < todayIso() ? " (종료)" : ""}`), "기간"],
        [(r) => el("span", null, EVENT_CATEGORY[r.source_category] || r.source_category || "—"), "분류"],
        [(r) => el("span", null, EVENT_SOURCE[r.extracted_by] || r.extracted_by || "—"), "출처"],
        [(r) => sourceLink(r.source_url), "원문"], ["reviewed_by", "검수자"]],

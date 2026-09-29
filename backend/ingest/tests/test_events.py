@@ -204,3 +204,59 @@ def test_campus_events_filter_label_and_scan_once():
         check_event=check,
     )
     assert len(calls) == 3  # 같은 공지를 다시 묻지 않음
+
+
+def test_campus_events_poster_and_date_missing_and_past_kept():
+    from backend.ingest.events import EventCheck
+
+    docs = Docs()
+    url = "https://www.kyungnam.ac.kr/bbs/ko/1408/{}/artclView.do"
+    notices = {
+        "general": [
+            {"title": "해외봉사 모집", "summary": "", "url": url.format(11), "published": REF},
+            {"title": "선배 초청 특강", "summary": "", "url": url.format(12), "published": REF},
+            {
+                "title": "지난 박람회",
+                "summary": "9. 4. ~ 9. 5. 개최",
+                "url": url.format(13),
+                "published": date(2026, 9, 1),
+            },
+        ],
+    }
+    posters = []
+
+    def check_poster(text, images):
+        posters.append(text)
+        if "해외봉사" in text:
+            return EventCheck(
+                is_student_event=True,
+                title="KU 해외봉사 모집",
+                start_date="2026-09-29",
+                end_date="2026-10-10",
+                date_label="신청 기간",
+            )
+        return None  # 포스터 판독 실패 → 글자 판정으로
+
+    def check(text):
+        return EventCheck(
+            is_student_event=True, title=text.split()[0] + " 행사", date_label="행사일"
+        )
+
+    stats = collect_events(
+        docs,
+        today=REF,
+        now=NOW,
+        fetch_calendar=lambda: [],
+        fetch_notices=lambda b: notices.get(b, []),
+        check_event=check,
+        fetch_body=lambda u: "",
+        fetch_images=lambda u: [b"\xff\xd8\xffjpeg"],
+        check_poster=check_poster,
+    )
+    rows = {e["source_url"][-20:]: e for e in events(docs) if e.get("source_category") == "event"}
+    by_title = {e["title"]: e for e in rows.values()}
+    assert by_title["KU 해외봉사 모집"]["status"] == "pending"  # 포스터(AI) 날짜 → 검수
+    assert by_title["KU 해외봉사 모집"]["end_date"] == "2026-10-10"
+    assert by_title["선배 행사"]["date_missing"] is True  # 날짜 못 찾음 → 관리자가 입력
+    assert by_title["지난 행사"]["end_date"] == "2026-09-05"  # 지난 행사도 기록
+    assert stats["event_poster"] == 1 and len(posters) == 3
