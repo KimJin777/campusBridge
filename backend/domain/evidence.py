@@ -73,6 +73,11 @@ class ToolResult(BaseModel):
 SNIPPET_LEN = 120
 
 
+def _iso_day(value: object) -> str | None:
+    text = str(value or "")[:10]
+    return text if len(text) == 10 and text[4] == "-" and text[7] == "-" else None
+
+
 class EvidenceCard(BaseModel):
     """SSE evidence 이벤트 카드(04 §2-4). 본문 전체·supporting_quotes는 내보내지 않는다."""
 
@@ -87,6 +92,9 @@ class EvidenceCard(BaseModel):
     has_table: bool = False
     as_of: str | None = None
     stale: bool = False
+    # 학사일정 카드의 기간(화면 달력 보기용 — LLM이 아니라 근거 날짜로 그린다)
+    start_date: str | None = None
+    end_date: str | None = None
 
     @classmethod
     def from_evidence(
@@ -106,4 +114,6 @@ class EvidenceCard(BaseModel):
             has_table=bool(m.get("has_table", False)),
             as_of=as_of.isoformat() if isinstance(as_of, datetime) else as_of,
             stale=bool(m.get("stale", False)),
+            start_date=_iso_day(m.get("start")) if ev.kind == "calendar" else None,
+            end_date=_iso_day(m.get("end")) if ev.kind == "calendar" else None,
         )

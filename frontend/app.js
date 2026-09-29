@@ -85,6 +85,8 @@ class Turn {
     this.cards = $(".cards", node);
     this.answer = $(".answer", node);
     this.cardMap = new Map();
+    this.message = message;
+    this.calendarEvents = new Map(); // 근거 id → {title, start, end}
     this.turnId = null;
     node.scrollIntoView({ block: "end" });
   }
@@ -121,6 +123,9 @@ class Turn {
   addCards(items) {
     for (const c of items || []) {
       if (this.cardMap.has(c.id)) continue;
+      if (c.kind === "calendar" && /^\d{4}-\d{2}-\d{2}$/.test(c.start_date || "")) {
+        this.calendarEvents.set(c.id, { title: c.title, start: c.start_date, end: c.end_date || c.start_date });
+      }
       const kind = Object.hasOwn(KIND_LABEL, c.kind) ? c.kind : "guide";
       const card = el("article", `card kind-${kind}`);
       card.setAttribute("role", "listitem");
@@ -267,8 +272,31 @@ class Turn {
       box.append(ul);
     }
     this.renderDept(a.dept);
+    this.renderCalendar(a.cited || []);
     if (a.as_of) box.append(el("p", "asof", `${formatKst(a.as_of)} 기준 정보`));
     if (a.notice) box.append(el("p", "safety", a.notice));
+  }
+
+  // 학사일정 근거를 월 달력으로 — "달력/캘린더"를 물으면 펼친 채로, 아니면 버튼으로 연다
+  renderCalendar(cited) {
+    const citedSet = new Set(cited);
+    let events = [...this.calendarEvents].filter(([id]) => citedSet.has(id)).map(([, e]) => e);
+    if (!events.length) events = [...this.calendarEvents.values()];
+    if (!events.length) return;
+    const wrap = el("section", "cal-wrap");
+    const toggle = el("button", "cal-toggle", "");
+    toggle.type = "button";
+    const body = el("div", "cal-body");
+    const setOpen = (open) => {
+      body.hidden = !open;
+      toggle.replaceChildren(icon("calendar", 15), document.createTextNode(open ? "달력 접기" : "달력으로 보기"));
+      toggle.setAttribute("aria-expanded", String(open));
+    };
+    toggle.addEventListener("click", () => setOpen(body.hidden));
+    for (const month of calendarMonths(events).slice(0, 3)) body.append(monthGrid(month, events));
+    wrap.append(toggle, body);
+    setOpen(/달력|캘린더|calendar/i.test(this.message));
+    this.answer.append(wrap);
   }
 
   renderFallback(f) {
@@ -491,6 +519,71 @@ async function init() {
     }
   } catch {}
   loadToday();
+}
+
+// ── 달력 보기 ──────────────────────────────────────────────────────────
+function isoLocal(y, m, d) {
+  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function calendarMonths(events) {
+  const keys = new Set();
+  for (const e of events) keys.add(e.start.slice(0, 7));
+  return [...keys].sort();
+}
+
+function monthGrid(ym, events) {
+  const [y, m] = ym.split("-").map(Number);
+  const byDay = new Map();
+  for (const e of events) {
+    for (const day of dayListLocal(e.start, e.end)) {
+      if (!day.startsWith(ym)) continue;
+      if (!byDay.has(day)) byDay.set(day, []);
+      byDay.get(day).push(e.title);
+    }
+  }
+  const box = el("div", "cal-month");
+  box.append(el("div", "cal-title", `${y}년 ${m}월`));
+  const grid = el("div", "cal-grid");
+  grid.setAttribute("role", "grid");
+  for (const [i, w] of ["일", "월", "화", "수", "목", "금", "토"].entries()) grid.append(el("div", `cal-dow${i === 0 ? " sun" : i === 6 ? " sat" : ""}`, w));
+  const first = new Date(y, m - 1, 1).getDay();
+  const days = new Date(y, m, 0).getDate();
+  for (let i = 0; i < first; i += 1) grid.append(el("div", "cal-cell empty"));
+  const today = isoLocal(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+  for (let d = 1; d <= days; d += 1) {
+    const iso = isoLocal(y, m - 1, d);
+    const dow = (first + d - 1) % 7;
+    const titles = byDay.get(iso) || [];
+    const cell = el("div", `cal-cell${titles.length ? " has" : ""}${dow === 0 ? " sun" : dow === 6 ? " sat" : ""}${iso === today ? " today" : ""}`);
+    cell.append(el("span", "cal-num", String(d)));
+    for (const t of titles.slice(0, 2)) cell.append(el("span", "cal-ev", t));
+    if (titles.length) cell.title = titles.join("\n");
+    grid.append(cell);
+  }
+  box.append(grid);
+  const list = el("ul", "cal-list");
+  for (const e of events.filter((x) => x.start.startsWith(ym) || x.end.startsWith(ym)).sort((a, b) => a.start.localeCompare(b.start))) {
+    const when = e.start === e.end ? e.start.slice(5).replace("-", ".") : `${e.start.slice(5).replace("-", ".")} ~ ${e.end.slice(5).replace("-", ".")}`;
+    const li = el("li");
+    li.append(el("span", "cal-when", when), document.createTextNode(e.title));
+    list.append(li);
+  }
+  box.append(list);
+  return box;
+}
+
+function dayListLocal(start, end) {
+  const [ys, ms, ds] = start.split("-").map(Number);
+  const [ye, me, de] = end.split("-").map(Number);
+  const out = [];
+  const d = new Date(ys, ms - 1, ds);
+  const last = new Date(ye, me - 1, de);
+  for (let i = 0; d <= last && i < 62; i += 1) {
+    out.push(isoLocal(d.getFullYear(), d.getMonth(), d.getDate()));
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
 }
 
 // 오늘·이번 주 학사 일정(진행 중 + 7일 안 마감). 없거나 실패하면 카드를 숨긴다

@@ -117,6 +117,29 @@ a { color: var(--primary); }
 .features li { gap: 6px; }
 .features .ico { color: var(--primary); }
 .chips-label { justify-content: center; gap: 7px; margin: 0 0 14px; font: 600 13px/1.4 "Plus Jakarta Sans", Inter, sans-serif; color: var(--muted); }
+.cal-wrap { margin-top: 12px; }
+.cal-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 9999px; background: var(--surface); color: var(--secondary); font-size: 13px; font-weight: 600; cursor: pointer; }
+.cal-toggle:hover { border-color: var(--primary); }
+.cal-body { margin-top: 10px; display: grid; gap: 14px; }
+.cal-month { padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.cal-title { margin-bottom: 8px; font: 700 15px/1.3 "Plus Jakarta Sans", Inter, sans-serif; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.cal-dow { padding: 2px 0; color: var(--muted); font-size: 11px; font-weight: 600; text-align: center; }
+.cal-dow.sun, .cal-cell.sun .cal-num { color: #dc2626; }
+.cal-dow.sat, .cal-cell.sat .cal-num { color: var(--primary); }
+.cal-cell { display: flex; flex-direction: column; gap: 2px; min-height: 58px; padding: 4px; border-radius: 8px; background: color-mix(in srgb, var(--line) 25%, transparent); overflow: hidden; }
+.cal-cell.empty { background: transparent; }
+.cal-cell.has { background: var(--primary-soft); }
+.cal-cell.today { outline: 2px solid var(--primary); outline-offset: -2px; }
+.cal-num { font-size: 12px; font-weight: 600; }
+.cal-ev { overflow: hidden; color: var(--secondary); font-size: 10px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.cal-list { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 3px; font-size: 13px; }
+.cal-when { display: inline-block; min-width: 96px; margin-right: 6px; color: var(--muted); font-variant-numeric: tabular-nums; }
+@media (max-width: 480px) {
+  .cal-cell { min-height: 38px; }
+  .cal-ev { display: none; }
+  .cal-cell.has::after { content: ""; width: 6px; height: 6px; margin: auto auto 0; border-radius: 50%; background: var(--primary); }
+}
 .today { width: min(100%, 560px); margin: 0 auto 22px; }
 .today-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .today-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-1); text-align: left; }
