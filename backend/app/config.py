@@ -41,6 +41,12 @@ class Settings:
     firestore_db: str = field(default_factory=lambda: _str("FIRESTORE_DB", "campusbridge"))
     rules_bucket: str = field(default_factory=lambda: _str("RULES_BUCKET"))
 
+    # 변경분 강제 재수집 Job(04 §6, #535 결정) — 비어 있으면 관리자 API가 안전 거부
+    ingestion_job_name: str = field(default_factory=lambda: _str("INGESTION_JOB_NAME"))
+    ingestion_job_location: str = field(
+        default_factory=lambda: _str("INGESTION_JOB_LOCATION", "asia-northeast3")
+    )
+
     # Gemini (D4 확인 2026-09-29: global에서 3.5-flash·2.5-flash 호출 OK)
     gemini_location: str = field(default_factory=lambda: _str("GEMINI_LOCATION", "global"))
     gemini_model: str = field(default_factory=lambda: _str("GEMINI_MODEL", "gemini-3.5-flash"))
