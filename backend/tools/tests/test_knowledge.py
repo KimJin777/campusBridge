@@ -29,8 +29,7 @@ class _SearchClient:
         self.requests.append((request, timeout))
         kind = "guide" if '"guide"' in request.filter else "rule"
         return [
-            _Result(_Document(document_id, data))
-            for document_id, data in self.rows_by_kind[kind]
+            _Result(_Document(document_id, data)) for document_id, data in self.rows_by_kind[kind]
         ]
 
 

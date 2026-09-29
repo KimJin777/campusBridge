@@ -262,11 +262,7 @@ async def get_notices(
         )
     rows.sort(key=lambda row: row[0] or datetime.min.replace(tzinfo=UTC), reverse=True)
     items = [item for _, item in rows[:5]]
-    result = (
-        ToolResult(ok=True, items=items, as_of=utc_now())
-        if items
-        else ToolResult.empty()
-    )
+    result = ToolResult(ok=True, items=items, as_of=utc_now()) if items else ToolResult.empty()
     return _remember(cache_key, result)
 
 
@@ -402,9 +398,7 @@ async def get_academic_calendar(
         and date.fromisoformat(item.meta["end_date"]) >= start_date
     ]
     result = (
-        ToolResult(ok=True, items=filtered, as_of=utc_now())
-        if filtered
-        else ToolResult.empty()
+        ToolResult(ok=True, items=filtered, as_of=utc_now()) if filtered else ToolResult.empty()
     )
     return _remember(cache_key, result)
 

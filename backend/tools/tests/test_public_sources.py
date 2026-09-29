@@ -52,9 +52,7 @@ async def test_notices_filters_keyword_and_orders_by_pubdate() -> None:
       </item>
     </channel></rss>"""
     async with _client(rss, "application/rss+xml") as client:
-        result = await get_notices(
-            "academic", "휴학", days=30, settings=Settings(), client=client
-        )
+        result = await get_notices("academic", "휴학", days=30, settings=Settings(), client=client)
 
     assert result.ok
     assert [item.title for item in result.items] == ["휴학 신청 안내"]

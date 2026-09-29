@@ -32,4 +32,3 @@ __all__ = [
     "get_notices",
     "search_academic_knowledge",
 ]
-

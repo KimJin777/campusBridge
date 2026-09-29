@@ -77,11 +77,14 @@ async def download_rules(
             content_hash = f"sha256:{hashlib.sha256(response.content).hexdigest()}"
             destination = output_dir / f"{record.rule_no}_{record.file_version}.hwp"
             previous = entries.get(record.rule_no)
-            if source_changed(
-                previous,
-                file_version=record.file_version,
-                content_hash=content_hash,
-            ) or not destination.exists():
+            if (
+                source_changed(
+                    previous,
+                    file_version=record.file_version,
+                    content_hash=content_hash,
+                )
+                or not destination.exists()
+            ):
                 partial = destination.with_suffix(".hwp.part")
                 partial.write_bytes(response.content)
                 partial.replace(destination)

@@ -99,9 +99,7 @@ def test_addenda_heading_can_touch_parenthesis() -> None:
 
 
 def test_long_article_splits_by_paragraph_then_by_character() -> None:
-    paragraph_text = "제1조(긴 조문) " + "\n".join(
-        ["① " + "가" * 1_100, "② " + "나" * 1_100]
-    )
+    paragraph_text = "제1조(긴 조문) " + "\n".join(["① " + "가" * 1_100, "② " + "나" * 1_100])
     article = split_articles(paragraph_text, rule_no="101")[0]
     chunks = chunk_article(article)
     assert [chunk.article_id for chunk in chunks] == ["101_main_1_p1", "101_main_1_p2"]
@@ -144,4 +142,3 @@ def test_addenda_without_number_gets_zero_id() -> None:
 def test_empty_addenda_preamble_is_not_emitted_before_numbered_article() -> None:
     articles = split_articles("부칙(2025. 1. 1.)\n제1조(시행일) 시행한다.", rule_no="101")
     assert [article.article_id for article in articles] == ["101_add_s01_1"]
-
