@@ -94,6 +94,50 @@ body.admin .brand span { color: var(--primary); }
 }
 .tabs button[aria-selected="true"] svg { color: inherit; }
 
+/* 왼쪽 메뉴(데스크톱) — 모바일은 아래 미디어쿼리에서 가로 스크롤 메뉴로 돌아간다 */
+.admin-shell:not([hidden]) {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  align-items: start;
+  gap: 4px;
+}
+.admin-shell .tabs {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 3px;
+  margin-right: 0;
+}
+.admin-shell .tabs button {
+  justify-content: flex-start;
+  width: 100%;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 13px;
+  text-align: left;
+}
+.admin-content { min-width: 0; }
+
+.shortcut-group { margin: 18px 0 8px; font: 600 14px/1.4 "Plus Jakarta Sans", Inter, sans-serif; color: var(--muted); }
+.shortcut-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.shortcut {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+  box-shadow: var(--shadow-1);
+  transition: border-color .15s, transform .15s;
+}
+.shortcut:hover { border-color: var(--primary); transform: translateY(-1px); }
+.shortcut:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 30%, transparent); outline-offset: 2px; }
+.shortcut-title { display: flex; align-items: center; gap: 7px; font-weight: 600; }
+.shortcut-title svg { color: var(--secondary); }
+.shortcut-desc { color: var(--muted); font-size: 12px; }
+
 .banner {
   margin: 12px 20px 0;
   padding: 10px 13px;
@@ -229,6 +273,9 @@ section.tile ul { margin: 7px 0 0; padding-left: 19px; font-size: 12px; }
 .bulk-tools { margin: 9px 0; }
 
 @media (max-width: 767px) {
+  .admin-shell:not([hidden]) { display: block; }
+  .admin-shell .tabs { flex-direction: row; margin-right: 8px; }
+  .admin-shell .tabs button { width: auto; border-radius: 999px; padding: 7px 11px; font-size: 12px; }
   body.admin .top { margin: 0 12px; }
   body.admin .brand { font-size: 15px; }
   .admin-kicker { display: none; }

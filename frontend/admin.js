@@ -73,7 +73,7 @@ async function initLogin() {
         initVersion();
         $("#login").hidden = true;
         $("#app").hidden = false;
-        openTab(location.hash.slice(1) || "sources");
+        openTab(location.hash.slice(1) || "shortcuts");
       } catch (e) {
         if (e.message !== "unauthorized") showLogin(e.message);
       }
@@ -174,6 +174,7 @@ function field(label, name, type = "text", extra = {}) {
 
 // ── 탭 ──────────────────────────────────────────────────────────────────
 const TABS = {
+  shortcuts: ["바로가기", viewShortcuts, "external"],
   sources: ["데이터 출처", viewSources, "book"],
   runs: ["수집 실행", viewRuns, "retry"],
   disable: ["긴급 회수", viewDisable, "alert"],
@@ -189,7 +190,7 @@ const TABS = {
 };
 
 function openTab(name) {
-  if (!TABS[name]) name = "sources";
+  if (!TABS[name]) name = "shortcuts";
   if (location.hash.slice(1) !== name) {
     location.hash = name; // hashchange가 다시 불러 그린다(이중 로드 방지)
     return;
@@ -211,6 +212,52 @@ function openTab(name) {
   return TABS[name][1](view).catch((e) => {
     if (e.message !== "unauthorized") view.replaceChildren(el("p", "msg err", e.message));
   });
+}
+
+// ── 바로가기: 운영에 자주 여는 화면(서비스·GCP 콘솔·저장소) ─────────────────────
+const GCP = "https://console.cloud.google.com";
+const PROJECT = "project=campusbridge-510101";
+const SHORTCUTS = [
+  ["서비스", [
+    ["학생 화면", "/", "chat", "배포된 학생용 챗봇"],
+    ["개인정보 처리방침", "/privacy", "info", "학생 화면에 연결된 안내문"],
+    ["상태 점검(API)", "/api/status", "check", "버전·기본 상태 JSON"],
+  ]],
+  ["배포·운영 (GCP 콘솔)", [
+    ["Cloud Run 리비전", `${GCP}/run/detail/asia-northeast3/campusbridge-web/revisions?${PROJECT}`, "bolt", "현재 리비전·트래픽·로그·측정항목"],
+    ["Cloud Build 기록", `${GCP}/cloud-build/builds?${PROJECT}`, "retry", "배포 빌드 단계별 성공 여부"],
+    ["수집 Job 실행", `${GCP}/run/jobs/details/asia-northeast3/campusbridge-ingest/executions?${PROJECT}`, "retry", "campusbridge-ingest 실행 이력"],
+    ["로그 탐색기", `${GCP}/logs/query?${PROJECT}`, "alert", "오류·요청 로그 검색"],
+  ]],
+  ["데이터·인증 (GCP 콘솔)", [
+    ["Firestore", `${GCP}/firestore/databases/campusbridge/data?${PROJECT}`, "book", "대화·장소·감사 로그 원본 데이터"],
+    ["Vertex AI Search", `${GCP}/gen-app-builder/engines?${PROJECT}`, "spark", "학칙·학사안내 검색 엔진"],
+    ["OAuth 대상·테스트 사용자", `${GCP}/auth/audience?${PROJECT}`, "bot", "관리자 추가 시 테스트 사용자도 등록"],
+    ["결제·예산", `${GCP}/billing?${PROJECT}`, "coin", "비용 확인"],
+  ]],
+  ["기타", [
+    ["GitHub 저장소", "https://github.com/KimJin777/campusBridge", "external", "소스 코드·커밋 기록"],
+    ["경남대학교 홈페이지", "https://www.kyungnam.ac.kr", "building", "학교 공식 사이트"],
+  ]],
+];
+
+async function viewShortcuts(view) {
+  view.replaceChildren(el("div", "section-head", "바로가기"), el("p", "hint", "운영에 자주 여는 화면입니다. 새 탭으로 열립니다."));
+  for (const [group, links] of SHORTCUTS) {
+    view.append(el("h3", "shortcut-group", group));
+    const grid = el("div", "shortcut-grid");
+    for (const [title, href, iconName, desc] of links) {
+      const a = el("a", "shortcut");
+      a.href = href;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      const head = el("span", "shortcut-title");
+      head.append(icon(iconName, 16), document.createTextNode(title));
+      a.append(head, el("span", "shortcut-desc", desc));
+      grid.append(a);
+    }
+    view.append(grid);
+  }
 }
 
 async function viewSources(view) {

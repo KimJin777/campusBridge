@@ -34,10 +34,12 @@
     <p id="login-msg" class="hint"></p>
   </section>
 
-  <main id="app" hidden>
-    <nav class="tabs" role="tablist" id="tabs"></nav>
-    <p id="banner" class="banner" hidden></p>
-    <section id="view" class="panel"></section>
+  <main id="app" class="admin-shell" hidden>
+    <nav class="tabs" role="tablist" id="tabs" aria-label="관리자 메뉴"></nav>
+    <div class="admin-content">
+      <p id="banner" class="banner" hidden></p>
+      <section id="view" class="panel"></section>
+    </div>
   </main>
 </body>
 </html>
