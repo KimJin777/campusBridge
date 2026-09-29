@@ -1,4 +1,5 @@
 """공통 계약 단일 원본(상세설계 00 공통 규약). 변경은 게시판 합의 후 소유자(Opus5)가 반영한다."""
+
 from backend.domain.answer import (
     Answer,
     Dept,

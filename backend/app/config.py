@@ -2,6 +2,7 @@
 
 코드에 프로젝트 ID·모델명·URL을 하드코딩하지 않는다. 운영 값은 Cloud Build 치환 변수로 주입한다.
 """
+
 from __future__ import annotations
 
 import os
@@ -33,11 +34,15 @@ class Settings:
     # Gemini (D4 확인 2026-09-29: global에서 3.5-flash·2.5-flash 호출 OK)
     gemini_location: str = field(default_factory=lambda: _str("GEMINI_LOCATION", "global"))
     gemini_model: str = field(default_factory=lambda: _str("GEMINI_MODEL", "gemini-3.5-flash"))
-    gemini_fallback_model: str = field(default_factory=lambda: _str("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash"))
+    gemini_fallback_model: str = field(
+        default_factory=lambda: _str("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")
+    )
 
     # Vertex AI Search
     search_location: str = field(default_factory=lambda: _str("SEARCH_LOCATION", "global"))
-    search_datastore_id: str = field(default_factory=lambda: _str("SEARCH_DATASTORE_ID", "rules-articles"))
+    search_datastore_id: str = field(
+        default_factory=lambda: _str("SEARCH_DATASTORE_ID", "rules-articles")
+    )
     search_serving_config: str = field(default_factory=lambda: _str("SEARCH_SERVING_CONFIG"))
 
     # 관리자 인증(04 §6) — 허용 이메일은 소문자로 비교
@@ -48,11 +53,19 @@ class Settings:
 
     # 외부 수집(03 공통, 01 §0)
     allowed_hosts: frozenset[str] = field(
-        default_factory=lambda: frozenset(_list("ALLOWED_HOSTS", "yz.kyungnam.ac.kr,www.kyungnam.ac.kr"))
+        default_factory=lambda: frozenset(
+            _list("ALLOWED_HOSTS", "yz.kyungnam.ac.kr,www.kyungnam.ac.kr")
+        )
     )
-    rss_academic: str = field(default_factory=lambda: _str("RSS_ACADEMIC", "/bbs/ko/1398/rssList.do?row=50"))
-    rss_scholarship: str = field(default_factory=lambda: _str("RSS_SCHOLARSHIP", "/bbs/ko/1407/rssList.do?row=50"))
-    rss_general: str = field(default_factory=lambda: _str("RSS_GENERAL", "/bbs/ko/1408/rssList.do?row=50"))
+    rss_academic: str = field(
+        default_factory=lambda: _str("RSS_ACADEMIC", "/bbs/ko/1398/rssList.do?row=50")
+    )
+    rss_scholarship: str = field(
+        default_factory=lambda: _str("RSS_SCHOLARSHIP", "/bbs/ko/1407/rssList.do?row=50")
+    )
+    rss_general: str = field(
+        default_factory=lambda: _str("RSS_GENERAL", "/bbs/ko/1408/rssList.do?row=50")
+    )
     collection_mode: str = field(default_factory=lambda: _str("COLLECTION_MODE", "approved"))
 
     # 비용·시간 상한(02 §3, 07 §5)

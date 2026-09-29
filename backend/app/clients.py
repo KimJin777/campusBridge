@@ -4,6 +4,7 @@
 - 지연 = base * 2**n * (0.5 + random()); 다음 시도가 deadline을 넘기면 재시도하지 않고 실패
 - 재시도 대상(429·5xx·타임아웃) 외 예외는 즉시 전파
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -12,9 +13,6 @@ import logging
 import random
 import time
 from collections.abc import Awaitable, Callable
-from typing import TypeVar
-
-T = TypeVar("T")
 
 log = logging.getLogger("campusbridge.clients")
 
@@ -67,10 +65,10 @@ def remaining(deadline: float | None) -> float | None:
     return None if deadline is None else deadline - time.monotonic()
 
 
-async def call_with_retry(
+async def call_with_retry[T](
     fn: Callable[[], Awaitable[T]],
     *,
-    timeout: float,
+    timeout: float,  # noqa: ASYNC109 — 07 §5 시그니처(호출당 강제 중단값)
     deadline: float | None = None,
     attempts: int = 3,
     base: float = 1.0,
@@ -107,12 +105,14 @@ async def call_with_retry(
         if left is not None and delay >= left:
             break  # 다음 시도가 마감을 넘긴다 → 재시도하지 않음
         await sleep(delay)
-    cause = last or asyncio.TimeoutError("deadline exceeded before call")
-    _log(target, started, max(made - 1, 0), "timeout" if timed_out else f"status:{status_of(cause)}")
+    cause = last or TimeoutError("deadline exceeded before call")
+    _log(
+        target, started, max(made - 1, 0), "timeout" if timed_out else f"status:{status_of(cause)}"
+    )
     raise CallFailed(target, made, cause, timed_out)
 
 
-async def call_profile(
+async def call_profile[T](
     profile: str,
     fn: Callable[[], Awaitable[T]],
     *,
@@ -121,7 +121,9 @@ async def call_profile(
 ) -> T:
     """07 §5 표의 호출 종류 이름으로 부른다."""
     timeout, retries = PROFILES[profile]
-    return await call_with_retry(fn, timeout=timeout, deadline=deadline, attempts=retries + 1, target=target or profile)
+    return await call_with_retry(
+        fn, timeout=timeout, deadline=deadline, attempts=retries + 1, target=target or profile
+    )
 
 
 def _log(target: str, started: float, retries: int, result: str) -> None:

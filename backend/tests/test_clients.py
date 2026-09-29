@@ -71,7 +71,17 @@ def test_no_retry_when_backoff_would_pass_deadline():
     fn, calls = flaky([HttpErr(429), HttpErr(429)])
     # 지연 = base(10) * (0.5 + 0.5) = 10초 > 남은 시간 → 재시도하지 않음
     with pytest.raises(CallFailed) as ei:
-        run(call_with_retry(fn, timeout=1, deadline=deadline_after(2000), attempts=3, base=10, sleep=no_sleep, rand=lambda: 0.5))
+        run(
+            call_with_retry(
+                fn,
+                timeout=1,
+                deadline=deadline_after(2000),
+                attempts=3,
+                base=10,
+                sleep=no_sleep,
+                rand=lambda: 0.5,
+            )
+        )
     assert calls["n"] == 1 and ei.value.attempts == 1
 
 
@@ -87,7 +97,11 @@ def test_call_limited_by_remaining_deadline():
         await asyncio.sleep(1)
 
     with pytest.raises(CallFailed):
-        run(call_with_retry(slow, timeout=10, deadline=deadline_after(50), attempts=1, sleep=no_sleep))
+        run(
+            call_with_retry(
+                slow, timeout=10, deadline=deadline_after(50), attempts=1, sleep=no_sleep
+            )
+        )
 
 
 def test_status_of_reads_response_attribute():

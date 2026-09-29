@@ -1,4 +1,5 @@
 """공통 오류 계약(상세설계 04 §7, SSE error 이벤트 04 §2-4)."""
+
 from __future__ import annotations
 
 from typing import Literal

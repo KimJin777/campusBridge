@@ -8,12 +8,20 @@
 
 부정·양태 반전은 삭제가 아니라 ReviewFlag로 표시한다. 좁은 반전만 문장을 숨긴다(suppress_sentence).
 """
+
 from __future__ import annotations
 
 import re
 import unicodedata
 
-from backend.domain.answer import Draft, DraftSentence, DroppedSentence, Resolution, ReviewFlag, VerifyReport
+from backend.domain.answer import (
+    Draft,
+    DraftSentence,
+    DroppedSentence,
+    Resolution,
+    ReviewFlag,
+    VerifyReport,
+)
 from backend.domain.evidence import Evidence
 from backend.domain.thread import Profile
 
@@ -43,7 +51,7 @@ def check_sentence(s: DraftSentence, ev: dict[str, Evidence], profile: Profile) 
         return "len_mismatch"  # zip이 조용히 자르는 것 방지
     if any(cid not in ev for cid in s.cite_ids):
         return "unknown_id"
-    for cid, q in zip(s.cite_ids, s.supporting_quotes):
+    for cid, q in zip(s.cite_ids, s.supporting_quotes, strict=True):
         nq = normalize(q)
         if len(nq) < MIN_QUOTE_LEN:
             return "quote_too_short"
@@ -64,7 +72,20 @@ def check_sentence(s: DraftSentence, ev: dict[str, Evidence], profile: Profile) 
 # ── 부정·양태 반전 표시 ───────────────────────────────────────────────
 NEGATION = ("할 수 없", "하지 아니", "불가")
 OBLIGATION, PERMISSION = "하여야", "할 수 있"
-RISKY = ("아니", "않", "없", "못", "불가", "제외", "금지", "그러하지", "단,", "다만", "하여야", "할 수")
+RISKY = (
+    "아니",
+    "않",
+    "없",
+    "못",
+    "불가",
+    "제외",
+    "금지",
+    "그러하지",
+    "단,",
+    "다만",
+    "하여야",
+    "할 수",
+)
 _STEM = re.compile(r"([가-힣]{2,})\s*$")
 
 
@@ -80,7 +101,7 @@ def _stem_before(text: str, marker: str) -> str | None:
 
 
 def _narrow_flip(sentence: str, quotes: str) -> bool:
-    """문장과 인용 구간이 같은 서술어 어간을 공유하면서 한쪽만 부정이거나, 의무↔가능이 뒤바뀐 경우."""
+    """좁은 반전: 같은 서술어 어간을 공유하며 한쪽만 부정이거나, 의무↔가능이 뒤바뀐 경우."""
     for neg in NEGATION:
         a, b = neg in sentence, neg in quotes
         if a != b:
@@ -88,6 +109,7 @@ def _narrow_flip(sentence: str, quotes: str) -> bool:
             other = quotes if a else sentence
             if stem and stem in other:
                 return True
+
     def only(tok: str, x: str, y: str) -> bool:
         return tok in x and tok not in y
 
@@ -104,18 +126,26 @@ def polarity_flag(s: DraftSentence, index: int) -> ReviewFlag | None:
     quotes = " ".join(s.supporting_quotes)
     if _narrow_flip(s.text, quotes):
         return ReviewFlag(
-            code="polarity_flip", severity="high", source_ids=list(s.cite_ids),
-            sentence_index=index, public_action="suppress_sentence",
+            code="polarity_flip",
+            severity="high",
+            source_ids=list(s.cite_ids),
+            sentence_index=index,
+            public_action="suppress_sentence",
         )
     if _risky_mismatch(s.text, quotes):
         return ReviewFlag(
-            code="risky_token", severity="low", source_ids=list(s.cite_ids),
-            sentence_index=index, public_action="internal_only",
+            code="risky_token",
+            severity="low",
+            source_ids=list(s.cite_ids),
+            sentence_index=index,
+            public_action="internal_only",
         )
     return None
 
 
-SUPPRESSED_TEMPLATE = "일부 내용은 근거 해석 확인이 필요해 표시하지 않았습니다. 원문을 확인해 주세요."
+SUPPRESSED_TEMPLATE = (
+    "일부 내용은 근거 해석 확인이 필요해 표시하지 않았습니다. 원문을 확인해 주세요."
+)
 
 
 def verify(
@@ -150,13 +180,19 @@ def verify(
 
     if resolution is not None:
         cited = {c for s in kept + kept_cl + kept_na for c in s.cite_ids}
-        for need, ids in resolution.adopted.items():
+        for ids in resolution.adopted.values():
             if ids and not cited.intersection(ids):
-                flags.append(ReviewFlag(
-                    code="adopted_not_cited", severity="medium", source_ids=list(ids),
-                    public_action="internal_only",
-                ))
+                flags.append(
+                    ReviewFlag(
+                        code="adopted_not_cited",
+                        severity="medium",
+                        source_ids=list(ids),
+                        public_action="internal_only",
+                    )
+                )
 
     report = VerifyReport(total=len(draft.sentences), kept=len(kept), dropped=dropped)
-    verified = draft.model_copy(update={"sentences": kept, "checklist": kept_cl, "next_actions": kept_na})
+    verified = draft.model_copy(
+        update={"sentences": kept, "checklist": kept_cl, "next_actions": kept_na}
+    )
     return verified, report, flags

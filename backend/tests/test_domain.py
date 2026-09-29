@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -19,7 +19,12 @@ from backend.domain.answer import PublicSentence
 
 
 def ev(**kw):
-    base = dict(id="101_main_32", kind="article", title="학칙 제32조(휴학)", text="휴학은 통산 3년을 초과할 수 없다." * 10)
+    base = dict(
+        id="101_main_32",
+        kind="article",
+        title="학칙 제32조(휴학)",
+        text="휴학은 통산 3년을 초과할 수 없다." * 10,
+    )
     base.update(kw)
     return Evidence(**base)
 
@@ -28,7 +33,9 @@ def test_schema_version():
     assert SCHEMA_VERSION == 1
 
 
-@pytest.mark.parametrize("kind", ["article", "guide", "notice", "calendar", "menu", "department", "place"])
+@pytest.mark.parametrize(
+    "kind", ["article", "guide", "notice", "calendar", "menu", "department", "place"]
+)
 def test_evidence_kinds_accepted(kind):
     assert ev(kind=kind).kind == kind
 
@@ -47,7 +54,7 @@ def test_toolresult_helpers():
 
 
 def test_evidence_card_snippet_and_meta():
-    as_of = datetime(2026, 9, 29, tzinfo=timezone.utc)
+    as_of = datetime(2026, 9, 29, tzinfo=UTC)
     e = ev(meta={"department": "학사지원팀", "has_table": True, "as_of": as_of, "stale": True})
     card = EvidenceCard.from_evidence(e)
     assert card.state == "candidate"
@@ -68,13 +75,19 @@ def test_profile_grade_range():
 
 
 def test_correction_alias_roundtrip():
-    c = Correction.model_validate({"from": "휴악", "to": "휴학", "confidence": 0.95, "kind": "spelling"})
+    c = Correction.model_validate(
+        {"from": "휴악", "to": "휴학", "confidence": 0.95, "kind": "spelling"}
+    )
     assert c.from_ == "휴악"
     assert c.model_dump(by_alias=True)["from"] == "휴악"
 
 
 def test_answer_does_not_expose_supporting_quotes():
-    s = DraftSentence(text="휴학은 통산 3년을 넘을 수 없습니다.", cite_ids=["101_main_32"], supporting_quotes=["통산 3년을 초과할 수 없다"])
+    s = DraftSentence(
+        text="휴학은 통산 3년을 넘을 수 없습니다.",
+        cite_ids=["101_main_32"],
+        supporting_quotes=["통산 3년을 초과할 수 없다"],
+    )
     a = Answer(sentences=[PublicSentence.from_draft(s)], cited=["101_main_32"])
     assert "supporting_quotes" not in a.model_dump_json()
     assert a.notice

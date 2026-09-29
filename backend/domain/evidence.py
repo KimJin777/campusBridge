@@ -2,6 +2,7 @@
 
 기준: 상세설계 02 §2(Evidence), 03 상단(ToolResult), 04 §2-4(EvidenceCard).
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -42,7 +43,9 @@ class Evidence(BaseModel):
     title: str
     text: str  # 인용 검증 대상 본문
     url: str | None = None
-    meta: dict[str, Any] = Field(default_factory=dict)  # department, dept_id, revision_date, has_table, as_of, stale 등
+    meta: dict[str, Any] = Field(
+        default_factory=dict
+    )  # department, dept_id, revision_date, has_table, as_of, stale 등
 
 
 class ToolResult(BaseModel):
@@ -59,11 +62,11 @@ class ToolResult(BaseModel):
     missing_source_kinds: list[str] = Field(default_factory=list)  # 실패·0건인 출처 종류
 
     @classmethod
-    def fail(cls, error_code: ToolErrorCode, message: str | None = None) -> "ToolResult":
+    def fail(cls, error_code: ToolErrorCode, message: str | None = None) -> ToolResult:
         return cls(ok=False, error_code=error_code, message=message)
 
     @classmethod
-    def empty(cls, message: str = "현재 게시된 정보가 없습니다") -> "ToolResult":
+    def empty(cls, message: str = "현재 게시된 정보가 없습니다") -> ToolResult:
         return cls(ok=True, message=message)
 
 
@@ -71,7 +74,7 @@ SNIPPET_LEN = 120
 
 
 class EvidenceCard(BaseModel):
-    """SSE evidence 이벤트로 내보내는 카드(04 §2-4). 본문 전체·supporting_quotes는 내보내지 않는다."""
+    """SSE evidence 이벤트 카드(04 §2-4). 본문 전체·supporting_quotes는 내보내지 않는다."""
 
     id: str
     kind: EvidenceKind
@@ -86,7 +89,9 @@ class EvidenceCard(BaseModel):
     stale: bool = False
 
     @classmethod
-    def from_evidence(cls, ev: Evidence, state: Literal["candidate", "cited"] = "candidate") -> "EvidenceCard":
+    def from_evidence(
+        cls, ev: Evidence, state: Literal["candidate", "cited"] = "candidate"
+    ) -> EvidenceCard:
         m = ev.meta
         as_of = m.get("as_of")
         return cls(

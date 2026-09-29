@@ -1,4 +1,5 @@
 """대화 상태 계약 — Firestore threads 문서와 TurnState가 공유한다(상세설계 02 §2·§4-2, 04 §2-1)."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -15,7 +16,7 @@ class Profile(BaseModel):
     scholarship: Literal["yes", "no", "unknown"] | None = None  # "모름"을 표현하려고 bool이 아님
     dept: str | None = None
 
-    def merged(self, other: "Profile") -> "Profile":
+    def merged(self, other: Profile) -> Profile:
         """other에서 채워진 값만 덮어쓴다(None은 기존 값 유지)."""
         return self.model_copy(update=other.model_dump(exclude_none=True))
 

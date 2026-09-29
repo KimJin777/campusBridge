@@ -2,7 +2,13 @@ from backend.app.config import Settings
 
 
 def test_defaults_match_design(monkeypatch):
-    for k in ("GEMINI_MODEL", "GEMINI_FALLBACK_MODEL", "MAX_TOOL_CALLS", "HARD_DEADLINE_MS", "ADMIN_EMAILS"):
+    for k in (
+        "GEMINI_MODEL",
+        "GEMINI_FALLBACK_MODEL",
+        "MAX_TOOL_CALLS",
+        "HARD_DEADLINE_MS",
+        "ADMIN_EMAILS",
+    ):
         monkeypatch.delenv(k, raising=False)
     s = Settings()
     assert s.gemini_model == "gemini-3.5-flash"

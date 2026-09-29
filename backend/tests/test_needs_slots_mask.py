@@ -9,7 +9,11 @@ def names(calls):
 
 
 def test_leave_scenario_plan():
-    calls = plan_calls(["procedure_and_contact", "current_deadline", "eligibility_or_limit"], search_query="휴학 신청", topic="휴학")
+    calls = plan_calls(
+        ["procedure_and_contact", "current_deadline", "eligibility_or_limit"],
+        search_query="휴학 신청",
+        topic="휴학",
+    )
     assert names(calls) == ["search_academic_knowledge", "get_academic_calendar", "get_notices"]
     assert calls[0]["args"]["kinds"] == ["guide", "rule"]
     assert calls[2]["args"] == {"board": "academic", "keyword": "휴학"}
@@ -17,14 +21,22 @@ def test_leave_scenario_plan():
 
 
 def test_single_search_call_and_original_query():
-    calls = plan_calls(["eligibility_or_limit"], search_query="휴학 기간", original_query="휴악 기간")
+    calls = plan_calls(
+        ["eligibility_or_limit"], search_query="휴학 기간", original_query="휴악 기간"
+    )
     assert names(calls) == ["search_academic_knowledge"]
-    assert calls[0]["args"] == {"query": "휴학 기간", "kinds": ["rule"], "original_query": "휴악 기간"}
+    assert calls[0]["args"] == {
+        "query": "휴학 기간",
+        "kinds": ["rule"],
+        "original_query": "휴악 기간",
+    }
 
 
 def test_menu_and_location_without_search():
     assert names(plan_calls(["menu"], search_query="학식")) == ["get_menu"]
-    assert names(plan_calls(["location"], search_query="학사지원팀 위치")) == ["find_campus_location"]
+    assert names(plan_calls(["location"], search_query="학사지원팀 위치")) == [
+        "find_campus_location"
+    ]
     assert plan_calls([], search_query="x") == []
 
 
@@ -38,7 +50,10 @@ def test_slots():
 def test_ask_text_particles_and_merge():
     assert ask_text(["grade", "scholarship"]) == "학년과 이번 학기 장학금 수혜 여부를 알려 주세요."
     assert ask_text(["grade"]) == "학년을 알려 주세요."
-    assert ask_text(["grade"], confirm_term="휴학") == "'휴학'을 말씀하신 건가요? 맞다면 학년을 알려 주세요."
+    assert (
+        ask_text(["grade"], confirm_term="휴학")
+        == "'휴학'을 말씀하신 건가요? 맞다면 학년을 알려 주세요."
+    )
     assert choices_for(["grade", "dept"]) == {"grade": ["1", "2", "3", "4", "5 이상"]}
 
 

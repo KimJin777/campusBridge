@@ -1,4 +1,5 @@
 """답변 초안·검증·판정·최종 답변 계약(상세설계 02 §2·§4-6~4-9, 04 §2-4)."""
+
 from __future__ import annotations
 
 from typing import Literal
@@ -9,7 +10,9 @@ from pydantic import BaseModel, Field
 class DraftSentence(BaseModel):
     text: str
     cite_ids: list[str] = Field(default_factory=list)
-    supporting_quotes: list[str] = Field(default_factory=list)  # cite_ids와 같은 순서, 근거 본문의 짧은 구간
+    supporting_quotes: list[str] = Field(
+        default_factory=list
+    )  # cite_ids와 같은 순서, 근거 본문의 짧은 구간
 
 
 class Draft(BaseModel):
@@ -33,7 +36,9 @@ class ReviewFlag(BaseModel):
 class DroppedSentence(BaseModel):
     section: Literal["sentences", "checklist", "next_actions"]
     index: int
-    reason: str  # no_cite, len_mismatch, unknown_id, quote_too_short, quote_not_found, number_mismatch, suppressed
+    # no_cite, len_mismatch, unknown_id, quote_too_short, quote_not_found,
+    # number_mismatch, suppressed
+    reason: str
 
 
 class VerifyReport(BaseModel):
@@ -82,7 +87,7 @@ class PublicSentence(BaseModel):
     cite_ids: list[str] = Field(default_factory=list)
 
     @classmethod
-    def from_draft(cls, s: DraftSentence) -> "PublicSentence":
+    def from_draft(cls, s: DraftSentence) -> PublicSentence:
         return cls(text=s.text, cite_ids=list(s.cite_ids))
 
 
@@ -103,7 +108,9 @@ class Answer(BaseModel):
     stale_used: bool = False
 
 
-FallbackReason = Literal["out_of_scope", "no_evidence", "verification_failed", "tool_failure", "deadline"]
+FallbackReason = Literal[
+    "out_of_scope", "no_evidence", "verification_failed", "tool_failure", "deadline"
+]
 Outcome = Literal["answer", "fallback", "ask", "error"]
 
 FALLBACK_MESSAGE = "확인된 규정·공지에서 답을 찾지 못했습니다."

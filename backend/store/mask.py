@@ -2,6 +2,7 @@
 
 모든 Gemini 호출과 저장에는 mask() 결과(query_for_model)만 쓴다. 원문은 메모리에만 둔다.
 """
+
 from __future__ import annotations
 
 import re
