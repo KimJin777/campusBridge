@@ -44,7 +44,7 @@ package = false
 addopts = "-ra"
 asyncio_mode = "auto"
 pythonpath = ["."]
-testpaths = ["backend/tests"]
+testpaths = ["backend/tests", "backend/ingest/tests", "backend/tools/tests", "backend/admin/tests"]
 
 [tool.ruff]
 target-version = "py312"
