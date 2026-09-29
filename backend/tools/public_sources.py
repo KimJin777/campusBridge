@@ -24,6 +24,12 @@ DATE_PATTERN = re.compile(
     r"(?P<m1>\d{1,2})[./-](?P<d1>\d{1,2})"
     r"(?:\s*~\s*(?P<m2>\d{1,2})[./-](?P<d2>\d{1,2}))?"
 )
+NOTICE_DATE_PATTERN = re.compile(
+    r"(?<!\d)(?:(?P<y1>20\d{2})[.\-/])?(?P<m1>\d{1,2})[.\-/](?P<d1>\d{1,2})"
+    r"(?:\s*~\s*(?:(?P<y2>20\d{2})[.\-/])?(?P<m2>\d{1,2})[.\-/](?P<d2>\d{1,2}))?"
+    r"(?!\d)"
+)
+TOPICS = ("수강신청", "휴학", "복학", "등록", "졸업")
 _CACHE: dict[str, tuple[datetime, ToolResult]] = {}
 
 
@@ -134,6 +140,32 @@ def _entry_datetime(entry: Any) -> datetime | None:
         return None
 
 
+def _topic(text: str) -> str | None:
+    compact = re.sub(r"\s+", "", text)
+    return next((topic for topic in TOPICS if topic in compact), None)
+
+
+def _semester(value: date) -> str:
+    if value.month <= 2:
+        return f"{value.year - 1}-2"
+    return f"{value.year}-{'1' if value.month <= 8 else '2'}"
+
+
+def _notice_range(text: str, reference: date) -> tuple[date, date] | None:
+    match = NOTICE_DATE_PATTERN.search(text)
+    if not match:
+        return None
+    start_year = int(match["y1"] or reference.year)
+    end_month = int(match["m2"] or match["m1"])
+    end_year = int(match["y2"] or start_year + (end_month < int(match["m1"])))
+    try:
+        start = date(start_year, int(match["m1"]), int(match["d1"]))
+        end = date(end_year, end_month, int(match["d2"] or match["d1"]))
+    except ValueError:
+        return None
+    return start, end
+
+
 def _notice_id(entry: Any) -> str:
     raw = str(entry.get("id") or entry.get("guid") or entry.get("link") or entry.get("title"))
     return re.sub(r"[^0-9A-Za-z가-힣_-]+", "-", raw).strip("-")[-120:] or "unknown"
@@ -204,6 +236,17 @@ async def get_notices(
         except ValueError:
             continue
         published_text = published.isoformat() if published else "게시일 미상"
+        checked_at = utc_now()
+        topic = _topic(f"{title} {summary}")
+        effective = _notice_range(f"{title} {summary}", (published or now).date())
+        meta: dict[str, Any] = {
+            "published_at": published.isoformat() if published else None,
+            "as_of": checked_at.isoformat(),
+            "topic": topic,
+            "semester": _semester(effective[0] if effective else (published or now).date()),
+            "start": effective[0].isoformat() if effective else None,
+            "end": effective[1].isoformat() if effective else None,
+        }
         rows.append(
             (
                 published,
@@ -213,7 +256,7 @@ async def get_notices(
                     title=title or "공지",
                     text="\n".join(part for part in (title, published_text, summary) if part),
                     url=link,
-                    meta={"published_at": published.isoformat() if published else None},
+                    meta={key: value for key, value in meta.items() if value is not None},
                 ),
             )
         )
@@ -242,6 +285,7 @@ def _calendar_rows(payload: bytes, year_hint: int, source_url: str) -> list[Evid
     heading = soup.find("h3", string=re.compile(r"20\d{2}년"))
     year_match = re.search(r"20\d{2}", heading.get_text(" ", strip=True) if heading else "")
     year = int(year_match.group()) if year_match else year_hint
+    checked_at = utc_now().isoformat()
     items: list[Evidence] = []
     for index, row in enumerate(soup.select("tr")):
         cells = [cell.get_text(" ", strip=True) for cell in row.select("th,td")]
@@ -262,7 +306,15 @@ def _calendar_rows(payload: bytes, year_hint: int, source_url: str) -> list[Evid
                 title=title,
                 text=f"{title} {start.isoformat()}~{end.isoformat()}",
                 url=source_url,
-                meta={"start_date": start.isoformat(), "end_date": end.isoformat()},
+                meta={
+                    "start_date": start.isoformat(),
+                    "end_date": end.isoformat(),
+                    "start": start.isoformat(),
+                    "end": end.isoformat(),
+                    "semester": _semester(start),
+                    "topic": _topic(title),
+                    "as_of": checked_at,
+                },
             )
         )
     return items
@@ -383,6 +435,7 @@ def _menu_items(payload: bytes, target: date, source_url: str) -> list[Evidence]
     onchange = str(select.get("onchange") or "")
     group_match = re.search(r"jf_curriculum_chg\('[^']+','(?P<group>\d+)'", onchange)
     group = group_match["group"] if group_match else ""
+    checked_at = utc_now().isoformat()
     items: list[Evidence] = []
     for option in select.select("option[value]"):
         title = option.get_text(" ", strip=True)
@@ -402,6 +455,7 @@ def _menu_items(payload: bytes, target: date, source_url: str) -> list[Evidence]
                     "record_id": record_id,
                     "start_date": period[0].isoformat(),
                     "end_date": period[1].isoformat(),
+                    "as_of": checked_at,
                 },
             )
         )

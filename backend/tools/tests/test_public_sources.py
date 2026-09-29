@@ -43,7 +43,8 @@ async def test_notices_filters_keyword_and_orders_by_pubdate() -> None:
     <rss version="2.0"><channel>
       <item><title>휴학 신청 안내</title><guid>a</guid>
         <link>https://www.kyungnam.ac.kr/bbs/ko/1398/1/artclView.do</link>
-        <pubDate>Mon, 28 Sep 2026 09:00:00 +0900</pubDate><description>기간 공지</description>
+        <pubDate>Mon, 28 Sep 2026 09:00:00 +0900</pubDate>
+        <description>신청기간 9.1~9.30</description>
       </item>
       <item><title>수강 신청 안내</title><guid>b</guid>
         <link>https://www.kyungnam.ac.kr/bbs/ko/1398/2/artclView.do</link>
@@ -57,6 +58,10 @@ async def test_notices_filters_keyword_and_orders_by_pubdate() -> None:
 
     assert result.ok
     assert [item.title for item in result.items] == ["휴학 신청 안내"]
+    assert result.items[0].meta["topic"] == "휴학"
+    assert result.items[0].meta["semester"] == "2026-2"
+    assert result.items[0].meta["start"] == "2026-09-01"
+    assert result.items[0].meta["end"] == "2026-09-30"
 
 
 @pytest.mark.asyncio
@@ -95,6 +100,11 @@ async def test_calendar_parses_rows_and_filters_overlap() -> None:
     assert result.ok
     assert [item.title for item in result.items] == ["복학 접수마감"]
     assert result.items[0].meta["start_date"] == "2026-09-29"
+    assert result.items[0].meta["start"] == "2026-09-29"
+    assert result.items[0].meta["end"] == "2026-09-29"
+    assert result.items[0].meta["semester"] == "2026-2"
+    assert result.items[0].meta["topic"] == "복학"
+    assert result.items[0].meta["as_of"]
 
 
 @pytest.mark.asyncio
