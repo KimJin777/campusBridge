@@ -604,22 +604,16 @@ async function loadToday() {
     const { items } = await fetch("/api/events/today").then((r) => r.json());
     if (!items?.length) return;
     const list = $("#today-list");
-    for (const e of items) {
-      const li = el("li", "today-item");
-      const badge = el("span", `today-badge${e.badge === "진행 중" ? " ongoing" : ""}`, e.badge);
-      const body = el("span", "today-body");
-      body.append(el("span", "today-title", e.title), el("span", "today-date", periodText(e)));
-      li.append(badge, body);
-      if (safeSchoolUrl(e.url)) {
-        const a = el("a", "today-link");
-        a.href = e.url;
-        a.target = "_blank";
-        a.rel = "noopener noreferrer";
-        a.setAttribute("aria-label", `${e.title} 원문 새 창으로 보기`);
-        a.append(icon("external", 15));
-        li.append(a);
+    for (const e of items.slice(0, 3)) {
+      const pill = el(safeSchoolUrl(e.url) ? "a" : "span", "today-pill");
+      if (pill.tagName === "A") {
+        pill.href = e.url;
+        pill.target = "_blank";
+        pill.rel = "noopener noreferrer";
       }
-      list.append(li);
+      pill.title = `${e.title} (${periodText(e)})`;
+      pill.append(el("b", e.badge === "진행 중" ? "ongoing" : null, e.badge), el("span", null, e.title));
+      list.append(pill);
     }
     $("#today").hidden = false;
   } catch {}

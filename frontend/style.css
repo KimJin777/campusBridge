@@ -140,16 +140,14 @@ a { color: var(--primary); }
   .cal-ev { display: none; }
   .cal-cell.has::after { content: ""; width: 6px; height: 6px; margin: auto auto 0; border-radius: 50%; background: var(--primary); }
 }
-.today { width: min(100%, 560px); margin: 0 auto 22px; }
-.today-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.today-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-1); text-align: left; }
-.today-badge { flex: 0 0 auto; min-width: 52px; padding: 2px 8px; border-radius: 9999px; background: var(--primary); color: #fff; font-size: 12px; font-weight: 700; text-align: center; }
-.today-badge.ongoing { background: var(--primary-soft); color: var(--secondary); }
-.today-body { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-.today-title { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.today-date { color: var(--muted); font-size: 12px; }
-.today-link { flex: 0 0 auto; display: inline-flex; padding: 4px; border-radius: 8px; color: var(--secondary); }
-.today-link:hover { background: var(--primary-soft); }
+.today:not([hidden]) { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; margin: 16px auto 0; color: var(--muted); font-size: 12px; }
+.today-label { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.today-list { display: contents; }
+.today-pill { display: inline-flex; align-items: center; gap: 5px; max-width: 220px; padding: 2px 9px 2px 3px; border: 1px solid var(--line); border-radius: 9999px; background: var(--surface); color: var(--text); text-decoration: none; }
+.today-pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-pill b { flex: 0 0 auto; padding: 0 6px; border-radius: 9999px; background: var(--primary-soft); color: var(--secondary); font-size: 11px; }
+.today-pill b.ongoing { background: color-mix(in srgb, var(--line) 50%, transparent); color: var(--muted); }
+a.today-pill:hover { border-color: var(--primary); }
 .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 .chip {
   display: inline-flex;
