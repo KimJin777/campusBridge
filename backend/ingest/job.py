@@ -200,6 +200,18 @@ def run_ingestion(
                 if deps.index.import_jsonl(out, object_prefix=f"runs/{run_id}"):
                     raise RuntimeError("IMPORT_FAILED")
         deps.blobs.write(STATE_MANIFEST, manifest.read_bytes(), "application/json")
+        after = load_manifest(manifest)
+        deps.docs.merge(
+            "source_configs",
+            "rules",
+            {
+                "kind": "rule",
+                "last_success_at": _now(),
+                "doc_count": sum(e.article_count or 0 for e in after.values()),
+                "rejected_rule_nos": sorted(k for k, e in after.items() if e.status == "rejected"),
+                "active_index_version": "articles-v1",
+            },
+        )
 
     if "academic_guides" in wanted:
         from backend.ingest.guides import collect, load_pages

@@ -177,3 +177,16 @@ def test_status_deep_requires_admin_and_runs_checks(monkeypatch):
     assert body["checks"]["search"]["count"] == 2
     assert store.events[-1]["event"] == "health_check"
     get_settings.cache_clear()
+
+
+def test_admin_page_csp_and_auth_config():
+    c, _ = client(FakeLLM())
+    assert c.get("/admin", follow_redirects=False).headers["location"] == "/admin.html"
+    page = c.get("/admin.html")
+    assert (
+        page.status_code == 200
+        and "accounts.google.com/gsi/client" in page.headers["content-security-policy"]
+    )
+    student = c.get("/")
+    assert "accounts.google.com" not in student.headers["content-security-policy"]
+    assert "google_client_id" in c.get("/api/auth/config").json()

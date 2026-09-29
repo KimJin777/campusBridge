@@ -133,6 +133,26 @@ async def disable_documents(
     }
 
 
+@router.get("/documents")
+async def list_documents(
+    actor: Actor, store: Store, limit: Limit = 50, cursor: Cursor = None
+) -> dict[str, Any]:
+    del actor
+    page = await store.list_page("documents", limit=limit, cursor=cursor, order_by="updated_at")
+    return {**page, "items": [_document_view(i) for i in page["items"]]}
+
+
+@router.get("/ingestion-runs")
+async def list_ingestion_runs(
+    actor: Actor, store: Store, limit: Limit = 20, cursor: Cursor = None
+) -> dict[str, Any]:
+    del actor
+    page = await store.list_page(
+        "ingestion_runs", limit=limit, cursor=cursor, order_by="updated_at"
+    )
+    return {**page, "items": [_ingestion_run_view(i) for i in page["items"]]}
+
+
 @router.get("/unanswered")
 async def list_unanswered(
     actor: Actor,

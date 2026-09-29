@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>캠퍼스 브릿지 관리자</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="admin.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="admin.js"></script>
+</head>
+<body class="admin">
+  <header class="top">
+    <h1 class="brand">캠퍼스 브릿지 관리자</h1>
+    <span id="who" class="who"></span>
+  </header>
+  <p class="notice-line">이 화면은 운영자용입니다. 학교 부서의 별도 조치는 필요하지 않습니다.</p>
+
+  <section id="login" class="panel">
+    <p>허용된 관리자 계정(Google)으로 로그인해 주세요.</p>
+    <div id="gsi"></div>
+    <p id="login-msg" class="hint"></p>
+  </section>
+
+  <main id="app" hidden>
+    <nav class="tabs" role="tablist" id="tabs"></nav>
+    <p id="banner" class="banner" hidden></p>
+    <section id="view" class="panel"></section>
+  </main>
+</body>
+</html>

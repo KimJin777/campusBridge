@@ -47,6 +47,13 @@ CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
     "connect-src 'self'; frame-ancestors 'none'"
 )
+# 관리자 화면만 Google 로그인(GIS) 스크립트·창·스타일을 허용한다(학생 화면은 그대로 'self'만)
+ADMIN_CSP = (
+    "default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; "
+    "style-src 'self' https://accounts.google.com/gsi/style; img-src 'self' data: https:; "
+    "connect-src 'self' https://accounts.google.com/gsi/; "
+    "frame-src https://accounts.google.com/gsi/; frame-ancestors 'none'"
+)
 
 
 # ── 의존성 조립 ───────────────────────────────────────────────────────────
@@ -412,7 +419,9 @@ def create_app(
         elif path.endswith((".png", ".jpg", ".svg", ".ico", ".woff2")):
             resp.headers["Cache-Control"] = "public, max-age=604800"
         if resp.headers.get("content-type", "").startswith("text/html"):
-            resp.headers["Content-Security-Policy"] = CSP
+            resp.headers["Content-Security-Policy"] = (
+                ADMIN_CSP if path.startswith("/admin") else CSP
+            )
             resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         resp.headers["X-Content-Type-Options"] = "nosniff"
         return resp
@@ -498,6 +507,15 @@ def create_app(
     @app.get("/api/suggestions")
     async def suggestions() -> dict[str, Any]:
         return {"items": list(s.suggestions)}
+
+    @app.get("/admin", include_in_schema=False)
+    async def admin_page() -> RedirectResponse:
+        return RedirectResponse("/admin.html")
+
+    @app.get("/api/auth/config")
+    async def auth_config() -> dict[str, Any]:
+        """관리자 화면의 Google 로그인 버튼용 공개 클라이언트 ID(비밀 아님)."""
+        return {"google_client_id": s.google_oauth_client_id}
 
     @app.get("/privacy", include_in_schema=False)
     async def privacy() -> RedirectResponse:
