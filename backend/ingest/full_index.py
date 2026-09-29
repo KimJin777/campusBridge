@@ -96,15 +96,26 @@ def import_index(
     engine_id: str,
     source: Path,
     object_prefix: str = "index",
+    ensure_resources: bool = True,
 ):
-    """GCS 업로드 후 INCREMENTAL 가져오기(같은 ID는 덮어쓰기, 빠진 규정은 기존 유지)."""
+    """GCS 업로드 후 INCREMENTAL 가져오기(같은 ID는 덮어쓰기, 빠진 규정은 기존 유지).
+
+    ensure_resources=False: 데이터 스토어·스키마가 이미 있다고 보고 문서만 가져온다.
+    수집 Job(ingest-sa)은 스키마 수정 권한이 없으므로(최소 권한) 항상 False로 호출한다.
+    """
     from google.cloud import discoveryengine_v1 as discoveryengine
 
     from backend.ingest.search_spike import _clients, _upload_jsonl, ensure_search_resources
 
-    data_store_name, _ = ensure_search_resources(
-        project=project, data_store_id=data_store_id, engine_id=engine_id
-    )
+    if ensure_resources:
+        data_store_name, _ = ensure_search_resources(
+            project=project, data_store_id=data_store_id, engine_id=engine_id
+        )
+    else:
+        data_store_name = (
+            f"projects/{project}/locations/global/collections/default_collection"
+            f"/dataStores/{data_store_id}"
+        )
     stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
     uri = _upload_jsonl(
         project=project,

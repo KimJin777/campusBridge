@@ -357,6 +357,7 @@ class VertexIndex:
             engine_id=self.engine_id,
             source=local_path,
             object_prefix=object_prefix,
+            ensure_resources=False,  # ingest-sa는 스키마 수정 권한 없음(2026-09-29 첫 실행 403)
         )
         return list(result["errors"])
 
