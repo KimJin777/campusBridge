@@ -1,5 +1,5 @@
-# 개인정보 포함 증빙서류 — 저장소에 올리지 않음
-docs/관련서류/
+# 문서 전체 — 저장소에 올리지 않음 (교수님 지시)
+docs/
 
 # Office 잠금 파일
 ~$*
@@ -16,15 +16,6 @@ node_modules/
 data/raw/
 data/staging/
 eval/final.jsonl
-
-# 검증용 원문은 발췌 픽스처만 저장소에 포함
-docs/참고/*.hwp
-
-# 공개 전 별도 비식별화·검토가 필요한 내부 문서
-docs/handoff/
-docs/GCP-설정-가이드.md
-docs/공문/robots-수집승인-공문내용.md
-docs/개발계획서-초안.pdf
 
 # 인증서·서비스 계정 키
 secrets/
