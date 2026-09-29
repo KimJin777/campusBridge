@@ -15,6 +15,7 @@ from typing import Any
 from backend.agent import prompts
 from backend.agent.llm import LLMUnavailable, StructuredLLM, StructuredOutputError
 from backend.agent.needs import plan_calls
+from backend.agent.resolve import NEED_PRIORITY, resolve
 from backend.agent.slots import ask_text, choices_for, missing_slots, required_slots
 from backend.agent.state import ActOut, ClassifyOut, ToolCall, TurnState
 from backend.agent.verify import SUPPRESSED_TEMPLATE, verify
@@ -44,14 +45,6 @@ MIN_SECONDS_FOR_COMPOSE = 4.0  # compose 진입 시 남은 시간 < 4초면 fall
 SOFT_TOOLS_DONE = 5.0  # T+5초 체크포인트를 넘기면 보충 act 생략
 COMPOSE_RESERVE = 2  # compose 1 + 재시도 1
 
-# 사실 종류별 우선·보조 출처(02 §4-7-1 표)
-NEED_PRIORITY: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
-    "eligibility_or_limit": (("article",), ("guide",)),
-    "current_deadline": (("calendar", "notice"), ("article",)),
-    "procedure_and_contact": (("guide",), ("article",)),
-    "menu": (("menu",), ()),
-    "location": (("place",), ()),
-}
 
 DEFAULT_DEPT_BY_INTENT: dict[str, str] = {}
 
@@ -339,20 +332,8 @@ class Nodes:
 
     # ── resolve_evidence ───────────────────────────────────────────────
     def resolve_evidence(self, state: TurnState) -> dict:
-        evidence = state.get("evidence", [])
-        r = Resolution()
-        for need in state.get("evidence_needs", []):
-            primary, secondary = NEED_PRIORITY.get(need, ((), ()))
-            adopted = [e.id for e in evidence if e.kind in primary]
-            support = [e.id for e in evidence if e.kind in secondary]
-            if adopted:
-                r.adopted[need] = adopted
-            if support:
-                r.supporting[need] = support
-        # 같은 종류 충돌 판정(일정↔공지 날짜, 규정↔안내 요건 수치)은
-        # 도구 meta(semester·published_at 등)가
-        # 확정된 뒤 추가한다 — 02 §4-7-1. 지금은 충돌 없음으로 둔다.
-        return {"resolution": r, "review_flags": list(r.review_flags)}
+        r = resolve(state.get("evidence", []), state.get("evidence_needs", []))
+        return {"resolution": r, "review_flags": state.get("review_flags", []) + r.review_flags}
 
     # ── compose · verify ───────────────────────────────────────────────
     def _compose_prompt(self, state: TurnState) -> str:
