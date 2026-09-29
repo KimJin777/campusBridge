@@ -613,7 +613,10 @@ async function loadToday() {
         row.target = "_blank";
         row.rel = "noopener noreferrer";
       }
-      row.append(el("span", "t", e.title), el("span", "d", periodText(e)));
+      const tag = { event: "행사", scholarship: "장학" }[e.category] || "학사";
+      const head = el("span", "t");
+      head.append(el("i", `tag${e.category === "event" ? " ev" : ""}`, tag), document.createTextNode(e.title));
+      row.append(head, el("span", "d", `${e.label ? `${e.label} ` : ""}${periodText(e)}`));
       li.append(row);
       list.append(li);
     }

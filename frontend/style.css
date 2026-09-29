@@ -150,6 +150,8 @@ a { color: var(--primary); }
 .today-row { display: flex; flex-direction: column; padding: 7px 9px; border-radius: 8px; color: var(--text); font-size: 13px; text-decoration: none; }
 a.today-row:hover { background: var(--primary-soft); }
 .today-row .t { font-weight: 600; }
+.today-row .tag { display: inline-block; margin-right: 5px; padding: 0 5px; border-radius: 4px; background: var(--primary-soft); color: var(--secondary); font-size: 10px; font-style: normal; vertical-align: 1px; }
+.today-row .tag.ev { background: color-mix(in srgb, var(--emerald) 16%, transparent); color: var(--emerald); }
 .today-row .d { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 @media (max-width: 480px) { .today-word { display: none; } }
 .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }

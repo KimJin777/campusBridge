@@ -286,6 +286,7 @@ function sourceLinks(row) {
 // ── 학사 일정(#596): 공식 학사일정·공지 자동 추출분은 게시됨, AI 추출분은 검수 대기 ──────
 const EVENT_STATUS = { pending: "검수 대기", active: "게시됨", disabled: "숨김" };
 const EVENT_SOURCE = { calendar: "공식 학사일정", regex: "공지(자동 추출)", llm: "공지(AI 추출)" };
+const EVENT_CATEGORY = { calendar: "학사일정", academic: "학사공지", scholarship: "장학", event: "교내 행사" };
 
 async function viewEvents(view) {
   const { items } = await api("/events");
@@ -309,6 +310,7 @@ async function viewEvents(view) {
       items,
       [[(r) => el("span", `status${r.status === "pending" ? " warn" : r.status === "disabled" ? " err" : ""}`, EVENT_STATUS[r.status] || r.status), "상태"], ["title", "일정"],
        [(r) => el("span", null, `${r.start_date || ""} ~ ${r.end_date}`), "기간"],
+       [(r) => el("span", null, EVENT_CATEGORY[r.source_category] || r.source_category || "—"), "분류"],
        [(r) => el("span", null, EVENT_SOURCE[r.extracted_by] || r.extracted_by || "—"), "출처"],
        [(r) => sourceLink(r.source_url), "원문"], ["reviewed_by", "검수자"]],
       (row) => [

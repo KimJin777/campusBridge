@@ -423,7 +423,14 @@ def main() -> int:
         _run(deps, run_id, trigger="schedule", source_ids=sources, created_at=_now())
 
     from backend.app.config import get_settings
-    from backend.ingest.events import KST, collect_events, live_llm, live_sources
+    from backend.ingest.events import (
+        KST,
+        collect_events,
+        live_body,
+        live_event_check,
+        live_llm,
+        live_sources,
+    )
 
     settings = get_settings()
 
@@ -437,6 +444,8 @@ def main() -> int:
             fetch_calendar=cal,
             fetch_notices=notices,
             llm_extract=live_llm(settings),
+            fetch_body=live_body(settings),
+            check_event=live_event_check(settings),
         )
         deps.docs.merge(
             "source_configs",

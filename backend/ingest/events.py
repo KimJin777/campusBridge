@@ -3,7 +3,9 @@
 - 공식 학사일정(monthSchdul.do): 그대로 자동 게시(active).
 - 학사·장학 공지 RSS: 제목·요약에서 기간/마감을 정규식으로 뽑으면 자동 게시(active),
   정규식이 못 뽑았지만 일정 단서가 있으면 flash-lite 구조화 추출 → 검수 대기(pending).
-- 일반공지(취업·행사·입찰 등)는 대상이 아니다(서비스 범위 규칙).
+- 교내 행사(교수님 2026-09-29): 일반공지·행사/세미나 게시판에서 재학생 대상 행사·프로그램만.
+  LLM이 대상 여부를 판정하고(광고·채용·외부 모집·기부 제외), 정규식으로 날짜가 잡히면 자동 게시,
+  LLM만 날짜를 준 경우는 검수 대기. 새 공지만 1회 판정(event_scans).
 - 관리자가 바꾼 status(disabled/active)는 재수집이 덮어쓰지 않는다.
 """
 
@@ -23,6 +25,10 @@ KST = timezone(timedelta(hours=9), "KST")
 MAX_SPAN_DAYS = 60
 MAX_LLM_PER_RUN = 15
 BOARDS = ("academic", "scholarship")
+EVENT_BOARDS = ("general", "events")
+MAX_EVENT_LLM_PER_RUN = 40
+EVENT_LOOKBACK_DAYS = 60
+DATE_LABELS = ("행사일", "신청 기간", "신청 마감", "기간")
 
 # 날짜 한 개: 2026. 9. 29.(화) / 2026-09-29 / 9/29 / 10월 6일(월)
 _DATE = (
@@ -108,6 +114,36 @@ EXTRACT_PROMPT = (
 )
 
 
+class EventCheck(BaseModel):
+    """교내 행사 판정·추출(일반공지·행사 게시판)."""
+
+    is_student_event: bool = Field(
+        description=(
+            "재학생 대상 교내 행사·프로그램(특강·설명회·교내 모집·공모전·도서관 행사)이면 "
+            "true. 은행·기관 홍보, 기부, 교직원 채용, 외부 기관·기업 모집 광고, 행정 안내는 false"
+        )
+    )
+    title: str = Field(description="짧은 행사명(예: 지역인재 7급 합격자 초청 특강)")
+    start_date: str | None = Field(default=None, description="YYYY-MM-DD, 없으면 null")
+    end_date: str | None = Field(default=None, description="YYYY-MM-DD, 없으면 null")
+    date_label: str = Field(description="날짜의 의미: 행사일 | 신청 기간 | 신청 마감 | 기간")
+
+
+EVENT_PROMPT = (
+    "대학 공지 하나를 보고 재학생 대상 교내 행사·프로그램인지 판정하고, "
+    "학생이 챙길 날짜를 하나 뽑아라. 본문에 없는 날짜를 지어내지 말고, 없으면 null. "
+    "날짜가 신청 마감이면 date_label='신청 마감'."
+)
+
+
+def _label(text: str, raw: str | None) -> str:
+    if raw in DATE_LABELS:
+        return raw
+    if "마감" in text or "까지" in text:
+        return "신청 마감"
+    return "기간"
+
+
 class Docs(Protocol):
     def get(self, collection: str, doc_id: str) -> dict[str, Any] | None: ...
     def merge(self, collection: str, doc_id: str, data: dict[str, Any]) -> None: ...
@@ -124,6 +160,7 @@ def upsert_event(docs: Docs, event: dict[str, Any], now: datetime) -> str:
         "source_category": event["source_category"],
         "source_url": event["source_url"],
         "extracted_by": event["extracted_by"],
+        "date_label": event.get("date_label"),
         "updated_at": now,
     }
     if docs.get("campus_events", eid) is None:
@@ -140,9 +177,19 @@ def collect_events(
     fetch_calendar: Callable[[], list[dict[str, Any]]],
     fetch_notices: Callable[[str], list[dict[str, Any]]],
     llm_extract: Callable[[str], ExtractedEvent | None] | None = None,
+    fetch_body: Callable[[str], str] | None = None,
+    check_event: Callable[[str], EventCheck | None] | None = None,
 ) -> dict[str, int]:
     """일정 수집 본체(네트워크는 주입 — 테스트 가능). 반환: 건수 통계."""
-    stats = {"calendar": 0, "notice_auto": 0, "notice_pending": 0, "skipped": 0}
+    stats = {
+        "calendar": 0,
+        "notice_auto": 0,
+        "notice_pending": 0,
+        "skipped": 0,
+        "event_auto": 0,
+        "event_pending": 0,
+        "event_rejected": 0,
+    }
     for row in fetch_calendar():
         upsert_event(
             docs,
@@ -213,7 +260,73 @@ def collect_events(
                 now,
             )
             stats["notice_pending"] += 1
+
+    if check_event is not None:
+        _collect_campus_events(docs, today, now, fetch_notices, fetch_body, check_event, stats)
     return stats
+
+
+def _collect_campus_events(
+    docs: Docs,
+    today: date,
+    now: datetime,
+    fetch_notices: Callable[[str], list[dict[str, Any]]],
+    fetch_body: Callable[[str], str] | None,
+    check_event: Callable[[str], EventCheck | None],
+    stats: dict[str, int],
+) -> None:
+    """교내 행사: 새 공지만 1회 LLM 판정 → 대상이면 날짜를 붙여 게시/검수 대기."""
+    left = MAX_EVENT_LLM_PER_RUN
+    for board in EVENT_BOARDS:
+        for n in fetch_notices(board):
+            url = n["url"]
+            published: date = n.get("published") or today
+            if published < today - timedelta(days=EVENT_LOOKBACK_DAYS):
+                continue
+            scan_id = hashlib.sha256(f"event|{url}".encode()).hexdigest()[:20]
+            if docs.get("event_scans", scan_id) is not None or left <= 0:
+                continue
+            left -= 1
+            body = ""
+            if fetch_body is not None:
+                try:
+                    body = fetch_body(url)
+                except Exception:  # noqa: BLE001 — 본문 없이 제목·요약으로 판정
+                    body = ""
+            text = f"{n['title']} {n.get('summary', '')} {body}"[:1500]
+            got = check_event(text)
+            docs.merge("event_scans", scan_id, {"url": url, "scanned_at": now, "kind": "event"})
+            if not got or not got.is_student_event:
+                stats["event_rejected"] += 1
+                continue
+            period = extract_period(text, published)
+            if period and period.end >= today:
+                start, end, by, status = period.start or published, period.end, "regex", "active"
+            else:
+                end = _iso(got.end_date)
+                start = _iso(got.start_date)
+                if end is None or end < today:
+                    stats["event_rejected"] += 1
+                    continue
+                if start and not (start <= end <= start + timedelta(days=MAX_SPAN_DAYS)):
+                    start = None
+                start, by, status = start or published, "llm", "pending"
+            upsert_event(
+                docs,
+                {
+                    "title": got.title or n["title"],
+                    "start": start,
+                    "end": end,
+                    "source_type": "notice",
+                    "source_category": "event",
+                    "source_url": url,
+                    "extracted_by": by,
+                    "status": status,
+                    "date_label": _label(text, got.date_label),
+                },
+                now,
+            )
+            stats["event_auto" if status == "active" else "event_pending"] += 1
 
 
 def _iso(value: str | None) -> date | None:
@@ -245,7 +358,12 @@ def live_sources(settings: Any) -> tuple[Callable[[], list[dict]], Callable[[str
         return rows
 
     def fetch_notices(board: str) -> list[dict[str, Any]]:
-        path = {"academic": settings.rss_academic, "scholarship": settings.rss_scholarship}[board]
+        path = {
+            "academic": settings.rss_academic,
+            "scholarship": settings.rss_scholarship,
+            "general": settings.rss_general,
+            "events": settings.rss_events,
+        }[board]
         payload = asyncio.run(ps._fetch(ps.urljoin(ps.BASE_URL, path), settings))
         out = []
         for entry in feedparser.parse(payload).entries:
@@ -271,17 +389,37 @@ def live_sources(settings: Any) -> tuple[Callable[[], list[dict]], Callable[[str
     return fetch_calendar, fetch_notices
 
 
-def live_llm(settings: Any) -> Callable[[str], ExtractedEvent | None]:
+def live_body(settings: Any) -> Callable[[str], str]:
+    """공지 본문 텍스트(.view-con). 포스터 이미지만 있는 공지는 빈 문자열."""
+    from bs4 import BeautifulSoup
+
+    from backend.tools import public_sources as ps
+
+    def fetch_body(url: str) -> str:
+        html = asyncio.run(ps._fetch(url, settings))
+        node = BeautifulSoup(html, "html.parser").select_one(".view-con")
+        return node.get_text(" ", strip=True)[:1200] if node else ""
+
+    return fetch_body
+
+
+def _live_structured(settings: Any, schema: type[BaseModel], prompt: str):
     from backend.agent.llm import GeminiLLM
 
     llm = GeminiLLM(settings)
 
-    def extract(text: str) -> ExtractedEvent | None:
+    def run(text: str):
         try:
-            return asyncio.run(
-                llm.structured(ExtractedEvent, EXTRACT_PROMPT, text, node="act", deadline=None)
-            )
-        except Exception:  # noqa: BLE001 — 추출 실패는 건너뛴다(자동 게시 안 함)
+            return asyncio.run(llm.structured(schema, prompt, text, node="act", deadline=None))
+        except Exception:  # noqa: BLE001 — 실패는 건너뛴다(자동 게시 안 함)
             return None
 
-    return extract
+    return run
+
+
+def live_llm(settings: Any) -> Callable[[str], ExtractedEvent | None]:
+    return _live_structured(settings, ExtractedEvent, EXTRACT_PROMPT)
+
+
+def live_event_check(settings: Any) -> Callable[[str], EventCheck | None]:
+    return _live_structured(settings, EventCheck, EVENT_PROMPT)

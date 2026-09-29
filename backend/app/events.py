@@ -48,6 +48,7 @@ def pick_events(rows: list[dict[str, Any]], today: date) -> list[dict[str, Any]]
                 "end_date": end.isoformat(),
                 "badge": badge,
                 "category": r.get("source_category"),
+                "label": r.get("date_label"),
                 "url": r.get("source_url"),
             }
         )

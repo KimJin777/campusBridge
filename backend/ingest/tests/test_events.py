@@ -100,7 +100,12 @@ def test_collect_auto_pending_and_keeps_admin_status():
         )
 
     stats = run(docs, notices, llm)
-    assert stats == {"calendar": 1, "notice_auto": 1, "notice_pending": 1, "skipped": 1}
+    assert {k: stats[k] for k in ("calendar", "notice_auto", "notice_pending", "skipped")} == {
+        "calendar": 1,
+        "notice_auto": 1,
+        "notice_pending": 1,
+        "skipped": 1,
+    }
     by_title = {e["title"]: e for e in events(docs)}
     assert by_title["국가장학금 2차 신청 안내"]["status"] == "active"
     assert by_title["교내장학 서류 제출"]["status"] == "pending"
@@ -120,3 +125,82 @@ def test_run_blocks_only_fresh_active_runs():
     assert not run_blocks({"status": "running", "updated_at": now - dt.timedelta(hours=3)}, now)
     assert not run_blocks({"status": "success", "updated_at": now}, now)
     assert not run_blocks(None, now)
+
+
+def test_campus_events_filter_label_and_scan_once():
+    from backend.ingest.events import EventCheck
+
+    docs = Docs()
+    url = "https://www.kyungnam.ac.kr/bbs/ko/1408/{}/artclView.do"
+    notices = {
+        "general": [
+            {
+                "title": "합격자 선배 초청 특강 개최 안내",
+                "summary": "",
+                "url": url.format(1),
+                "published": REF,
+            },
+            {
+                "title": "하나은행 나라사랑카드 홍보",
+                "summary": "",
+                "url": url.format(2),
+                "published": REF,
+            },
+            {
+                "title": "해외봉사 참가학생 모집",
+                "summary": "신청 10. 1.(목)까지",
+                "url": url.format(3),
+                "published": REF,
+            },
+            {
+                "title": "오래된 행사",
+                "summary": "",
+                "url": url.format(4),
+                "published": date(2026, 5, 1),
+            },
+        ],
+    }
+    calls = []
+
+    def check(text):
+        calls.append(text)
+        if "홍보" in text:
+            return EventCheck(is_student_event=False, title="홍보", date_label="기간")
+        if "특강" in text:
+            return EventCheck(
+                is_student_event=True,
+                title="합격자 선배 초청 특강",
+                start_date="2026-10-07",
+                end_date="2026-10-07",
+                date_label="행사일",
+            )
+        return EventCheck(is_student_event=True, title="해외봉사 모집", date_label="신청 마감")
+
+    stats = run(docs, notices)  # check_event 없음 → 행사 수집 안 함
+    assert stats["event_auto"] == 0 and not calls
+    stats = collect_events(
+        docs,
+        today=REF,
+        now=NOW,
+        fetch_calendar=lambda: [],
+        fetch_notices=lambda b: notices.get(b, []),
+        check_event=check,
+        fetch_body=lambda u: "",
+    )
+    assert (stats["event_auto"], stats["event_pending"], stats["event_rejected"]) == (1, 1, 1)
+    by = {e["title"]: e for e in events(docs) if e.get("source_category") == "event"}
+    assert (
+        by["해외봉사 모집"]["status"] == "active"
+        and by["해외봉사 모집"]["date_label"] == "신청 마감"
+    )
+    assert by["합격자 선배 초청 특강"]["status"] == "pending"  # 날짜를 LLM만 줌 → 검수
+    assert len(calls) == 3  # 60일 지난 공지는 판정하지 않음
+    collect_events(
+        docs,
+        today=REF,
+        now=NOW,
+        fetch_calendar=lambda: [],
+        fetch_notices=lambda b: notices.get(b, []),
+        check_event=check,
+    )
+    assert len(calls) == 3  # 같은 공지를 다시 묻지 않음

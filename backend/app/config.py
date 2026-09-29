@@ -95,6 +95,9 @@ class Settings:
     rss_general: str = field(
         default_factory=lambda: _str("RSS_GENERAL", "/bbs/ko/1408/rssList.do?row=50")
     )
+    rss_events: str = field(  # 행사/세미나 게시판(교내 행사 일정 — 교수님 2026-09-29)
+        default_factory=lambda: _str("RSS_EVENTS", "/bbs/ko/1129/rssList.do?row=50")
+    )
     collection_mode: str = field(default_factory=lambda: _str("COLLECTION_MODE", "approved"))
 
     # 비용·시간 상한(02 §3, 07 §5)
