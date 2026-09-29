@@ -300,7 +300,8 @@ def _calendar_rows(payload: bytes, year_hint: int, source_url: str) -> list[Evid
                 id=f"cal:{start.isoformat()}:{index}",
                 kind="calendar",
                 title=title,
-                text=f"{title} {start.isoformat()}~{end.isoformat()}",
+                text=f"{title} {start.isoformat()}~{end.isoformat()}"
+                + (" (지난 일정 — 이미 종료)" if end < datetime.now(KST).date() else ""),
                 url=source_url,
                 meta={
                     "start_date": start.isoformat(),
@@ -345,7 +346,7 @@ async def get_academic_calendar(
         return ToolResult.fail("BAD_INPUT", "일정 조회 날짜 형식을 확인해 주세요")
     if end_date < start_date:
         return ToolResult.fail("BAD_INPUT", "종료일은 시작일보다 빠를 수 없습니다")
-    end_date = min(end_date, start_date + timedelta(days=120))
+    end_date = min(end_date, start_date + timedelta(days=200))  # 학기 전체(최대 6개월)
     cache_key = f"calendar:{start_date.isoformat()}:{end_date.isoformat()}"
     cached = _cached(cache_key, timedelta(hours=24))
     if cached is not None:

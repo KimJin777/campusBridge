@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import Any
 
 # 사실 종류 → 검색 kinds(순서 유지: procedure는 guide 우선)
@@ -45,6 +46,30 @@ def notice_keyword(topic: str | None) -> str:
     return " ".join(words)
 
 
+RELATIVE_DAYS = (("모레", 2), ("내일", 1), ("어제", -1), ("오늘", 0))
+
+
+def target_day(query: str, today: date) -> date:
+    """'내일 학식' 같은 상대 날짜를 실제 날짜로(20문항 #17: 내일을 물어도 오늘 식단을 가져옴)."""
+    for word, delta in RELATIVE_DAYS:
+        if word in query:
+            return today + timedelta(days=delta)
+    return today
+
+
+def semester_window(today: date) -> tuple[date, date]:
+    """이번 학기 전체(1학기 3~8월, 2학기 9월~이듬해 2월).
+
+    지난 일정도 조회하도록(20문항 #1·6·7·15).
+    """
+    y, m = today.year, today.month
+    if 3 <= m <= 8:
+        return date(y, 3, 1), date(y, 8, 31)
+    start_year = y if m >= 9 else y - 1
+    end = date(start_year + 1, 3, 1) - timedelta(days=1)
+    return date(start_year, 9, 1), end
+
+
 def plan_calls(
     evidence_needs: list[str],
     *,
@@ -54,6 +79,7 @@ def plan_calls(
     today: str | None = None,
     calendar_range: tuple[str, str] | None = None,
     intent: str | None = None,
+    notice_days: int | None = None,
 ) -> list[dict[str, Any]]:
     """필수 호출 목록. 각 원소는 {"id", "name", "args"} — run_tools의 실행 큐 형식."""
     calls: list[dict[str, Any]] = []
@@ -77,9 +103,10 @@ def plan_calls(
             cal_args = {"start": calendar_range[0], "end": calendar_range[1]}
         calls.append({"name": "get_academic_calendar", "args": cal_args})
         board = notice_board(topic, search_query)
-        calls.append(
-            {"name": "get_notices", "args": {"board": board, "keyword": notice_keyword(topic)}}
-        )
+        notice_args: dict[str, Any] = {"board": board, "keyword": notice_keyword(topic)}
+        if notice_days:
+            notice_args["days"] = notice_days
+        calls.append({"name": "get_notices", "args": notice_args})
     elif intent == "notice":
         board = notice_board(topic, search_query)
         calls.append(

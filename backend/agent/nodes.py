@@ -9,13 +9,13 @@ import unicodedata
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 from backend.agent import prompts
 from backend.agent.draft_stream import draft_emitter
 from backend.agent.llm import LLMTimeout, LLMUnavailable, StructuredLLM, StructuredOutputError
-from backend.agent.needs import plan_calls
+from backend.agent.needs import plan_calls, semester_window, target_day
 from backend.agent.resolve import NEED_PRIORITY, resolve
 from backend.agent.slots import ask_text, choices_for, missing_slots, required_slots
 from backend.agent.state import ActOut, ClassifyOut, ComposeOut, ToolCall, TurnState
@@ -32,6 +32,8 @@ from backend.domain.answer import (
 )
 from backend.domain.evidence import Evidence, EvidenceCard, ToolResult
 from backend.domain.thread import LastTurn, PendingQuestion, Profile
+
+KST = timezone(timedelta(hours=9), "KST")
 
 ALLOWED_TOOLS = {
     "search_academic_knowledge",
@@ -206,12 +208,18 @@ class Nodes:
 
     # ── plan_tools · run_tools · act ───────────────────────────────────
     def plan_tools(self, state: TurnState) -> dict:
+        query = state.get("effective_query") or state.get("normalized_query") or ""
+        today = datetime.now(KST).date()
+        sem_start, sem_end = semester_window(today)
         calls = plan_calls(
             state.get("evidence_needs", []),
             search_query=state.get("search_query") or state.get("effective_query", ""),
             original_query=state.get("normalized_query"),
             topic=state.get("topic"),
             intent=state.get("intent"),
+            today=target_day(query, today).isoformat(),
+            calendar_range=(sem_start.isoformat(), sem_end.isoformat()),
+            notice_days=max(30, (today - sem_start).days + 30),
         )
         needs = state.get("evidence_needs", [])
         _emit(

@@ -38,9 +38,7 @@ def body(**kw):
 
 
 def test_chat_ask_then_answer_across_turns():
-    llm = FakeLLM(
-        classify=leave_classify(needed_slots=["grade", "scholarship"]), compose=GOOD_DRAFT
-    )
+    llm = FakeLLM(classify=leave_classify(topic="졸업", needed_slots=["dept"]), compose=GOOD_DRAFT)
     c, store = client(llm)
     b = body()
     r = c.post("/api/chat", json=b)
@@ -52,9 +50,9 @@ def test_chat_ask_then_answer_across_turns():
     assert store.threads[b["thread_id"]]["pending_question"]["original_query_masked"]
 
     llm.out["classify"] = leave_classify(
-        answers_pending=True, extracted_profile={"grade": 2, "scholarship": "no"}
+        topic="졸업", answers_pending=True, extracted_profile={"dept": "컴퓨터공학부"}
     )
-    r2 = c.post("/api/chat", json=body(thread_id=b["thread_id"], message="2학년, 장학금 없어요"))
+    r2 = c.post("/api/chat", json=body(thread_id=b["thread_id"], message="컴퓨터공학부예요"))
     names = [e for e, _ in parse(r2.text)]
     assert names[0] == "meta" and "evidence" in names and names[-2:] == ["answer", "done"]
     assert store.threads[b["thread_id"]]["pending_question"] is None

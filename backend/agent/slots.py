@@ -5,23 +5,11 @@ from __future__ import annotations
 from backend.domain.thread import Profile
 
 # 주제 키워드 → 필요 slot. 첫 일치만 쓴다(순서 중요).
+# 2026-09-29 교수님 실측(#607·#613 합의): 답이 조건에 따라 **실제로 달라지는** 경우에만 되묻는다.
+# 휴학·복학·수강 변경 절차는 학년·장학과 무관하게 같은 절차 → 되묻지 않고 일반 답변(조건별 차이는
+# 답변에서 안내). 졸업 절차만 학과별 요건이 달라 소속 학과를 묻는다.
 TOPIC_SLOTS: list[tuple[tuple[str, ...], list[str]]] = [
-    (("휴학", "복학"), ["grade", "scholarship"]),
-    (
-        (
-            "수강신청",
-            "수강 신청",
-            "수강정정",
-            "수강 정정",
-            "수강철회",
-            "수강 철회",
-            "수강변경",
-            "수강 변경",
-        ),
-        ["grade"],
-    ),
-    (("졸업",), ["grade", "dept"]),
-    (("장학",), ["scholarship"]),
+    (("졸업",), ["dept"]),
 ]
 
 SLOT_QUESTION = {

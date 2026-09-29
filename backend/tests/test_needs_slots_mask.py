@@ -41,8 +41,9 @@ def test_menu_and_location_without_search():
 
 
 def test_slots():
-    assert required_slots("휴학") == ["grade", "scholarship"]
-    assert required_slots(None, "수강 철회 언제까지") == ["grade"]
+    assert required_slots("휴학") == []  # 휴학·수강 절차는 되묻지 않음(#613)
+    assert required_slots(None, "수강 철회 언제까지") == []
+    assert required_slots("졸업") == ["dept"]
     assert required_slots("식단") == []
     assert missing_slots(["grade", "scholarship"], Profile(grade=2)) == ["scholarship"]
 
@@ -76,11 +77,11 @@ def test_notice_board_selection():
     assert calls[-1]["args"] == {"board": "academic", "keyword": "휴학"}
 
 
-def test_leave_slots_only_for_procedure_questions():
-    assert required_slots("휴학", intent="procedure") == ["grade", "scholarship"]
-    assert required_slots("휴학", "휴학 최대 몇 학기", intent="rule") == []
-    assert required_slots("수강철회", intent="rule") == []  # 규정·일정 질문은 되묻지 않음
-    assert required_slots("수강철회", intent="procedure") == ["grade"]
+def test_slots_only_where_answer_depends_on_condition():
+    assert required_slots("휴학", intent="procedure") == []  # 20문항 #13·14
+    assert required_slots("수강철회", intent="procedure") == []
+    assert required_slots("졸업", intent="procedure") == ["dept"]  # 학과별 요건이 다름
+    assert required_slots("졸업", "졸업 학점 몇 점", intent="rule") == []
 
 
 def test_generic_notice_topic_means_latest_notices():
@@ -88,3 +89,17 @@ def test_generic_notice_topic_means_latest_notices():
 
     assert notice_keyword("이번 주 주요 학교 공지사항") == ""
     assert notice_keyword("근로장학생 모집 공지") == "근로장학생 모집"
+
+
+def test_target_day_and_semester_window():
+    from datetime import date
+
+    from backend.agent.needs import semester_window, target_day
+
+    today = date(2026, 9, 29)
+    assert target_day("내일 학생식당 메뉴", today) == date(2026, 9, 30)
+    assert target_day("모레 메뉴", today) == date(2026, 10, 1)
+    assert target_day("학식 메뉴", today) == today
+    assert semester_window(today) == (date(2026, 9, 1), date(2027, 2, 28))
+    assert semester_window(date(2027, 1, 10)) == (date(2026, 9, 1), date(2027, 2, 28))
+    assert semester_window(date(2026, 4, 1)) == (date(2026, 3, 1), date(2026, 8, 31))

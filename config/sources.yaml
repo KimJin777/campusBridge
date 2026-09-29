@@ -31,6 +31,10 @@ sources:
       - {id: scholarship, path: "/ko/4415/subview.do"}
       - {id: shuttle_bus, path: "/ko/4319/subview.do"}
       - {id: certificates, path: "/ko/6940/subview.do"}
+      # 한마생활관(기숙사) — 20문항 #18 외국인 유학생 조항 오인용 대응(교수님 #614 승인)
+      - {id: dorm_admission, path: "/dorm/1553/subview.do"}
+      - {id: dorm_midterm, path: "/dorm/1554/subview.do"}
+      - {id: dorm_life, path: "/dorm/1550/subview.do"}
     content_selectors: []
     drop_selectors: []
     extractor_version: pending_d15

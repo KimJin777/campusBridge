@@ -148,12 +148,20 @@ def test_leave_scenario_answers_with_two_llm_calls():
 
 
 def test_missing_slots_asks_once_and_saves_pending():
-    llm = FakeLLM(classify=leave_classify(needed_slots=["grade", "scholarship"]))
-    out = run(deps(llm), state(profile=Profile()))
+    grad = leave_classify(topic="졸업", normalized_query="졸업하려면 어떻게 해요")
+    st = state(query="졸업하려면 어떻게 해요", profile=Profile())
+    out = run(deps(FakeLLM(classify=grad)), st)
     assert out["outcome"] == "ask"
-    assert out["ask"]["missing_slots"] == ["grade", "scholarship"]
-    assert out["pending_question"].original_query_masked == "휴학하려면 어떻게 해요"
+    assert out["ask"]["missing_slots"] == ["dept"]
+    assert out["pending_question"].original_query_masked == "졸업하려면 어떻게 해요"
     assert out["clarification_count"] == 1
+
+
+def test_leave_procedure_answers_without_asking_grade():
+    """휴학 절차는 학년·장학과 무관 — 되묻지 않고 바로 답한다(20문항 #13·14)."""
+    c = leave_classify(needed_slots=["grade", "scholarship"])
+    out = run(deps(FakeLLM(classify=c, compose=GOOD_DRAFT)), state(profile=Profile()))
+    assert out["outcome"] == "answer"
 
 
 def test_pending_answer_restores_original_query_and_merges_profile():
