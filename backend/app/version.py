@@ -13,6 +13,17 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.9.1",
+        "date": "2026-09-30",
+        "deployed_at": None,
+        "revision": None,
+        "title": "새 대화 버튼 복원·첫 화면 이동",
+        "items": [
+            "대화 화면 헤더에 [새 대화] 버튼 복원(첫 화면에서는 숨김)",
+            "'캠퍼스 브릿지' 제목을 누르면 첫 화면으로 이동(새 대화로 시작)",
+        ],
+    },
+    {
         "version": "0.9.0",
         "date": "2026-09-29",
         "deployed_at": None,

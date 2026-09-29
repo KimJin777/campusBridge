@@ -159,6 +159,10 @@ a.today-row:hover { background: var(--primary-soft); }
 .cal-add { display: inline-flex; flex: 0 0 auto; gap: 3px; margin-left: 6px; vertical-align: middle; }
 .cal-add-btn { padding: 1px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--secondary); font-size: 10px; font-weight: 600; text-decoration: none; cursor: pointer; }
 .cal-add-btn:hover { border-color: var(--primary); }
+a.brand-wrap { color: inherit; text-decoration: none; }
+.new-thread { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 9999px; background: var(--surface); color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; }
+.new-thread:hover { border-color: var(--primary); color: var(--primary); }
+@media (max-width: 480px) { .nt-word { display: none; } }
 .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 .chip {
   display: inline-flex;

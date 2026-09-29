@@ -82,6 +82,7 @@ class Turn {
     $("#turns").append(node);
     $("#welcome").hidden = true;
     $("#today").hidden = true; // 학사 일정 버튼은 첫 화면에서만
+    $("#new-thread").hidden = false; // 새 대화 버튼은 대화 화면에서만(교수님 2026-09-30 #628)
     this.node = node;
     this.steps = $(".steps", node);
     this.cards = $(".cards", node);
@@ -492,8 +493,26 @@ function handle(turn, event, d, retry) {
 }
 
 // ── 초기화 ──────────────────────────────────────────────────────────────
+// 첫 화면으로: 새 대화(새 thread)로 시작하고 이전 대화 화면을 지운다
+function goHome() {
+  if (state.busy) return;
+  state.threadId = uuid();
+  $("#turns").replaceChildren();
+  $("#welcome").hidden = false;
+  $("#new-thread").hidden = true;
+  $("#today").hidden = !$("#today-list").children.length;
+  $("#input").focus();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  track("new_thread");
+}
+
 async function init() {
   hydrateIcons();
+  $("#new-thread").addEventListener("click", goHome);
+  $("#home-link").addEventListener("click", (e) => {
+    e.preventDefault();
+    goHome();
+  });
   const input = $("#input");
   $("#form").addEventListener("submit", (e) => {
     e.preventDefault();
