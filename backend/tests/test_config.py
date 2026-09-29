@@ -12,7 +12,7 @@ def test_defaults_match_design(monkeypatch):
         monkeypatch.delenv(k, raising=False)
     s = Settings()
     assert s.gemini_model == "gemini-3.5-flash"
-    assert s.gemini_fallback_model == "gemini-2.5-flash"
+    assert s.gemini_fallback_model == "gemini-3.5-flash-lite"
     assert (s.max_tool_calls, s.max_llm_calls, s.hard_deadline_ms) == (4, 6, 25000)
     assert s.admin_emails == frozenset()
     assert "yz.kyungnam.ac.kr" in s.allowed_hosts

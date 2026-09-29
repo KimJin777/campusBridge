@@ -13,7 +13,7 @@ substitutions:
   _SERVING_CONFIG: rules-articles-search  # 엔진 ID만 주면 도구가 전체 경로를 조립
   _GEMINI_LOCATION: global
   _GEMINI_MODEL: gemini-3.5-flash
-  _GEMINI_FALLBACK_MODEL: gemini-2.5-flash
+  _GEMINI_FALLBACK_MODEL: gemini-3.5-flash-lite
   _OAUTH_CLIENT_ID: 171234524211-4clnkts6hg4se3vppq6mdd4f34oo4mgc.apps.googleusercontent.com
   # 관리자 이메일은 저장소(공개 예정)에 두지 않는다 — 트리거 대체 변수나 --substitutions로 전달
   _ADMIN_EMAILS: ""

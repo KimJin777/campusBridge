@@ -49,13 +49,13 @@ async def rate_limited():
 
 def test_primary_hang_falls_back_quickly(monkeypatch):
     monkeypatch.setitem(llm_mod.PRIMARY_TIMEOUT, "classify", 0.05)
-    g = make({"gemini-3.5-flash": hang, "gemini-2.5-flash": ok})
+    g = make({"gemini-3.5-flash": hang, "gemini-3.5-flash-lite": ok})
     out = asyncio.run(g.structured(Out, "s", "u", node="classify", deadline=deadline_after(5000)))
     assert out.ok
 
 
 def test_primary_429_falls_back():
-    g = make({"gemini-3.5-flash": rate_limited, "gemini-2.5-flash": ok})
+    g = make({"gemini-3.5-flash": rate_limited, "gemini-3.5-flash-lite": ok})
     out = asyncio.run(g.structured(Out, "s", "u", node="compose", deadline=deadline_after(20000)))
     assert out.ok
 
@@ -63,12 +63,12 @@ def test_primary_429_falls_back():
 def test_both_time_out_raises_llm_timeout(monkeypatch):
     monkeypatch.setitem(llm_mod.PRIMARY_TIMEOUT, "compose", 0.05)
     monkeypatch.setitem(llm_mod.PROFILES, "gemini_compose", (0.05, 0))
-    g = make({"gemini-3.5-flash": hang, "gemini-2.5-flash": hang})
+    g = make({"gemini-3.5-flash": hang, "gemini-3.5-flash-lite": hang})
     with pytest.raises(LLMTimeout):
         asyncio.run(g.structured(Out, "s", "u", node="compose", deadline=deadline_after(20000)))
 
 
 def test_no_time_left_for_fallback_raises_unavailable(monkeypatch):
-    g = make({"gemini-3.5-flash": rate_limited, "gemini-2.5-flash": ok})
+    g = make({"gemini-3.5-flash": rate_limited, "gemini-3.5-flash-lite": ok})
     with pytest.raises(LLMUnavailable):
         asyncio.run(g.structured(Out, "s", "u", node="classify", deadline=deadline_after(1000)))

@@ -47,11 +47,11 @@ class Settings:
         default_factory=lambda: _str("INGESTION_JOB_LOCATION", "asia-northeast3")
     )
 
-    # Gemini (D4 확인 2026-09-29: global에서 3.5-flash·2.5-flash 호출 OK)
+    # Gemini (D4 2026-09-29, 교수님 #553: 3.5 계열 유지 — 대체는 3.5-flash-lite)
     gemini_location: str = field(default_factory=lambda: _str("GEMINI_LOCATION", "global"))
     gemini_model: str = field(default_factory=lambda: _str("GEMINI_MODEL", "gemini-3.5-flash"))
     gemini_fallback_model: str = field(
-        default_factory=lambda: _str("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")
+        default_factory=lambda: _str("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lite")
     )
 
     # classify·act의 thinking 수준(3.x 모델). 2026-09-29 실측: low ≈ 2.2초 안정, 기본값 ≈ 4.6초
