@@ -57,24 +57,60 @@ def dept_lookup(dept_id: str, *, path: Path | None = None) -> Dept | None:
             return _dept_from_row(row)
     if path is not None:
         return None
-    # 부서 디렉터리 CSV(D16)에 없으면 검수 완료된 장소 표의 조직 행(이름·전화·위치)으로 찾는다
+    # CSV(D16)에 없으면 ① 전화번호부(업로드 시 자동 적용) ② 검수 완료된 장소 표 조직 행
     from backend.app.config import get_settings
 
-    for row in _verified_rows(get_settings(), None):
-        if _first(row, "kind") == "unit" and target in (
-            _first(row, "place_id", "id"),
-            _first(row, "name"),
-        ):
-            source = _first(row, "source_url")
-            return Dept(
-                dept_id=_first(row, "place_id", "id"),
-                name=_first(row, "name"),
-                phone=_first(row, "phone") or None,
-                location_text=_first(row, "raw_location") or None,
-                source_url=source if source and is_school_url(source) else None,
-                snapshot_at=_first(row, "snapshot_at") or None,
-            )
-    return None
+    settings = get_settings()
+    place = next(
+        (
+            r
+            for r in _verified_rows(settings, None)
+            if _first(r, "kind") == "unit"
+            and target in (_first(r, "place_id", "id"), _first(r, "name"))
+        ),
+        None,
+    )
+    book = _directory_rows(settings).get(target) or (
+        _directory_rows(settings).get(_first(place, "name")) if place else None
+    )
+    if not place and not book:
+        return None
+    source = _first(place, "source_url") if place else ""
+    return Dept(
+        dept_id=_first(place, "place_id", "id") if place else str(book.get("id")),
+        name=_first(place, "name") if place else str(book.get("name")),
+        # 전화는 최신 전화번호부 우선, 위치는 검수된 장소 표에서
+        phone=(book or {}).get("phone") or (_first(place, "phone") if place else None) or None,
+        location_text=(_first(place, "raw_location") if place else "") or None,
+        source_url=source if source and is_school_url(source) else None,
+        snapshot_at=(_first(place, "snapshot_at") if place else None)
+        or (str(book.get("applied_at"))[:10] if book else None),
+    )
+
+
+DIRECTORY_TTL_SECONDS = 300
+_directory_cache: dict[str, Any] = {"at": 0.0, "rows": {}}
+
+
+def _directory_rows(settings: Settings) -> dict[str, dict[str, Any]]:
+    """Firestore `directory_entries`(전화번호부) 이름→행. 5분 캐시, 실패하면 직전 값."""
+    if not settings.gcp_project_id:
+        return {}
+    now = time.monotonic()
+    if now - _directory_cache["at"] < DIRECTORY_TTL_SECONDS:
+        return _directory_cache["rows"]
+    try:
+        from google.cloud import firestore
+
+        client = firestore.Client(project=settings.gcp_project_id, database=settings.firestore_db)
+        rows = {
+            (d.to_dict() or {}).get("name", ""): {"id": d.id, **(d.to_dict() or {})}
+            for d in client.collection("directory_entries").stream()
+        }
+    except Exception:  # noqa: BLE001
+        rows = _directory_cache["rows"]
+    _directory_cache.update(at=now, rows=rows)
+    return rows
 
 
 def _normalize(value: str) -> str:

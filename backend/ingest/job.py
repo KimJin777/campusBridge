@@ -151,6 +151,32 @@ def _doc_fail(deps: JobDeps, doc_id: str, action: str, code: str) -> dict[str, A
     return changes
 
 
+def process_phonebook(object_name: str, deps: JobDeps, apply_fn) -> dict[str, Any]:
+    """관리자가 올린 전화번호부(HWP·PDF)를 변환·파싱해 directory_entries를 통째로 교체한다."""
+    from backend.ingest.phonebook import parse_phonebook
+    from backend.ingest.uploads import extract_text
+
+    content = deps.blobs.read(object_name)
+    if content is None:
+        return _phonebook_state(deps, "failed", error_code="SOURCE_MISSING")
+    fmt = object_name.rsplit(".", 1)[-1].lower()
+    try:
+        entries = parse_phonebook(extract_text(content, fmt))
+    except Exception:  # noqa: BLE001 — 형식별 변환 예외 전부
+        return _phonebook_state(deps, "failed", error_code="EXTRACTION_FAILED")
+    if len(entries) < 20 or sum(1 for e in entries if e.phone) < 10:
+        # 표 번호가 빠진 PDF 등 — 기존 전화번호부를 지우지 않고 실패로 남긴다
+        return _phonebook_state(deps, "failed", error_code="TOO_FEW_ENTRIES", parsed=len(entries))
+    stats = apply_fn(entries, source=object_name)
+    return {"status": "applied", **stats}
+
+
+def _phonebook_state(deps: JobDeps, status: str, **fields: Any) -> dict[str, Any]:
+    data = {"status": status, "updated_at": _now(), **fields}
+    deps.docs.merge("source_configs", "phonebook", data)
+    return data
+
+
 # ── 변경분 재수집 ──────────────────────────────────────────────────────
 def run_ingestion(
     run_id: str, source_ids: list[str], deps: JobDeps, workdir: Path
@@ -323,6 +349,17 @@ def main() -> int:
         ),
     )
     action, doc_id = os.environ.get("INGESTION_ACTION"), os.environ.get("DOCUMENT_ID")
+    if action == "phonebook" and doc_id:
+        from backend.ingest.phonebook import apply_directory
+
+        db = deps.docs.db  # type: ignore[attr-defined]
+        result = process_phonebook(
+            doc_id,
+            deps,
+            lambda entries, source: apply_directory(entries, db, source=source, actor="job"),
+        )
+        log.info(json.dumps({"event": "phonebook_job", "result": str(result)[:500]}))
+        return 0 if result.get("status") == "applied" else 1
     if action and doc_id:
         result = process_document(action, doc_id, deps)
         log.info(

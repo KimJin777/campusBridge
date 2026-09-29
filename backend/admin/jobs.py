@@ -84,7 +84,7 @@ class CloudRunJobLauncher:
         )
 
     async def start_document(self, document_id: str, action: str) -> str:
-        if action not in {"preview", "publish", "archive", "purge"}:
+        if action not in {"preview", "publish", "archive", "purge", "phonebook"}:
             raise ValueError("unsupported document ingestion action")
         return await asyncio.to_thread(
             self._start_sync,

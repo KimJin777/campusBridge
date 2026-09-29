@@ -175,6 +175,7 @@ const TABS = {
   disable: ["긴급 회수", viewDisable],
   documents: ["교내 문서", viewDocuments],
   places: ["장소 표", viewPlaces],
+  phonebook: ["전화번호부", viewPhonebook],
   review: ["검수 대기함", viewReview],
   unanswered: ["미응답·피드백", viewUnanswered],
   stats: ["통계", viewStats],
@@ -461,6 +462,39 @@ function pendingPlaces(rows) {
   });
   wrap.append(el("p", "hint", "자동 수집 결과입니다. 위치·전화가 원문 문장과 맞는지 확인한 항목만 검수 완료하세요."), all, go, t);
   return wrap;
+}
+
+async function viewPhonebook(view) {
+  const { items } = await api("/sources");
+  const pb = items.find((s) => s.id === "phonebook") || {};
+  const form = el("form", "inline");
+  form.append(
+    field("전화번호부 파일(HWP 권장 — PDF는 번호가 빠질 수 있음)", "file", "file", { required: true }),
+    field("사유", "reason", "text", { required: true, placeholder: "2026학년도 2학기 전화번호부 갱신" }),
+  );
+  const up = el("button", "act primary", "올리고 자동 적용");
+  up.type = "submit";
+  form.append(up);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!confirm("부서 연락처를 이 전화번호부로 통째로 교체합니다. 진행할까요?")) return;
+    const fd = new FormData(form);
+    fd.append("request_id", rid());
+    try {
+      await api("/directory", { method: "POST", form: fd });
+      flash("업로드했습니다. 변환·적용이 끝나면 상태가 '적용됨'으로 바뀝니다(1~2분).");
+      openTab("phonebook");
+    } catch (err) {
+      if (err.message !== "unauthorized") flash(err.message, true);
+    }
+  });
+  const stats = pb.last_stats || {};
+  view.replaceChildren(
+    el("p", "hint", "학교 전화번호부를 올리면 부서 대표 번호가 자동으로 바뀌어 학생 답변의 '담당 부서'에 쓰입니다. 직원 이름은 저장하지 않습니다."),
+    table([pb], [[(r) => badge(r.status || "없음"), "상태"], ["last_success_at", "마지막 적용"], ["doc_count", "부서 수"],
+      [() => stats.with_phone, "번호 있음"], [() => stats.added, "추가"], [() => stats.removed, "삭제"], ["error_code", "실패 원인"]]),
+    form,
+  );
 }
 
 async function viewReview(view) {

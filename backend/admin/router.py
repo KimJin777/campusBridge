@@ -440,6 +440,40 @@ async def patch_place(
     )
 
 
+@router.post("/directory", status_code=202)
+async def upload_phonebook(
+    actor: Actor,
+    store: Store,
+    launcher: Launcher,
+    storage: Documents,
+    settings: Annotated[Settings, Depends(get_settings)],
+    file: Annotated[UploadFile, File()],
+    reason: Annotated[str, Form(min_length=1, max_length=300)],
+    request_id: Annotated[str, Form(min_length=8, max_length=100)],
+) -> dict[str, Any]:
+    """전화번호부(HWP 권장·PDF) 업로드 → Job이 변환·파싱해 부서 연락처를 통째로 교체(자동 적용)."""
+    if not settings.rules_bucket or not settings.gcp_project_id or not settings.ingestion_job_name:
+        raise AppError("BAD_REQUEST", "문서 저장소 또는 처리 Job 설정이 없습니다.")
+    content = await file.read(20 * 1024 * 1024 + 1)
+    document = validate_document(file.filename, content)
+    if document.format not in ("hwp", "pdf"):
+        raise AppError("BAD_REQUEST", "전화번호부는 HWP(권장) 또는 PDF로 올려 주세요.")
+    doc_id = f"phonebook-{document.sha256.split(':')[1][:16]}"
+    path = await storage.upload_staging(doc_id, document)
+    await store.patch_source(
+        "phonebook",
+        {"kind": "phonebook", "status": "processing", "pending_file": path},
+        actor=actor,
+        reason=reason.strip(),
+        request_id=request_id.strip(),
+    )
+    try:
+        operation = await launcher.start_document(path, "phonebook")
+    except Exception as exc:
+        raise AppError("INTERNAL", "전화번호부 처리 작업을 시작하지 못했습니다.") from exc
+    return {"status": "processing", "file": path, "operation": operation}
+
+
 @router.get("/audit")
 async def list_audit(
     actor: Actor,
