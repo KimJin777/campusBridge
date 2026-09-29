@@ -13,6 +13,17 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.4.1",
+        "date": "2026-09-29",
+        "deployed_at": None,
+        "revision": None,
+        "title": "관리자 계정 추가",
+        "items": [
+            "관리자 허용 이메일에 교수님 개인 계정 추가(배포 설정값 — 저장소에는 두지 않음)",
+            "v0.4.0 배포 기록 반영(관리자 버전 내역에 배포 상태 표시)",
+        ],
+    },
+    {
         "version": "0.4.0",
         "date": "2026-09-29",
         "deployed_at": "2026-09-29T08:43:58Z",
