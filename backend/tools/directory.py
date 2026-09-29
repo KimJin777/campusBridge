@@ -11,7 +11,7 @@ from typing import Any
 
 from backend.app.config import Settings
 from backend.domain import Dept, Evidence, ToolResult
-from backend.tools.common import ensure_allowed_url, truncate, utc_now
+from backend.tools.common import is_school_url, truncate, utc_now
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
@@ -55,6 +55,25 @@ def dept_lookup(dept_id: str, *, path: Path | None = None) -> Dept | None:
     for row in _read_rows(path or DATA_DIR / "department_directory.csv"):
         if _first(row, "dept_id", "id") == target:
             return _dept_from_row(row)
+    if path is not None:
+        return None
+    # 부서 디렉터리 CSV(D16)에 없으면 검수 완료된 장소 표의 조직 행(이름·전화·위치)으로 찾는다
+    from backend.app.config import get_settings
+
+    for row in _verified_rows(get_settings(), None):
+        if _first(row, "kind") == "unit" and target in (
+            _first(row, "place_id", "id"),
+            _first(row, "name"),
+        ):
+            source = _first(row, "source_url")
+            return Dept(
+                dept_id=_first(row, "place_id", "id"),
+                name=_first(row, "name"),
+                phone=_first(row, "phone") or None,
+                location_text=_first(row, "raw_location") or None,
+                source_url=source if source and is_school_url(source) else None,
+                snapshot_at=_first(row, "snapshot_at") or None,
+            )
     return None
 
 
@@ -192,12 +211,7 @@ async def find_campus_location(
         if not place_id or not name:
             continue
         source_url = _first(row, "source_url", "url")
-        try:
-            source_url = (
-                ensure_allowed_url(source_url, settings.allowed_hosts) if source_url else ""
-            )
-        except ValueError:
-            source_url = ""
+        source_url = source_url if source_url and is_school_url(source_url) else ""
         location = _location_text(row, by_id)
         meta: dict[str, Any] = {
             "kind": _first(row, "kind", "place_kind") or None,

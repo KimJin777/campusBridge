@@ -383,8 +383,8 @@ async function viewPlaces(view) {
   view.replaceChildren(
     el("p", "hint", "지도·좌표는 쓰지 않습니다. 검수 완료(verified)된 행만 학생 답변에 나갑니다."),
     form,
-    table(items, [["place_id", "ID"], ["name", "이름"], ["kind", "종류"], ["raw_location", "위치"],
-      [(r) => badge(r.status), "상태"], ["source_url", "원문"], ["snapshot_at", "확인일"], ["verified_by", "검수자"]],
+    table(items, [["name", "이름"], ["kind", "종류"], ["raw_location", "위치"], ["phone", "대표 전화"],
+      [(r) => badge(r.status), "상태"], [(r) => sourceLink(r.source_url), "원문"], ["snapshot_at", "확인일"], ["verified_by", "검수자"]],
       (row) => [
         row.status !== "verified" ? btn("검수 완료", async () => {
           const reason = askReason(`「${row.name}」 위치 검수 완료`);
@@ -404,14 +404,73 @@ async function viewPlaces(view) {
   );
 }
 
+function sourceLink(url) {
+  if (!url || !/^https:\/\/([a-z0-9-]+\.)*kyungnam\.ac\.kr(\/|$)/i.test(url)) return el("span", null, "—");
+  const a = el("a", null, "원문");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  return a;
+}
+
+function pendingPlaces(rows) {
+  const wrap = el("div");
+  if (!rows.length) {
+    wrap.append(el("p", "hint", "검수 대기 항목이 없습니다."));
+    return wrap;
+  }
+  const checked = new Set();
+  const all = el("button", "act", "전체 선택");
+  all.type = "button";
+  const go = btn("선택 항목 검수 완료", async () => {
+    if (!checked.size) return flash("선택한 항목이 없습니다.", true);
+    const reason = askReason(`${checked.size}건 검수 완료(원문 확인함)`);
+    if (!reason) return;
+    let ok = 0;
+    const failed = [];
+    for (const id of checked) {
+      try {
+        await api(`/places/${encodeURIComponent(id)}`, { method: "PATCH", body: { status: "verified", reason, request_id: rid() } });
+        ok += 1;
+      } catch (e) {
+        failed.push(`${id}: ${e.message}`);
+      }
+    }
+    flash(`검수 완료 ${ok}건${failed.length ? ` / 실패 ${failed.length}건 — ${failed.join("; ")}` : ""}`, failed.length > 0);
+    openTab("places");
+  }, "act primary");
+  const boxes = [];
+  const t = table(rows, [
+    [(r) => {
+      const cb = el("input");
+      cb.type = "checkbox";
+      cb.setAttribute("aria-label", `${r.name} 선택`);
+      cb.addEventListener("change", () => (cb.checked ? checked.add(r.place_id || r.id) : checked.delete(r.place_id || r.id)));
+      boxes.push(cb);
+      return cb;
+    }, "선택"],
+    ["name", "이름"], ["kind", "종류"], ["raw_location", "위치"], ["phone", "대표 전화"],
+    ["evidence_text", "원문 문장"], [(r) => sourceLink(r.source_url), "원문"], ["collected_by", "수집"],
+  ]);
+  all.addEventListener("click", () => {
+    const on = checked.size < rows.length;
+    boxes.forEach((cb) => {
+      cb.checked = on;
+      cb.dispatchEvent(new Event("change"));
+    });
+  });
+  wrap.append(el("p", "hint", "자동 수집 결과입니다. 위치·전화가 원문 문장과 맞는지 확인한 항목만 검수 완료하세요."), all, go, t);
+  return wrap;
+}
+
 async function viewReview(view) {
   const [sources, places, docs] = await Promise.all([api("/sources"), api("/places"), api("/documents")]);
   const rules = sources.items.find((s) => s.id === "rules");
   view.replaceChildren(
     el("h3", null, "검수 실패 규정(색인 제외, 이전 버전 유지)"),
     el("p", rules?.rejected_rule_nos?.length ? "msg err" : "hint", rules?.rejected_rule_nos?.length ? `규정 번호: ${rules.rejected_rule_nos.join(", ")}` : "없음"),
-    el("h3", null, "장소 표 검수 대기"),
-    table(places.items.filter((p) => p.status === "pending"), [["name", "이름"], ["raw_location", "위치"], ["source_url", "원문"]]),
+    el("h3", null, "장소·부서 검수 대기 — 원문 문장을 보고 맞는 것만 체크"),
+    pendingPlaces(places.items.filter((p) => p.status === "pending")),
     el("h3", null, "교내 문서 검토 대기"),
     table(docs.items.filter((d) => ["staging", "publishing"].includes(d.status)), [["title", "제목"], [(r) => badge(r.status), "상태"], [(r) => badge(r.preview_status), "미리보기"], ["preview_error_code", "오류"]]),
   );

@@ -422,10 +422,14 @@ class Nodes:
     def _dept(self, state: TurnState, cited: list[str]) -> Dept | None:
         ev = {e.id: e for e in state.get("evidence", [])}
         pool = [ev[c] for c in cited if c in ev] or state.get("evidence", [])
+
+        def key(e):  # dept_id가 없으면 소관부서 이름으로 찾는다(검수된 장소 표 조직 행)
+            return e.meta.get("dept_id") or e.meta.get("department")
+
         if "procedure_and_contact" in state.get("evidence_needs", []):
-            guides = [e for e in pool if e.kind == "guide" and e.meta.get("dept_id")]
+            guides = [e for e in pool if e.kind == "guide" and key(e)]
             pool = guides or pool
-        ids = [e.meta["dept_id"] for e in pool if e.meta.get("dept_id")]
+        ids = [key(e) for e in pool if key(e)]
         dept_id = (
             Counter(ids).most_common(1)[0][0]
             if ids

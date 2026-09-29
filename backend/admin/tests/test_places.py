@@ -102,3 +102,40 @@ def test_lookup_prefers_firestore_verified_rows(monkeypatch, tmp_path):
     assert res.ok and res.items[0].text == "학사관리팀: 본관 2층"
     none = asyncio.run(directory.find_campus_location("중앙도서관", settings=S))
     assert none.items == []  # pending은 노출 금지
+
+
+def test_subdomain_source_url_accepted_and_dept_lookup_uses_verified_units(monkeypatch):
+    out = normalize_place_changes(
+        {"source_url": "https://ifes.kyungnam.ac.kr/about"}, {"status": "pending"}, S
+    )
+    assert out["source_url"].startswith("https://ifes.")
+    monkeypatch.setattr(
+        directory,
+        "_verified_rows",
+        lambda s, p: [
+            {
+                "place_id": "u-1",
+                "kind": "unit",
+                "name": "학사관리팀",
+                "phone": "055-249-2027",
+                "raw_location": "본관 1층",
+                "source_url": URL,
+                "status": "verified",
+            },
+        ],
+    )
+    d = directory.dept_lookup("학사관리팀", path=None)
+    assert d and (d.name, d.phone, d.location_text) == ("학사관리팀", "055-249-2027", "본관 1층")
+    assert directory.dept_lookup("없는팀") is None
+
+
+def test_unit_with_phone_only_can_be_verified():
+    unit = {
+        "name": "연구윤리센터",
+        "kind": "unit",
+        "phone": "055-249-2121",
+        "status": "pending",
+        "source_url": URL,
+        "snapshot_at": "2026-09-29",
+    }
+    assert normalize_place_changes({"status": "verified"}, unit, S)["status"] == "verified"

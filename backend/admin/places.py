@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.app.config import Settings
 from backend.domain import AppError
-from backend.tools.common import ensure_allowed_url
+from backend.tools.common import is_school_url
 
 PLACE_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{1,63}$")
 LOCATION_FIELDS = ("name", "aliases", "kind", "parent_place_id", "floor", "room", "raw_location")
@@ -78,10 +78,8 @@ def normalize_place_changes(
     if "snapshot_at" in out:
         out["snapshot_at"] = str(out["snapshot_at"])
     if out.get("source_url"):
-        try:
-            ensure_allowed_url(str(out["source_url"]), settings.allowed_hosts)
-        except ValueError as exc:
-            raise AppError("BAD_REQUEST", "원문 주소는 학교 도메인 https여야 합니다.") from exc
+        if not is_school_url(str(out["source_url"])):
+            raise AppError("BAD_REQUEST", "원문 주소는 학교 도메인 https여야 합니다.")
     merged = {**(current or {}), **out}
     requested = out.pop("status", None)
     if current is None:
@@ -93,8 +91,11 @@ def normalize_place_changes(
     if requested == "verified":
         if not merged.get("source_url") or not merged.get("snapshot_at"):
             raise AppError("BAD_REQUEST", "검수 완료에는 원문 주소와 확인일이 필요합니다.")
-        if not (merged.get("raw_location") or merged.get("parent_place_id")):
-            raise AppError("BAD_REQUEST", "위치(건물·층·호실 또는 위치 문구)가 없습니다.")
+        has_phone = merged.get("kind") == "unit" and merged.get("phone")
+        if not (merged.get("raw_location") or merged.get("parent_place_id") or has_phone):
+            raise AppError(
+                "BAD_REQUEST", "위치(건물·층·호실 또는 위치 문구)나 대표 전화가 없습니다."
+            )
         out["status"] = "verified"
     elif requested == "pending" or (location_changed and current.get("status") == "verified"):
         out["status"] = "pending"  # 검수된 위치를 고치면 재검수
