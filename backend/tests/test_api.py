@@ -134,7 +134,8 @@ def test_rate_limiter():
 def test_suggestions_privacy_and_static_frontend():
     c, _ = client(FakeLLM())
     items = c.get("/api/suggestions").json()["items"]
-    assert "휴학 신청 절차 알려 주세요" in items and len(items) == 6
+    assert "휴학 신청 절차 알려 주세요" in items and len(items) == 5
+    assert not any("주식" in i for i in items)  # 서비스 범위 규칙: 범위 밖 예시 금지
     r = c.get("/privacy", follow_redirects=False)
     assert r.status_code in (302, 307) and r.headers["location"] == "/privacy.html"
     page = c.get("/")

@@ -26,13 +26,13 @@ def _list(name: str, default: str = "") -> tuple[str, ...]:
     return tuple(x.strip() for x in re.split(r"[,|]", raw) if x.strip())
 
 
+# 서비스 범위 규칙(교수님 2026-09-29): 대학생에게 필요한 정보만 — 범위 밖 예시는 화면에 두지 않는다
 DEFAULT_SUGGESTIONS = (
     "휴학 신청 절차 알려 주세요",
     "성적 경고 기준과 재수강 규정",
     "오늘 학생식당 메뉴",
     "장학금 신청 언제까지예요?",
     "학사지원팀 어디 있어요?",
-    "오늘 주식 뭐 사면 좋을까요?",
 )
 
 
