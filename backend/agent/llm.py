@@ -44,24 +44,39 @@ class GeminiLLM:
         self.s = settings or get_settings()
         self._models: dict[str, object] = {}
 
-    def _chat(self, model: str):
-        if model not in self._models:
-            from langchain_google_vertexai import ChatVertexAI  # 지연 import — 테스트에 SDK 불필요
+    def _chat(self, model: str, thinking: str | None):
+        """노드별 thinking 수준을 달리한 채팅 모델(지연 생성·캐시).
 
-            self._models[model] = ChatVertexAI(
-                model=model,
-                project=self.s.gcp_project_id or None,
-                location=self.s.gemini_location,
-                temperature=0,
-                max_output_tokens=self.s.max_output_tokens,
-                max_retries=0,  # 재시도는 공통 래퍼가 담당
-            )
-        return self._models[model]
+        ChatVertexAI는 LangChain 3.2에서 폐기 예정 → ChatGoogleGenerativeAI(vertexai=True) 우선.
+        thinking_level은 3.x 모델에만 넘긴다(2.5는 미지원).
+        """
+        key = f"{model}|{thinking}"
+        if key not in self._models:
+            common = {
+                "model": model,
+                "project": self.s.gcp_project_id or None,
+                "location": self.s.gemini_location,
+                "temperature": 0,
+                "max_output_tokens": self.s.max_output_tokens,
+                "max_retries": 0,  # 재시도는 공통 래퍼가 담당
+            }
+            use_thinking = thinking and model.startswith("gemini-3")
+            try:
+                from langchain_google_genai import ChatGoogleGenerativeAI
+
+                extra = {"thinking_level": thinking} if use_thinking else {}
+                self._models[key] = ChatGoogleGenerativeAI(vertexai=True, **common, **extra)
+            except ImportError:
+                from langchain_google_vertexai import ChatVertexAI
+
+                self._models[key] = ChatVertexAI(**common)
+        return self._models[key]
 
     async def _once(
         self, model: str, schema: type[T], system: str, user: str, node: str, deadline: float | None
     ) -> T:
-        runnable = self._chat(model).with_structured_output(schema)
+        thinking = self.s.classify_thinking if node in ("classify", "act") else None
+        runnable = self._chat(model, thinking).with_structured_output(schema)
 
         async def call():
             return await runnable.ainvoke([("system", system), ("human", user)])
