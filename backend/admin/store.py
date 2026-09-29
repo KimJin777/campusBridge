@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
@@ -55,6 +56,23 @@ class AdminStore(Protocol):
     ) -> list[str]: ...
 
     async def stats(self, days: int) -> dict[str, Any]: ...
+
+    async def create_ingestion_run(
+        self,
+        source_ids: list[str],
+        *,
+        idempotency_key: str,
+        actor: AdminActor,
+    ) -> tuple[dict[str, Any], bool]: ...
+
+    async def mark_ingestion_launch(
+        self,
+        run_id: str,
+        *,
+        actor: AdminActor,
+        operation_name: str | None,
+        error_code: str | None = None,
+    ) -> dict[str, Any]: ...
 
 
 class FirestoreAdminStore:
@@ -221,6 +239,117 @@ class FirestoreAdminStore:
                 "p95": elapsed[max(0, int(len(elapsed) * 0.95) - 1)] if elapsed else None,
             },
         }
+
+    async def create_ingestion_run(
+        self,
+        source_ids: list[str],
+        *,
+        idempotency_key: str,
+        actor: AdminActor,
+    ) -> tuple[dict[str, Any], bool]:
+        """Atomically deduplicate both a request key and an already active run."""
+        run_id = f"run-{hashlib.sha256(idempotency_key.encode()).hexdigest()[:24]}"
+        run_ref = self.db.collection("ingestion_runs").document(run_id)
+        control_ref = self.db.collection("ingestion_control").document("active")
+
+        @self._fs.async_transactional
+        async def txn(tx) -> tuple[dict[str, Any], bool]:
+            requested = await run_ref.get(transaction=tx)
+            if requested.exists:
+                return {"id": requested.id, **_safe_value(requested.to_dict() or {})}, False
+
+            control = await control_ref.get(transaction=tx)
+            active_id = (control.to_dict() or {}).get("run_id") if control.exists else None
+            if isinstance(active_id, str) and active_id:
+                active_ref = self.db.collection("ingestion_runs").document(active_id)
+                active = await active_ref.get(transaction=tx)
+                active_data = active.to_dict() or {} if active.exists else {}
+                if active_data.get("status") in {"queued", "running"}:
+                    return {"id": active.id, **_safe_value(active_data)}, False
+
+            now = datetime.now(UTC)
+            row = {
+                "idempotency_key": idempotency_key,
+                "source_ids": source_ids,
+                "status": "queued",
+                "phase": "dispatch",
+                "processed": 0,
+                "total": 0,
+                "added": 0,
+                "changed": 0,
+                "rejected": 0,
+                "error_code": None,
+                "actor": actor.email,
+                "created_at": now,
+                "started_at": None,
+                "finished_at": None,
+            }
+            audit_ref = self.db.collection("admin_audit").document(str(uuid4()))
+            tx.set(run_ref, row)
+            tx.set(control_ref, {"run_id": run_id, "updated_at": now})
+            tx.set(
+                audit_ref,
+                self._audit_payload(
+                    actor=actor,
+                    action="ingestion.request",
+                    target=run_id,
+                    before=None,
+                    after=row,
+                    reason="관리자 강제 재수집",
+                    request_id=idempotency_key,
+                    result="queued",
+                ),
+            )
+            return {"id": run_id, **_safe_value(row)}, True
+
+        return await txn(self.db.transaction())
+
+    async def mark_ingestion_launch(
+        self,
+        run_id: str,
+        *,
+        actor: AdminActor,
+        operation_name: str | None,
+        error_code: str | None = None,
+    ) -> dict[str, Any]:
+        ref = self.db.collection("ingestion_runs").document(run_id)
+        snapshot = await ref.get()
+        if not snapshot.exists:
+            raise AppError("INTERNAL", "수집 실행 기록이 사라졌습니다.")
+        before = snapshot.to_dict() or {}
+        now = datetime.now(UTC)
+        failed = error_code is not None
+        changes = {
+            "status": "failed" if failed else "running",
+            "phase": "dispatch" if failed else "starting",
+            "operation_name": operation_name,
+            "error_code": error_code,
+            "started_at": before.get("started_at") or now,
+            "finished_at": now if failed else None,
+            "updated_at": now,
+        }
+        after = {**before, **changes}
+        audit_ref = self.db.collection("admin_audit").document(str(uuid4()))
+        batch = self.db.batch()
+        batch.set(ref, changes, merge=True)
+        if failed:
+            control_ref = self.db.collection("ingestion_control").document("active")
+            batch.set(control_ref, {"run_id": None, "updated_at": now}, merge=True)
+        batch.set(
+            audit_ref,
+            self._audit_payload(
+                actor=actor,
+                action="ingestion.launch",
+                target=run_id,
+                before=before,
+                after=after,
+                reason="Cloud Run Job 실행",
+                request_id=str(before.get("idempotency_key") or run_id),
+                result="failed" if failed else "success",
+            ),
+        )
+        await batch.commit()
+        return {"id": run_id, **_safe_value(after)}
 
 
 def get_admin_store() -> AdminStore:

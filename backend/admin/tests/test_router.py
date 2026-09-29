@@ -7,8 +7,10 @@ from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 from backend.admin.auth import AdminActor, require_admin
+from backend.admin.jobs import get_job_launcher
 from backend.admin.router import router
 from backend.admin.store import get_admin_store
+from backend.app.config import Settings, get_settings
 from backend.domain import AppError
 
 
@@ -16,6 +18,17 @@ class FakeStore:
     def __init__(self) -> None:
         self.patch_args = None
         self.disable_args = None
+        self.create_result = (
+            {
+                "id": "run-created",
+                "source_ids": ["notices"],
+                "status": "queued",
+                "phase": "dispatch",
+            },
+            True,
+        )
+        self.create_args = None
+        self.mark_args = []
 
     async def get_document(self, collection: str, document_id: str):
         if collection == "ingestion_runs" and document_id == "run-1":
@@ -54,8 +67,40 @@ class FakeStore:
     async def stats(self, days: int) -> dict[str, Any]:
         return {"days": days, "total": 7}
 
+    async def create_ingestion_run(self, source_ids: list[str], **kwargs):
+        self.create_args = (source_ids, kwargs)
+        return self.create_result
 
-def _client(store: FakeStore) -> TestClient:
+    async def mark_ingestion_launch(self, run_id: str, **kwargs):
+        self.mark_args.append((run_id, kwargs))
+        failed = kwargs.get("error_code") is not None
+        return {
+            "id": run_id,
+            "source_ids": ["notices"],
+            "status": "failed" if failed else "running",
+            "phase": "dispatch" if failed else "starting",
+            "error_code": kwargs.get("error_code"),
+        }
+
+
+class FakeLauncher:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.calls = []
+
+    async def start(self, run_id: str, source_ids: list[str]) -> str:
+        self.calls.append((run_id, source_ids))
+        if self.fail:
+            raise RuntimeError("launch failed")
+        return "operations/op-1"
+
+
+def _client(
+    store: FakeStore,
+    *,
+    launcher: FakeLauncher | None = None,
+    settings: Settings | None = None,
+) -> TestClient:
     app = FastAPI()
 
     @app.exception_handler(AppError)
@@ -67,6 +112,11 @@ def _client(store: FakeStore) -> TestClient:
         email="admin@example.edu", subject="sub"
     )
     app.dependency_overrides[get_admin_store] = lambda: store
+    app.dependency_overrides[get_job_launcher] = lambda: launcher or FakeLauncher()
+    app.dependency_overrides[get_settings] = lambda: settings or Settings(
+        gcp_project_id="campus-bridge1",
+        ingestion_job_name="campusbridge-ingest",
+    )
     return TestClient(app)
 
 
@@ -125,3 +175,71 @@ def test_ingestion_run_response_never_exposes_raw_log_fields() -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "running"
     assert "unsafe_log" not in response.json()
+
+
+def test_ingestion_run_starts_configured_job_and_records_launch() -> None:
+    store = FakeStore()
+    launcher = FakeLauncher()
+    client = _client(store, launcher=launcher)
+
+    response = client.post(
+        "/api/admin/ingestion-runs",
+        json={"source_ids": ["notices"], "idempotency_key": "request-123"},
+    )
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "running"
+    assert response.json()["reused"] is False
+    assert launcher.calls == [("run-created", ["notices"])]
+    assert store.create_args[1]["actor"].email == "admin@example.edu"
+    assert store.mark_args[0][1]["operation_name"] == "operations/op-1"
+
+
+def test_ingestion_run_reuses_active_run_without_launching_again() -> None:
+    store = FakeStore()
+    store.create_result = (
+        {"id": "run-existing", "status": "running", "phase": "download"},
+        False,
+    )
+    launcher = FakeLauncher()
+    client = _client(store, launcher=launcher)
+
+    response = client.post(
+        "/api/admin/ingestion-runs",
+        json={"source_ids": [], "idempotency_key": "request-123"},
+    )
+
+    assert response.status_code == 202
+    assert response.json()["reused"] is True
+    assert response.json()["id"] == "run-existing"
+    assert launcher.calls == []
+    assert store.mark_args == []
+
+
+def test_ingestion_run_rejects_missing_job_config_without_creating_record() -> None:
+    store = FakeStore()
+    client = _client(
+        store,
+        settings=Settings(gcp_project_id="campus-bridge1", ingestion_job_name=""),
+    )
+
+    response = client.post(
+        "/api/admin/ingestion-runs",
+        json={"source_ids": [], "idempotency_key": "request-123"},
+    )
+
+    assert response.status_code == 400
+    assert store.create_args is None
+
+
+def test_ingestion_run_records_dispatch_failure() -> None:
+    store = FakeStore()
+    client = _client(store, launcher=FakeLauncher(fail=True))
+
+    response = client.post(
+        "/api/admin/ingestion-runs",
+        json={"source_ids": ["notices"], "idempotency_key": "request-123"},
+    )
+
+    assert response.status_code == 500
+    assert store.mark_args[0][1]["error_code"] == "JOB_START_FAILED"

@@ -10,13 +10,16 @@ import yaml
 from fastapi import APIRouter, Depends, Query
 
 from backend.admin.auth import AdminActor, require_admin
-from backend.admin.models import DisableRequest, SourcePatch
+from backend.admin.jobs import JobLauncher, get_job_launcher
+from backend.admin.models import DisableRequest, IngestionRunRequest, SourcePatch
 from backend.admin.store import AdminStore, get_admin_store
+from backend.app.config import Settings, get_settings
 from backend.domain import AppError
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 Actor = Annotated[AdminActor, Depends(require_admin)]
 Store = Annotated[AdminStore, Depends(get_admin_store)]
+Launcher = Annotated[JobLauncher, Depends(get_job_launcher)]
 Limit = Annotated[int, Query(ge=1, le=200)]
 Cursor = Annotated[str | None, Query(max_length=200)]
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
@@ -140,6 +143,63 @@ async def get_ingestion_run(
         "finished_at",
         "error_code",
         "message",
+    }
+    return {key: value for key, value in item.items() if key in allowed}
+
+
+@router.post("/ingestion-runs", status_code=202)
+async def start_ingestion_run(
+    body: IngestionRunRequest,
+    actor: Actor,
+    store: Store,
+    launcher: Launcher,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    if not settings.gcp_project_id or not settings.ingestion_job_name:
+        raise AppError("BAD_REQUEST", "수집 Job 설정이 없어 실행할 수 없습니다.")
+
+    run, created = await store.create_ingestion_run(
+        body.source_ids,
+        idempotency_key=body.idempotency_key,
+        actor=actor,
+    )
+    if not created:
+        return {**_ingestion_run_view(run), "reused": True}
+
+    run_id = str(run["id"])
+    try:
+        operation_name = await launcher.start(run_id, body.source_ids)
+    except Exception as exc:
+        await store.mark_ingestion_launch(
+            run_id,
+            actor=actor,
+            operation_name=None,
+            error_code="JOB_START_FAILED",
+        )
+        raise AppError("INTERNAL", "수집 Job을 시작하지 못했습니다.") from exc
+
+    launched = await store.mark_ingestion_launch(
+        run_id,
+        actor=actor,
+        operation_name=operation_name,
+    )
+    return {**_ingestion_run_view(launched), "reused": False}
+
+
+def _ingestion_run_view(item: dict[str, Any]) -> dict[str, Any]:
+    allowed = {
+        "id",
+        "source_ids",
+        "status",
+        "phase",
+        "processed",
+        "total",
+        "added",
+        "changed",
+        "rejected",
+        "started_at",
+        "finished_at",
+        "error_code",
     }
     return {key: value for key, value in item.items() if key in allowed}
 
