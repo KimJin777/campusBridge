@@ -1,4 +1,5 @@
 // 학생 채팅 화면(상세설계 05 §1). 모든 외부 텍스트는 textContent로만 넣는다(innerHTML 금지).
+import { calendarButtons } from "./ics.js";
 import { createSSEParser } from "./sse.js";
 import { hydrateIcons, icon, chipIcon } from "./icons.js";
 
@@ -125,7 +126,7 @@ class Turn {
     for (const c of items || []) {
       if (this.cardMap.has(c.id)) continue;
       if (c.kind === "calendar" && /^\d{4}-\d{2}-\d{2}$/.test(c.start_date || "")) {
-        this.calendarEvents.set(c.id, { title: c.title, start: c.start_date, end: c.end_date || c.start_date });
+        this.calendarEvents.set(c.id, { title: c.title, start: c.start_date, end: c.end_date || c.start_date, url: c.url });
       }
       const kind = Object.hasOwn(KIND_LABEL, c.kind) ? c.kind : "guide";
       const card = el("article", `card kind-${kind}`);
@@ -578,7 +579,7 @@ function monthGrid(ym, events) {
   for (const e of events.filter((x) => x.start.startsWith(ym) || x.end.startsWith(ym)).sort((a, b) => a.start.localeCompare(b.start))) {
     const when = e.start === e.end ? e.start.slice(5).replace("-", ".") : `${e.start.slice(5).replace("-", ".")} ~ ${e.end.slice(5).replace("-", ".")}`;
     const li = el("li");
-    li.append(el("span", "cal-when", when), document.createTextNode(e.title));
+    li.append(el("span", "cal-when", when), document.createTextNode(e.title), calendarButtons({ title: e.title, start: e.start, end: e.end, url: e.url }, el));
     list.append(li);
   }
   box.append(list);
@@ -617,7 +618,8 @@ async function loadToday() {
       const head = el("span", "t");
       head.append(el("i", `tag${e.category === "event" ? " ev" : ""}`, tag), document.createTextNode(e.title));
       row.append(head, el("span", "d", `${e.label ? `${e.label} ` : ""}${periodText(e)}`));
-      li.append(row);
+      li.className = "today-li";
+      li.append(row, calendarButtons({ title: e.title, start: e.start_date || e.end_date, end: e.end_date, url: e.url }, el));
       list.append(li);
     }
     $("#today-count").textContent = String(items.length);
