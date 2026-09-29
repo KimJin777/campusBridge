@@ -13,6 +13,16 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.6.1",
+        "date": "2026-09-29",
+        "deployed_at": None,
+        "revision": None,
+        "title": "데이터 출처 원본 링크",
+        "items": [
+            "데이터 출처 탭에 출처별 원본 전체 주소 표시(긴 주소는 말줄임, 마우스를 올리면 전체)와 새 창 [바로가기]",
+        ],
+    },
+    {
         "version": "0.6.0",
         "date": "2026-09-29",
         "deployed_at": None,

@@ -28,6 +28,7 @@ from backend.admin.models import (
     normalize_admin_email,
 )
 from backend.admin.places import PlaceCreate, PlacePatch
+from backend.admin.source_links import source_links
 from backend.admin.store import AdminStore, get_admin_store
 from backend.app.config import Settings, get_settings
 from backend.domain import AppError
@@ -100,9 +101,13 @@ async def list_sources(
     cursor: Cursor = None,
 ) -> dict[str, Any]:
     del actor
-    return await store.list_page(
+    page = await store.list_page(
         "source_configs", limit=limit, cursor=cursor, order_by="kind", descending=False
     )
+    links = source_links()
+    for item in page["items"]:
+        item["links"] = links.get(str(item.get("id")), [])
+    return page
 
 
 @router.get("/admins")

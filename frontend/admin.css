@@ -138,6 +138,12 @@ body.admin .brand span { color: var(--primary); }
 .shortcut-title svg { color: var(--secondary); }
 .shortcut-desc { color: var(--muted); font-size: 12px; }
 
+.src-links { display: grid; gap: 4px; }
+.src-link { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.src-url { max-width: 260px; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.src-link .act.small { flex: 0 0 auto; padding: 3px 9px; font-size: 11px; text-decoration: none; }
+.src-more summary { cursor: pointer; color: var(--primary); font-size: 12px; }
+
 .banner {
   margin: 12px 20px 0;
   padding: 10px 13px;

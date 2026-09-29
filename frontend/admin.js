@@ -260,6 +260,28 @@ async function viewShortcuts(view) {
   }
 }
 
+// 출처 원본 링크: 긴 주소는 말줄임(마우스를 올리면 전체), [바로가기]는 새 창
+function sourceLinks(row) {
+  const links = row.links || [];
+  if (!links.length) return el("span", "hint", row.id === "phonebook" ? "관리자 업로드 파일" : "—");
+  const list = el("div", "src-links");
+  for (const { label, url } of links) {
+    const line = el("div", "src-link");
+    const text = el("span", "src-url", url);
+    text.title = `${label}: ${url}`;
+    const go = el("a", "act small", "바로가기");
+    go.href = url;
+    go.target = "_blank";
+    go.rel = "noopener noreferrer";
+    line.append(text, go);
+    list.append(line);
+  }
+  if (links.length <= 2) return list;
+  const box = el("details", "src-more");
+  box.append(el("summary", null, `${links.length}개 링크 보기`), list);
+  return box;
+}
+
 async function viewSources(view) {
   const { items } = await api("/sources");
   const rules = items.find((s) => s.id === "rules");
@@ -279,7 +301,7 @@ async function viewSources(view) {
   view.append(
     table(
       items,
-      [["id", "출처"], ["kind", "종류"], ["schedule", "주기"], [(r) => (r.paused ? "일시정지" : "동작"), "상태"],
+      [["id", "출처"], [sourceLinks, "원본 링크"], ["kind", "종류"], ["schedule", "주기"], [(r) => (r.paused ? "일시정지" : "동작"), "상태"],
        ["last_success_at", "마지막 성공"], ["doc_count", "문서 수"], ["active_index_version", "색인 버전"]],
       (row) => [
         btn(row.paused ? "재개" : "일시정지", async () => {
