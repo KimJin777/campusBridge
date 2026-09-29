@@ -130,14 +130,25 @@ class Turn {
       const card = el("article", `card kind-${kind}`);
       card.setAttribute("role", "listitem");
       card.tabIndex = -1;
-      const head = el("div");
-      head.className = "card-head";
-      head.append(el("span", "kind", KIND_LABEL[c.kind] || c.kind), el("span", "num"));
-      card.append(head, el("div", "title", c.title), el("div", "snippet", c.snippet));
+      const head = el("button", "card-head");
+      head.type = "button";
+      head.setAttribute("aria-expanded", "false");
+      head.append(el("span", "kind", KIND_LABEL[c.kind] || c.kind), el("span", "title", c.title), el("span", "num"), el("span", "chev", "▾"));
+      const detail = el("div", "card-detail");
+      detail.hidden = true;
+      detail.append(el("div", "snippet", c.snippet));
       const meta = [c.department, c.revision_date && `${c.revision_date} 개정`].filter(Boolean).join(" · ");
-      if (meta) card.append(el("div", "meta", meta));
-      if (c.has_table) card.append(el("div", "meta", "표 포함 — 원문 확인"));
-      if (c.stale) card.append(el("div", "meta stale", "마지막 확인 정보"));
+      if (meta) detail.append(el("div", "meta", meta));
+      if (c.has_table) detail.append(el("div", "meta", "표 포함 — 원문 확인"));
+      if (c.stale) detail.append(el("div", "meta stale", "마지막 확인 정보"));
+      head.addEventListener("click", () => {
+        const open = detail.hidden;
+        detail.hidden = !open;
+        card.classList.toggle("open", open);
+        head.setAttribute("aria-expanded", String(open));
+        if (open) track("card_click", { turn_id: this.turnId, target: c.id, card_state: card.classList.contains("cited") ? "cited" : "candidate" });
+      });
+      card.append(head, detail);
       const safe = typeof c.url === "string" && ALLOWED_LINK.test(c.url);
       const source = el("button", "source-link", "원문");
       source.type = "button";
@@ -148,7 +159,7 @@ class Turn {
         window.open(c.url, "_blank", "noopener,noreferrer");
         track("source_click", { turn_id: this.turnId, target: c.id, card_state: card.classList.contains("cited") ? "cited" : "candidate" });
       });
-      card.append(source);
+      detail.append(source);
       this.cardMap.set(c.id, card);
       this.cards.append(card);
     }
@@ -195,6 +206,7 @@ class Turn {
       b.setAttribute("aria-label", `근거 ${n}`);
       b.addEventListener("click", () => {
         const card = this.cardMap.get(id);
+        if (card && !card.classList.contains("open")) $(".card-head", card).click();
         card?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
         card?.focus();
         track("card_click", { turn_id: this.turnId, target: id, card_state: "cited" });

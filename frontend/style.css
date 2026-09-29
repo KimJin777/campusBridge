@@ -219,7 +219,15 @@ a { color: var(--primary); }
 .card.kind-menu::before { background: var(--amber); }
 .card.cited { opacity: 1; box-shadow: var(--shadow-2); }
 .card.folded { display: none; }
-.card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.card { padding: 0 0 0 4px; }
+.card-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.card .card-head .title { flex: 1; min-width: 0; margin: 0; overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.card-head .kind { flex: 0 0 auto; }
+.card-head .chev { flex: 0 0 auto; color: var(--muted); transition: transform .15s; }
+.card.open .card-head .chev { transform: rotate(180deg); }
+.card.open .card-head .title { white-space: normal; }
+.card-detail { padding: 0 12px 12px; }
+.card.open .snippet { display: block; -webkit-line-clamp: unset; }
 .card .kind { padding: 1px 8px; color: var(--secondary); background: color-mix(in srgb, var(--secondary) 8%, var(--surface)); }
 .card .num { color: var(--secondary); font-weight: 700; }
 .card .title { margin: 7px 0 4px; font-weight: 600; }

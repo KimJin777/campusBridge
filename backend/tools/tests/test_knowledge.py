@@ -190,3 +190,11 @@ async def test_search_rejects_bad_input(query, kinds) -> None:
     result = await search_academic_knowledge(query, kinds, settings=_settings())
     assert not result.ok
     assert result.error_code == "BAD_INPUT"
+
+
+def test_rule_title_prints_float_article_numbers_as_integers() -> None:
+    from backend.tools.knowledge import _rule_title
+
+    data = {"rule_name": "학사운영 규정", "article_no": 66.0, "article_title": "휴학기간"}
+    assert _rule_title(data) == "학사운영 규정 제66조(휴학기간)"
+    assert _rule_title({**data, "article_branch": 2.0}) == "학사운영 규정 제66조의2(휴학기간)"

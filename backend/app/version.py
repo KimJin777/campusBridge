@@ -13,6 +13,18 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.7.2",
+        "date": "2026-09-29",
+        "deployed_at": None,
+        "revision": None,
+        "title": "답변 화면 순서·근거 카드 접기",
+        "items": [
+            "답변 순서를 질문 → 판단 과정 → 공식 근거 자료 → 답변으로 변경",
+            "근거 카드는 '종류 + 제목' 한 줄만 보이고 누르면 펼쳐 발췌·원문 버튼 표시(본문 인용 번호를 누르면 해당 카드가 펼쳐짐)",
+            "규정 조항 번호가 '제66.0조'로 보이던 문제 수정(제66조)",
+        ],
+    },
+    {
         "version": "0.7.1",
         "date": "2026-09-29",
         "deployed_at": None,

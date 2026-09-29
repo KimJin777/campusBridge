@@ -97,15 +97,23 @@ def _denylist_keys(document_id: str, data: dict[str, Any]) -> set[str]:
     return keys
 
 
+def _int_like(value: Any) -> Any:
+    """검색 structData 숫자는 float로 온다(66.0) — 정수면 정수로 표기."""
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
 def _rule_title(data: dict[str, Any]) -> str:
     """근거 카드 제목: "경남대학교 학칙 제38조(휴학)" — 부칙은 "… 부칙"."""
     rule = str(data.get("rule_name") or "규정")
     if data.get("kind") == "addenda":
         return f"{rule} 부칙"
-    no = data.get("article_no")
+    no = _int_like(data.get("article_no"))
     if no is None:
         return str(data.get("article_title") or rule)
-    branch = f"의{data['article_branch']}" if data.get("article_branch") else ""
+    branch_no = _int_like(data.get("article_branch"))
+    branch = f"의{branch_no}" if branch_no else ""
     title = f"({data['article_title']})" if data.get("article_title") else ""
     return f"{rule} 제{no}조{branch}{title}"
 
