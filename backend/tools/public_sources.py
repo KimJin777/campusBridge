@@ -24,6 +24,45 @@ DATE_PATTERN = re.compile(
     r"(?P<m1>\d{1,2})[./-](?P<d1>\d{1,2})"
     r"(?:\s*~\s*(?P<m2>\d{1,2})[./-](?P<d2>\d{1,2}))?"
 )
+_CACHE: dict[str, tuple[datetime, ToolResult]] = {}
+
+
+def _cached(key: str, ttl: timedelta) -> ToolResult | None:
+    entry = _CACHE.get(key)
+    if entry is None:
+        return None
+    saved_at, result = entry
+    if utc_now() - saved_at > ttl:
+        return None
+    return result.model_copy(deep=True)
+
+
+def _remember(key: str, result: ToolResult) -> ToolResult:
+    if result.ok:
+        saved_at = result.as_of or utc_now()
+        result = result.model_copy(update={"as_of": saved_at})
+        _CACHE[key] = (saved_at, result.model_copy(deep=True))
+    return result
+
+
+def _stale_or(key: str, failed: ToolResult, max_age: timedelta) -> ToolResult:
+    entry = _CACHE.get(key)
+    if entry is None:
+        return failed
+    saved_at, result = entry
+    age = utc_now() - saved_at
+    if age > max_age:
+        return failed
+    message = result.message or "마지막 정상 확인 정보를 표시합니다"
+    return result.model_copy(
+        deep=True,
+        update={
+            "stale": True,
+            "as_of": saved_at,
+            "age_seconds": max(0, int(age.total_seconds())),
+            "message": message,
+        },
+    )
 
 
 def _client() -> httpx.AsyncClient:
@@ -117,16 +156,32 @@ async def get_notices(
         return ToolResult.fail("BAD_INPUT", "공지 게시판 종류를 확인해 주세요")
     keyword = truncate(keyword, 100)
     days = max(1, min(int(days), 180))
+    cache_key = f"notices:{board}:{keyword.casefold()}:{days}"
+    cached = _cached(cache_key, timedelta(minutes=30))
+    if cached is not None:
+        return cached
     url = urljoin(BASE_URL, paths[board])
     try:
         payload = await _fetch(url, settings, client)
         feed = await asyncio.to_thread(feedparser.parse, payload)
     except httpx.TimeoutException:
-        return ToolResult.fail("UPSTREAM_TIMEOUT", "공지를 불러오는 데 시간이 초과되었습니다")
+        return _stale_or(
+            cache_key,
+            ToolResult.fail("UPSTREAM_TIMEOUT", "공지를 불러오는 데 시간이 초과되었습니다"),
+            timedelta(days=7),
+        )
     except Exception:
-        return ToolResult.fail("UPSTREAM_ERROR", "공지를 불러오지 못했습니다")
+        return _stale_or(
+            cache_key,
+            ToolResult.fail("UPSTREAM_ERROR", "공지를 불러오지 못했습니다"),
+            timedelta(days=7),
+        )
     if getattr(feed, "bozo", False) and not getattr(feed, "entries", []):
-        return ToolResult.fail("PARSE_ERROR", "공지 형식을 읽지 못했습니다")
+        return _stale_or(
+            cache_key,
+            ToolResult.fail("PARSE_ERROR", "공지 형식을 읽지 못했습니다"),
+            timedelta(days=7),
+        )
 
     now = utc_now().astimezone(KST)
     cutoff = now - timedelta(days=days)
@@ -164,7 +219,12 @@ async def get_notices(
         )
     rows.sort(key=lambda row: row[0] or datetime.min.replace(tzinfo=UTC), reverse=True)
     items = [item for _, item in rows[:5]]
-    return ToolResult(ok=True, items=items, as_of=utc_now()) if items else ToolResult.empty()
+    result = (
+        ToolResult(ok=True, items=items, as_of=utc_now())
+        if items
+        else ToolResult.empty()
+    )
+    return _remember(cache_key, result)
 
 
 def _coerce_date(value: date | str | None, fallback: date) -> date:
@@ -238,6 +298,10 @@ async def get_academic_calendar(
     if end_date < start_date:
         return ToolResult.fail("BAD_INPUT", "종료일은 시작일보다 빠를 수 없습니다")
     end_date = min(end_date, start_date + timedelta(days=120))
+    cache_key = f"calendar:{start_date.isoformat()}:{end_date.isoformat()}"
+    cached = _cached(cache_key, timedelta(hours=24))
+    if cached is not None:
+        return cached
     url = f"{BASE_URL}/ko/4293/subview.do"
     endpoint = f"{BASE_URL}/schdulmanage/ko/60/monthSchdul.do"
     try:
@@ -262,18 +326,35 @@ async def get_academic_calendar(
         unique = {item.id: item for batch in batches for item in batch}
         items = list(unique.values())
     except httpx.TimeoutException:
-        return ToolResult.fail("UPSTREAM_TIMEOUT", "학사일정을 불러오는 데 시간이 초과되었습니다")
+        return _stale_or(
+            cache_key,
+            ToolResult.fail("UPSTREAM_TIMEOUT", "학사일정을 불러오는 데 시간이 초과되었습니다"),
+            timedelta(days=7),
+        )
     except Exception:
-        return ToolResult.fail("UPSTREAM_ERROR", "학사일정을 불러오지 못했습니다")
+        return _stale_or(
+            cache_key,
+            ToolResult.fail("UPSTREAM_ERROR", "학사일정을 불러오지 못했습니다"),
+            timedelta(days=7),
+        )
     if not items:
-        return ToolResult.fail("PARSE_ERROR", "학사일정 형식을 읽지 못했습니다")
+        return _stale_or(
+            cache_key,
+            ToolResult.fail("PARSE_ERROR", "학사일정 형식을 읽지 못했습니다"),
+            timedelta(days=7),
+        )
     filtered = [
         item
         for item in items
         if date.fromisoformat(item.meta["start_date"]) <= end_date
         and date.fromisoformat(item.meta["end_date"]) >= start_date
     ]
-    return ToolResult(ok=True, items=filtered, as_of=utc_now()) if filtered else ToolResult.empty()
+    result = (
+        ToolResult(ok=True, items=filtered, as_of=utc_now())
+        if filtered
+        else ToolResult.empty()
+    )
+    return _remember(cache_key, result)
 
 
 def _week_range(title: str, target: date) -> tuple[date, date] | None:
@@ -337,6 +418,10 @@ async def get_menu(
         target = _coerce_date(day, datetime.now(KST).date())
     except (TypeError, ValueError):
         return ToolResult.fail("BAD_INPUT", "식단 조회 날짜 형식을 확인해 주세요")
+    cache_key = f"menu:{target.isoformat()}"
+    cached = _cached(cache_key, timedelta(hours=6))
+    if cached is not None:
+        return cached
     urls = (f"{BASE_URL}/ko/4454/subview.do", f"{BASE_URL}/ko/8978/subview.do")
     try:
         payloads = await asyncio.gather(*(_fetch(url, settings, client) for url in urls))
@@ -347,19 +432,32 @@ async def get_menu(
             )
         )
     except httpx.TimeoutException:
-        return ToolResult.fail("UPSTREAM_TIMEOUT", "식단을 불러오는 데 시간이 초과되었습니다")
+        failed = ToolResult.fail("UPSTREAM_TIMEOUT", "식단을 불러오는 데 시간이 초과되었습니다")
+        return (
+            _stale_or(cache_key, failed, timedelta(days=1))
+            if target == datetime.now(KST).date()
+            else failed
+        )
     except Exception:
-        return ToolResult.fail("UPSTREAM_ERROR", "식단을 불러오지 못했습니다")
+        failed = ToolResult.fail("UPSTREAM_ERROR", "식단을 불러오지 못했습니다")
+        return (
+            _stale_or(cache_key, failed, timedelta(days=1))
+            if target == datetime.now(KST).date()
+            else failed
+        )
     unique: dict[str, Evidence] = {}
     for batch in batches:
         for item in batch:
             unique.setdefault(item.id, item)
     items = list(unique.values())
     if not items:
-        return ToolResult.empty("요청한 날짜에 게시된 식단이 없습니다")
-    return ToolResult(
-        ok=True,
-        items=items,
-        message="식단은 첨부 원문에서 확인해 주세요",
-        as_of=utc_now(),
+        return _remember(cache_key, ToolResult.empty("요청한 날짜에 게시된 식단이 없습니다"))
+    return _remember(
+        cache_key,
+        ToolResult(
+            ok=True,
+            items=items,
+            message="식단은 첨부 원문에서 확인해 주세요",
+            as_of=utc_now(),
+        ),
     )

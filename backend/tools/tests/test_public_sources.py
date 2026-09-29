@@ -1,13 +1,18 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 import pytest
 
 from backend.app.config import Settings
 from backend.tools import build_tools
-from backend.tools.public_sources import get_academic_calendar, get_menu, get_notices
+from backend.tools.public_sources import _CACHE, get_academic_calendar, get_menu, get_notices
+
+
+@pytest.fixture(autouse=True)
+def clear_tool_cache() -> None:
+    _CACHE.clear()
 
 
 def _client(body: str, content_type: str = "text/html; charset=utf-8") -> httpx.AsyncClient:
@@ -52,6 +57,27 @@ async def test_notices_filters_keyword_and_orders_by_pubdate() -> None:
 
     assert result.ok
     assert [item.title for item in result.items] == ["휴학 신청 안내"]
+
+
+@pytest.mark.asyncio
+async def test_notices_returns_last_good_value_as_stale_on_timeout() -> None:
+    rss = """<rss version="2.0"><channel><item><title>휴학 안내</title><guid>a</guid>
+      <link>https://www.kyungnam.ac.kr/bbs/ko/1398/1/artclView.do</link>
+      <pubDate>Mon, 28 Sep 2026 09:00:00 +0900</pubDate></item></channel></rss>"""
+    async with _client(rss, "application/rss+xml") as client:
+        fresh = await get_notices("academic", settings=Settings(), client=client)
+    saved_at = datetime.now(UTC) - timedelta(minutes=31)
+    _CACHE["notices:academic::30"] = (saved_at, fresh)
+
+    async def timeout(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("timeout", request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(timeout)) as client:
+        stale = await get_notices("academic", settings=Settings(), client=client)
+
+    assert stale.ok and stale.stale
+    assert stale.age_seconds is not None and stale.age_seconds >= 31 * 60
+    assert stale.as_of == saved_at
 
 
 @pytest.mark.asyncio
