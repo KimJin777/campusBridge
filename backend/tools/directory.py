@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -113,6 +115,51 @@ def _location_text(row: dict[str, str], by_id: dict[str, dict[str, str]]) -> str
     return " ".join(part for part in parts if part)
 
 
+PLACES_TTL_SECONDS = 300
+_places_cache: dict[str, Any] = {"at": 0.0, "rows": []}
+
+
+def _firestore_place_rows(settings: Settings) -> list[dict[str, str]]:
+    """Firestore `places`의 verified 행(#543: 운영 정본). 5분 캐시, 실패하면 빈 목록."""
+    if not settings.gcp_project_id:
+        return []
+    now = time.monotonic()
+    if now - _places_cache["at"] < PLACES_TTL_SECONDS:
+        return _places_cache["rows"]
+    try:
+        from google.cloud import firestore
+
+        client = firestore.Client(project=settings.gcp_project_id, database=settings.firestore_db)
+        docs = client.collection("places").where("status", "==", "verified").stream()
+        rows = [_flatten(d.id, d.to_dict() or {}) for d in docs]
+    except Exception:  # noqa: BLE001 — 장소는 CSV seed로 계속 동작
+        rows = _places_cache["rows"]
+    _places_cache.update(at=now, rows=rows)
+    return rows
+
+
+def _flatten(place_id: str, data: dict[str, Any]) -> dict[str, str]:
+    row = {
+        k: ("|".join(v) if isinstance(v, list) else str(v))
+        for k, v in data.items()
+        if v is not None
+    }
+    row.setdefault("place_id", place_id)
+    return row
+
+
+def _verified_rows(settings: Settings, path: Path | None) -> list[dict[str, str]]:
+    """CSV seed + Firestore 운영 행(같은 place_id면 Firestore 우선). verified만."""
+    merged: dict[str, dict[str, str]] = {}
+    for row in _read_rows(path or DATA_DIR / "places.csv"):
+        if _first(row, "status").casefold() == "verified":
+            merged[_first(row, "place_id", "id")] = row
+    if path is None:
+        for row in _firestore_place_rows(settings):
+            merged[_first(row, "place_id", "id")] = row
+    return [r for r in merged.values() if _first(r, "status").casefold() == "verified"]
+
+
 async def find_campus_location(
     query: str,
     *,
@@ -124,11 +171,7 @@ async def find_campus_location(
     normalized = _normalize(truncate(query, 30))
     if not normalized:
         return ToolResult.fail("BAD_INPUT", "찾을 장소 이름을 입력해 주세요")
-    rows = [
-        row
-        for row in _read_rows(path or DATA_DIR / "places.csv")
-        if _first(row, "status").casefold() == "verified"
-    ]
+    rows = await asyncio.to_thread(_verified_rows, settings, path)
     if not rows:
         return ToolResult.empty("검수된 장소 정보가 아직 없습니다")
 

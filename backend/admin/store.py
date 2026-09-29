@@ -116,6 +116,18 @@ class AdminStore(Protocol):
         error_code: str | None = None,
     ) -> dict[str, Any]: ...
 
+    async def save_place(
+        self,
+        place_id: str,
+        changes: dict[str, Any],
+        *,
+        create: bool,
+        settings: Settings,
+        actor: AdminActor,
+        reason: str,
+        request_id: str,
+    ) -> dict[str, Any]: ...
+
 
 class FirestoreAdminStore:
     def __init__(self, settings: Settings | None = None, client: Any = None):
@@ -585,6 +597,56 @@ class FirestoreAdminStore:
         await batch.commit()
         snapshot = await ref.get()
         return {"id": document_id, **_safe_value(snapshot.to_dict() or {})}
+
+    async def save_place(
+        self,
+        place_id: str,
+        changes: dict[str, Any],
+        *,
+        create: bool,
+        settings: Settings,
+        actor: AdminActor,
+        reason: str,
+        request_id: str,
+    ) -> dict[str, Any]:
+        from backend.admin.places import normalize_place_changes
+
+        ref = self.db.collection("places").document(place_id)
+
+        @self._fs.async_transactional
+        async def txn(tx) -> dict[str, Any]:
+            snapshot = await ref.get(transaction=tx)
+            current = snapshot.to_dict() if snapshot.exists else None
+            if create and current is not None:
+                if current.get("request_id") == request_id:
+                    return {"id": place_id, **_safe_value(current)}  # 재전송 멱등
+                raise AppError("BAD_REQUEST", "같은 place_id가 이미 있습니다.")
+            if not create and current is None:
+                raise AppError("BAD_REQUEST", "장소를 찾지 못했습니다.")
+            out = normalize_place_changes(changes, current, settings)
+            now = datetime.now(UTC)
+            out.update({"updated_at": now, "updated_by": actor.email, "request_id": request_id})
+            if create:
+                out.update({"place_id": place_id, "created_at": now})
+            if out.get("status") == "verified":
+                out.update({"verified_by": actor.email, "verified_at": now})
+            after = {**(current or {}), **out}
+            tx.set(ref, out, merge=True)
+            tx.set(
+                self.db.collection("admin_audit").document(str(uuid4())),
+                self._audit_payload(
+                    actor=actor,
+                    action="place.create" if create else "place.update",
+                    target=place_id,
+                    before=current,
+                    after=after,
+                    reason=reason,
+                    request_id=request_id,
+                ),
+            )
+            return {"id": place_id, **_safe_value(after)}
+
+        return await txn(self.db.transaction())
 
 
 def get_admin_store() -> AdminStore:

@@ -24,6 +24,7 @@ from backend.admin.models import (
     IngestionRunRequest,
     SourcePatch,
 )
+from backend.admin.places import PlaceCreate, PlacePatch
 from backend.admin.store import AdminStore, get_admin_store
 from backend.app.config import Settings, get_settings
 from backend.domain import AppError
@@ -372,6 +373,51 @@ async def document_action(
         doc_id, action, actor=actor, request_id=body.request_id.strip(), operation_name=operation
     )
     return {**_document_view(item), "reused": False}
+
+
+@router.get("/places")
+async def list_places(actor: Actor, store: Store, limit: Limit = 100, cursor: Cursor = None):
+    del actor
+    return await store.list_page("places", limit=limit, cursor=cursor, order_by="updated_at")
+
+
+@router.post("/places", status_code=201)
+async def create_place(
+    body: PlaceCreate,
+    actor: Actor,
+    store: Store,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    changes = body.model_dump(exclude={"place_id", "reason", "request_id"}, exclude_none=True)
+    return await store.save_place(
+        body.place_id,
+        changes,
+        create=True,
+        settings=settings,
+        actor=actor,
+        reason=body.reason.strip(),
+        request_id=body.request_id.strip(),
+    )
+
+
+@router.patch("/places/{place_id}")
+async def patch_place(
+    place_id: str,
+    body: PlacePatch,
+    actor: Actor,
+    store: Store,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    changes = body.model_dump(exclude={"reason", "request_id"}, exclude_none=True)
+    return await store.save_place(
+        _valid_id(place_id),
+        changes,
+        create=False,
+        settings=settings,
+        actor=actor,
+        reason=body.reason.strip(),
+        request_id=body.request_id.strip(),
+    )
 
 
 @router.get("/audit")
