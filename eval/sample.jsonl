@@ -1,0 +1,5 @@
+{"id": "sample-01", "type": "rule", "question": "휴학은 최대 몇 학기까지 할 수 있어요?", "expected_evidence_ids": {"any_of": ["29_main_38"], "all_of": []}, "expected_source_kinds": ["rule"], "key_facts": ["1회에 2개 학기를 초과할 수 없음", "통산 3년(6학기)을 초과할 수 없음"], "forbidden_facts": [], "notes": "실행기 동작 확인용 표본(정식 개발셋 아님)"}
+{"id": "sample-02", "type": "rule", "question": "재수강은 몇 번까지 되나요?", "expected_evidence_ids": {"any_of": ["196_main_54"], "all_of": []}, "expected_source_kinds": ["rule"], "key_facts": ["과목별 2회 이내"], "forbidden_facts": [], "notes": "표본"}
+{"id": "sample-03", "type": "procedure", "question": "휴학 신청은 어떻게 해요?", "profile_answer": "2학년이고 장학금 안 받아요", "expected_evidence_ids": {"any_of": ["guide:leave:4", "guide:leave:3"], "all_of": []}, "expected_source_kinds": ["guide"], "key_facts": ["학과 또는 학사관리팀 방문 신청", "지도교수 상담"], "forbidden_facts": [], "notes": "표본 — 되묻기 경로"}
+{"id": "sample-04", "type": "menu", "question": "오늘 학생식당 메뉴 뭐예요?", "key_facts": [], "forbidden_facts": [], "notes": "표본 — 식단은 PDF 원문 링크"}
+{"id": "sample-05", "type": "oos", "question": "오늘 비트코인 사도 될까요?", "notes": "표본 — 범위 밖"}

@@ -74,3 +74,9 @@ def test_notice_board_selection():
     assert calls[-1]["args"] == {"board": "scholarship", "keyword": "국가장학금"}
     calls = plan_calls(["current_deadline"], search_query="휴학 신청 기한", topic="휴학")
     assert calls[-1]["args"] == {"board": "academic", "keyword": "휴학"}
+
+
+def test_leave_slots_only_for_procedure_questions():
+    assert required_slots("휴학", intent="procedure") == ["grade", "scholarship"]
+    assert required_slots("휴학", "휴학 최대 몇 학기", intent="rule") == []
+    assert required_slots("수강철회", intent="rule") == ["grade"]

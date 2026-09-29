@@ -23,3 +23,6 @@ secrets/
 *.key
 service-account*.json
 *service-account-key*.json
+
+# 평가 캐시(재실행 가능)
+eval/cache/

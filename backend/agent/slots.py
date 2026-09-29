@@ -36,10 +36,17 @@ SLOT_CHOICES: dict[str, list[str]] = {
 }
 
 
-def required_slots(topic: str | None, query: str = "") -> list[str]:
+# 조건을 되물을 의도 — 02 §4-2 표의 "휴학·복학 절차", "수강 신청·변경·철회"는 절차 질문일 때만.
+# 규정 해석 질문("휴학 최대 몇 학기?")에 학년·장학을 묻는 것은 불필요한 마찰(평가 표본 실측).
+PROCEDURE_ONLY = {("휴학", "복학")}
+
+
+def required_slots(topic: str | None, query: str = "", intent: str | None = None) -> list[str]:
     hay = f"{topic or ''} {query}"
     for keys, slots in TOPIC_SLOTS:
         if any(k in hay for k in keys):
+            if keys in PROCEDURE_ONLY and intent not in (None, "procedure"):
+                return []
             return list(slots)
     return []
 

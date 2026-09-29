@@ -162,7 +162,7 @@ class Nodes:
 
         intent = out.intent if out.in_scope else "out_of_scope"
         # 필요 조건은 서버 표(slots.py)가 결정한다 — 모델의 needed_slots는 참고용 기록만(02 §4-2 표)
-        needed = required_slots(out.topic, effective)
+        needed = required_slots(out.topic, effective, intent)
         missing = missing_slots(needed, profile)
         shown = [{"from": c.from_, "to": c.to} for c in out.corrections if c.kind != "particle"]
         _emit("status", step="classify", msg="질문 분석 완료", corrections=shown)
