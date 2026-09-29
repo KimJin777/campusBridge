@@ -13,6 +13,16 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.7.3",
+        "date": "2026-09-29",
+        "deployed_at": None,
+        "revision": None,
+        "title": "첫 화면 정리",
+        "items": [
+            "첫 화면 왼쪽 상단(로고 옆) 버전 표시 삭제 — 버전은 화면 하단에만 표시",
+        ],
+    },
+    {
         "version": "0.7.2",
         "date": "2026-09-29",
         "deployed_at": None,

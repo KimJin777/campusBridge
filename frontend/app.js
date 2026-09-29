@@ -517,7 +517,6 @@ async function init() {
       fetch("/api/status").then((r) => r.json()),
       fetch("/api/suggestions").then((r) => r.json()),
     ]);
-    $("#version").textContent = `v${status.version}`;
     $("#version-foot").textContent = ` · v${status.version}`;
     for (const text of sug.items || []) {
       const b = el("button", "chip", text);
