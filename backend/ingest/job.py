@@ -1,0 +1,334 @@
+"""수집 Job 진입점(상세설계 07 §8, 04 §6) — Cloud Run Job `campusbridge-ingest`에서 실행.
+
+환경값(관리자 API가 실행 시 넘김)
+- 변경분 재수집: INGESTION_RUN_ID, SOURCE_IDS(쉼표; 비면 규정+학사안내 전체)
+- 교내 문서 처리: INGESTION_ACTION(preview|publish|archive|purge), DOCUMENT_ID
+
+원칙
+- 규정은 **변경분만**(목록 파일 버전이 manifest와 다를 때) 받아 검수 통과분만 INCREMENTAL 가져오기
+- manifest는 컨테이너에 남지 않으므로 GCS `state/manifest.json`에서 읽고 쓴다
+- 실행 상태는 Firestore `ingestion_runs/{run_id}`에 구조화 필드로만 기록(원시 로그는 Cloud Logging)
+
+실행: uv run python -m backend.ingest.job
+"""
+
+from __future__ import annotations
+
+import asyncio
+import datetime as dt
+import json
+import logging
+import os
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Protocol
+
+log = logging.getLogger("campusbridge.job")
+
+STATE_MANIFEST = "state/manifest.json"
+
+
+# ── 외부 의존 경계(테스트에서 가짜로 바꾼다) ─────────────────────────────
+class Blobs(Protocol):
+    def read(self, name: str) -> bytes | None: ...
+    def write(self, name: str, data: bytes, content_type: str) -> None: ...
+    def delete_prefix(self, prefix: str) -> int: ...
+
+
+class Docs(Protocol):
+    def get(self, collection: str, doc_id: str) -> dict[str, Any] | None: ...
+    def merge(self, collection: str, doc_id: str, data: dict[str, Any]) -> None: ...
+
+
+class Index(Protocol):
+    def import_jsonl(self, local_path: Path, object_prefix: str) -> list[str]: ...
+    def delete(self, vertex_ids: list[str]) -> int: ...
+
+
+@dataclass
+class JobDeps:
+    blobs: Blobs
+    docs: Docs
+    index: Index
+
+
+def _now() -> dt.datetime:
+    return dt.datetime.now(dt.UTC)
+
+
+# ── 교내 문서 처리 ─────────────────────────────────────────────────────
+def process_document(action: str, doc_id: str, deps: JobDeps) -> dict[str, Any]:
+    from backend.ingest.uploads import (
+        build_upload_documents,
+        chunk_text,
+        extract_text,
+    )
+
+    doc = deps.docs.get("documents", doc_id)
+    if doc is None:
+        raise RuntimeError("document not found")
+    chunks_path = f"documents/staging/{doc_id}/chunks.json"
+
+    if action == "preview":
+        content = deps.blobs.read(str(doc.get("gcs_staging_path") or ""))
+        if content is None:
+            return _doc_fail(deps, doc_id, "preview", "SOURCE_MISSING")
+        try:
+            text = extract_text(content, str(doc.get("format")))
+        except Exception:  # noqa: BLE001 — 형식별 라이브러리 예외 전부(깨진 PDF 등)
+            return _doc_fail(deps, doc_id, "preview", "EXTRACTION_FAILED")
+        chunks = chunk_text(text)
+        deps.blobs.write(
+            chunks_path, json.dumps(chunks, ensure_ascii=False).encode(), "application/json"
+        )
+        changes = {
+            "preview_status": "ready",
+            "preview_chunk_count": len(chunks),
+            "preview_text_length": len(text),
+            "preview_chunks": [c[:500] for c in chunks[:5]],
+            "preview_error_code": None,
+            "updated_at": _now(),
+        }
+        deps.docs.merge("documents", doc_id, changes)
+        return changes
+
+    if action == "publish":
+        if doc.get("status") != "publishing":
+            return _doc_fail(deps, doc_id, "publish", "INVALID_STATE")
+        raw = deps.blobs.read(chunks_path)
+        if raw is None:
+            return _doc_fail(deps, doc_id, "publish", "PREVIEW_MISSING")
+        documents = build_upload_documents(doc_id, doc, json.loads(raw))
+        with tempfile.TemporaryDirectory(prefix="cb-publish-") as tmp:
+            path = Path(tmp) / f"{doc_id}.jsonl"
+            path.write_text(
+                "\n".join(json.dumps(d, ensure_ascii=False) for d in documents) + "\n",
+                encoding="utf-8",
+            )
+            errors = deps.index.import_jsonl(path, object_prefix=f"uploads/{doc_id}")
+        if errors:
+            return _doc_fail(deps, doc_id, "publish", "IMPORT_FAILED")
+        changes = {
+            "status": "published",
+            "indexed_ids": [d["id"] for d in documents],
+            "published_index_at": _now(),
+            "job_error_code": None,
+            "updated_at": _now(),
+        }
+        deps.docs.merge("documents", doc_id, changes)
+        return changes
+
+    if action in ("archive", "purge"):
+        removed = deps.index.delete(list(doc.get("indexed_ids") or []))
+        changes: dict[str, Any] = {"index_removed": removed, "updated_at": _now()}
+        if action == "purge":
+            deleted = deps.blobs.delete_prefix(f"documents/staging/{doc_id}/")
+            deleted += deps.blobs.delete_prefix(f"documents/approved/{doc_id}/")
+            changes.update(
+                {
+                    "status": "purged",
+                    "blobs_deleted": deleted,
+                    "preview_chunks": [],
+                    "gcs_staging_path": None,
+                    "indexed_ids": [],
+                }
+            )
+        deps.docs.merge("documents", doc_id, changes)
+        return changes
+
+    raise RuntimeError(f"unsupported action {action}")
+
+
+def _doc_fail(deps: JobDeps, doc_id: str, action: str, code: str) -> dict[str, Any]:
+    field = "preview_status" if action == "preview" else "job_status"
+    changes = {
+        field: "failed",
+        "preview_error_code" if action == "preview" else "job_error_code": code,
+        "updated_at": _now(),
+    }
+    deps.docs.merge("documents", doc_id, changes)
+    return changes
+
+
+# ── 변경분 재수집 ──────────────────────────────────────────────────────
+def run_ingestion(
+    run_id: str, source_ids: list[str], deps: JobDeps, workdir: Path
+) -> dict[str, Any]:
+    from backend.ingest.download import download_rules
+    from backend.ingest.full_index import build_documents
+    from backend.ingest.indexing import _write_jsonl
+    from backend.ingest.manifest import load_manifest
+    from backend.ingest.registry import collect_rules
+
+    wanted = set(source_ids) or {"rules", "academic_guides"}
+    stats: dict[str, Any] = {"added": 0, "changed": 0, "rejected": 0, "processed": 0, "total": 0}
+    _run(deps, run_id, status="running", phase="registry", started_at=_now())
+
+    if "rules" in wanted:
+        manifest = workdir / "manifest.json"
+        raw = deps.blobs.read(STATE_MANIFEST)
+        if raw:
+            manifest.write_bytes(raw)
+        before = load_manifest(manifest)
+        records = asyncio.run(collect_rules())
+        changed = [
+            r
+            for r in records
+            if r.rule_no not in before or before[r.rule_no].file_version != r.file_version
+        ]
+        stats["total"] = len(changed)
+        _run(deps, run_id, phase="download", total=len(changed), processed=0)
+        if changed:
+            asyncio.run(download_rules(changed, output_dir=workdir / "raw", manifest_path=manifest))
+            _run(deps, run_id, phase="convert")
+            documents, per_rule = build_documents(
+                changed,
+                manifest_path=manifest,
+                raw_dir=workdir / "raw",
+                interim_dir=workdir / "tmp",
+            )
+            statuses = [v["status"] for v in per_rule.values()]  # type: ignore[index]
+            stats["rejected"] = statuses.count("rejected") + statuses.count("missing_source")
+            stats["changed"] = sum(1 for r in changed if r.rule_no in before)
+            stats["added"] = len(changed) - stats["changed"]
+            stats["processed"] = len(changed)
+            if documents:
+                _run(deps, run_id, phase="import")
+                out = workdir / "articles.jsonl"
+                _write_jsonl(out, documents)
+                if deps.index.import_jsonl(out, object_prefix=f"runs/{run_id}"):
+                    raise RuntimeError("IMPORT_FAILED")
+        deps.blobs.write(STATE_MANIFEST, manifest.read_bytes(), "application/json")
+
+    if "academic_guides" in wanted:
+        from backend.ingest.guides import collect, load_pages
+
+        _run(deps, run_id, phase="guides")
+        pages, hosts = load_pages(Path("config/sources.yaml"))
+        docs, _ = asyncio.run(collect(pages, hosts))
+        if docs:
+            out = workdir / "guides.jsonl"
+            _write_jsonl(out, docs)
+            if deps.index.import_jsonl(out, object_prefix=f"runs/{run_id}/guides"):
+                raise RuntimeError("IMPORT_FAILED")
+
+    _run(deps, run_id, status="success", phase="done", finished_at=_now(), **stats)
+    return stats
+
+
+def _run(deps: JobDeps, run_id: str, **fields: Any) -> None:
+    deps.docs.merge("ingestion_runs", run_id, {**fields, "updated_at": _now()})
+
+
+# ── 실제 GCP 구현 ─────────────────────────────────────────────────────
+class GcsBlobs:
+    def __init__(self, project: str, bucket: str):
+        from google.cloud import storage
+
+        self.bucket = storage.Client(project=project).bucket(bucket)
+
+    def read(self, name: str) -> bytes | None:
+        if not name:
+            return None
+        blob = self.bucket.blob(name)
+        return blob.download_as_bytes() if blob.exists() else None
+
+    def write(self, name: str, data: bytes, content_type: str) -> None:
+        self.bucket.blob(name).upload_from_string(data, content_type=content_type)
+
+    def delete_prefix(self, prefix: str) -> int:
+        blobs = list(self.bucket.list_blobs(prefix=prefix))
+        for b in blobs:
+            b.delete()
+        return len(blobs)
+
+
+class FirestoreDocs:
+    def __init__(self, project: str, database: str):
+        from google.cloud import firestore
+
+        self.db = firestore.Client(project=project, database=database)
+
+    def get(self, collection: str, doc_id: str) -> dict[str, Any] | None:
+        snap = self.db.collection(collection).document(doc_id).get()
+        return snap.to_dict() if snap.exists else None
+
+    def merge(self, collection: str, doc_id: str, data: dict[str, Any]) -> None:
+        self.db.collection(collection).document(doc_id).set(data, merge=True)
+
+
+class VertexIndex:
+    def __init__(self, project: str, bucket: str, data_store_id: str, engine_id: str):
+        self.project, self.bucket = project, bucket
+        self.data_store_id, self.engine_id = data_store_id, engine_id
+
+    def import_jsonl(self, local_path: Path, object_prefix: str) -> list[str]:
+        from backend.ingest.full_index import import_index
+
+        result = import_index(
+            project=self.project,
+            bucket=self.bucket,
+            data_store_id=self.data_store_id,
+            engine_id=self.engine_id,
+            source=local_path,
+            object_prefix=object_prefix,
+        )
+        return list(result["errors"])
+
+    def delete(self, vertex_ids: list[str]) -> int:
+        from google.api_core.exceptions import NotFound
+
+        from backend.ingest.search_spike import _clients
+
+        _, _, _, client, _ = _clients()
+        parent = (
+            f"projects/{self.project}/locations/global/collections/default_collection/"
+            f"dataStores/{self.data_store_id}/branches/default_branch/documents"
+        )
+        removed = 0
+        for vid in vertex_ids:
+            try:
+                client.delete_document(name=f"{parent}/{vid}")
+                removed += 1
+            except NotFound:
+                pass
+        return removed
+
+
+def main() -> int:
+    logging.basicConfig(level=logging.INFO)
+    project = os.environ["GCP_PROJECT_ID"]
+    bucket = os.environ["RULES_BUCKET"]
+    deps = JobDeps(
+        blobs=GcsBlobs(project, bucket),
+        docs=FirestoreDocs(project, os.environ.get("FIRESTORE_DB", "campusbridge")),
+        index=VertexIndex(
+            project,
+            bucket,
+            os.environ.get("SEARCH_DATASTORE_ID", "rules-articles"),
+            os.environ.get("SEARCH_ENGINE_ID", "rules-articles-search"),
+        ),
+    )
+    action, doc_id = os.environ.get("INGESTION_ACTION"), os.environ.get("DOCUMENT_ID")
+    if action and doc_id:
+        result = process_document(action, doc_id, deps)
+        log.info(
+            json.dumps({"event": "document_job", "action": action, "result": str(result)[:500]})
+        )
+        return 0
+    run_id = os.environ.get("INGESTION_RUN_ID", f"manual-{_now():%Y%m%dT%H%M%S}")
+    sources = [s for s in os.environ.get("SOURCE_IDS", "").split(",") if s.strip()]
+    try:
+        with tempfile.TemporaryDirectory(prefix="cb-ingest-") as tmp:
+            run_ingestion(run_id, sources, deps, Path(tmp))
+    except Exception as exc:  # noqa: BLE001 — 구조화 상태만 남기고 실패 종료
+        log.exception("ingestion failed")
+        code = str(exc) if str(exc).isupper() else type(exc).__name__
+        _run(deps, run_id, status="failed", error_code=code[:60], finished_at=_now())
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -85,6 +85,7 @@ dependencies = [
     { name = "langgraph" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pypdf" },
     { name = "python-multipart" },
     { name = "pyyaml" },
     { name = "uvicorn", extra = ["standard"] },
@@ -123,6 +124,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.11,<3" },
     { name = "pydantic-settings", specifier = ">=2.10,<3" },
     { name = "pyhwp", marker = "extra == 'ingest'", specifier = "==0.1b15" },
+    { name = "pypdf", specifier = ">=5,<7" },
     { name = "python-multipart", specifier = ">=0.0.20,<1" },
     { name = "pyyaml", specifier = ">=6.0,<7" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.35,<1" },
@@ -1232,6 +1234,15 @@ dependencies = [
     { name = "olefile", marker = "platform_python_implementation != 'Jython'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ec/38/2a95e3772d9168065f3391d62012f6b34e122d8eafd2ebcccf675a3ef23d/pyhwp-0.1b15.tar.gz", hash = "sha256:85146a1d0ef2a4bd356b2f15f78d172fbe85f9f1fc8c2d8d2a9f65ed23113328", size = 218143, upload-time = "2020-05-30T07:19:34.965Z" }
+
+[[package]]
+name = "pypdf"
+version = "6.19.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1f/ac/63d71aaedb59acbcdef491e6ca6469165e3771c9c74358204818fd9bc5a6/pypdf-6.19.0.tar.gz", hash = "sha256:bbc43aca292369ccc6cbc8a921991ecf2538a3587ab5a116eff06c321d647155", size = 7033266, upload-time = "2026-09-16T09:32:05.946Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3c/2c/c43c03eaf630435f023f1dc61ec4a4a78951ad5530a62c71cc89bde307b7/pypdf-6.19.0-py3-none-any.whl", hash = "sha256:7e5d6e730e7dae87d560a2cee218b852f6498c8be61966f3cd02ead971e48d14", size = 395480, upload-time = "2026-09-16T09:32:04.087Z" },
+]
 
 [[package]]
 name = "pytest"

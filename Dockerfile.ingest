@@ -1,0 +1,26 @@
+# 수집 Job 이미지(상세설계 07 §6·§8) — 웹 의존성 + pyhwp(hwp5txt). LibreOffice는 넣지 않는다
+# (변환 실패 규정은 rejected로 남기고 로컬에서 처리).
+# 실행 환경값: GCP_PROJECT_ID, RULES_BUCKET, FIRESTORE_DB, SEARCH_DATASTORE_ID, SEARCH_ENGINE_ID,
+#   COLLECTION_CONTACT_EMAIL, (재수집) INGESTION_RUN_ID·SOURCE_IDS / (문서) INGESTION_ACTION·DOCUMENT_ID
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONUTF8=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+
+COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /usr/local/bin/uv
+
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --extra ingest --no-install-project
+
+COPY backend ./backend
+COPY config ./config
+
+RUN useradd --create-home --uid 10001 app && chown -R app /app
+USER app
+
+ENV PATH="/app/.venv/bin:$PATH"
+CMD ["python", "-m", "backend.ingest.job"]
