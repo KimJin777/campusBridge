@@ -19,9 +19,9 @@ def test_job_launcher_builds_allowlisted_google_resource_and_env() -> None:
         "https://run.googleapis.com/v2/projects/campus-bridge1/locations/asia-northeast3/"
         "jobs/campusbridge-ingest:run"
     )
-    assert launcher._payload("run-1", ["notices", "calendar"])["overrides"][
-        "containerOverrides"
-    ][0]["env"] == [
+    assert launcher._payload({"INGESTION_RUN_ID": "run-1", "SOURCE_IDS": "notices,calendar"})[
+        "overrides"
+    ]["containerOverrides"][0]["env"] == [
         {"name": "INGESTION_RUN_ID", "value": "run-1"},
         {"name": "SOURCE_IDS", "value": "notices,calendar"},
     ]

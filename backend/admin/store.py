@@ -74,6 +74,26 @@ class AdminStore(Protocol):
         error_code: str | None = None,
     ) -> dict[str, Any]: ...
 
+    async def create_document(
+        self,
+        document_id: str,
+        payload: dict[str, Any],
+        *,
+        actor: AdminActor,
+        reason: str,
+        request_id: str,
+    ) -> tuple[dict[str, Any], bool]: ...
+
+    async def mark_document_preview(
+        self,
+        document_id: str,
+        *,
+        actor: AdminActor,
+        request_id: str,
+        operation_name: str | None,
+        error_code: str | None = None,
+    ) -> dict[str, Any]: ...
+
 
 class FirestoreAdminStore:
     def __init__(self, settings: Settings | None = None, client: Any = None):
@@ -101,9 +121,7 @@ class FirestoreAdminStore:
         order_by: str,
         descending: bool = True,
     ) -> dict[str, Any]:
-        direction = (
-            self._fs.Query.DESCENDING if descending else self._fs.Query.ASCENDING
-        )
+        direction = self._fs.Query.DESCENDING if descending else self._fs.Query.ASCENDING
         query = self.db.collection(collection).order_by(order_by, direction=direction)
         if cursor:
             snapshot = await self.db.collection(collection).document(cursor).get()
@@ -350,6 +368,97 @@ class FirestoreAdminStore:
         )
         await batch.commit()
         return {"id": run_id, **_safe_value(after)}
+
+    async def create_document(
+        self,
+        document_id: str,
+        payload: dict[str, Any],
+        *,
+        actor: AdminActor,
+        reason: str,
+        request_id: str,
+    ) -> tuple[dict[str, Any], bool]:
+        ref = self.db.collection("documents").document(document_id)
+
+        @self._fs.async_transactional
+        async def txn(tx) -> tuple[dict[str, Any], bool]:
+            snapshot = await ref.get(transaction=tx)
+            if snapshot.exists:
+                current = snapshot.to_dict() or {}
+                if current.get("request_id") != request_id or current.get("sha256") != payload.get(
+                    "sha256"
+                ):
+                    raise AppError("BAD_REQUEST", "요청 ID가 다른 문서에 이미 사용되었습니다.")
+                return {"id": snapshot.id, **_safe_value(current)}, False
+            now = datetime.now(UTC)
+            row = {
+                **payload,
+                "status": "staging",
+                "preview_status": "pending",
+                "version": 1,
+                "previous_version_id": None,
+                "uploader": actor.email,
+                "request_id": request_id,
+                "created_at": now,
+                "updated_at": now,
+            }
+            audit_ref = self.db.collection("admin_audit").document(str(uuid4()))
+            tx.set(ref, row)
+            tx.set(
+                audit_ref,
+                self._audit_payload(
+                    actor=actor,
+                    action="document.upload",
+                    target=document_id,
+                    before=None,
+                    after=row,
+                    reason=reason,
+                    request_id=request_id,
+                ),
+            )
+            return {"id": document_id, **_safe_value(row)}, True
+
+        return await txn(self.db.transaction())
+
+    async def mark_document_preview(
+        self,
+        document_id: str,
+        *,
+        actor: AdminActor,
+        request_id: str,
+        operation_name: str | None,
+        error_code: str | None = None,
+    ) -> dict[str, Any]:
+        ref = self.db.collection("documents").document(document_id)
+        snapshot = await ref.get()
+        if not snapshot.exists:
+            raise AppError("INTERNAL", "업로드한 문서 기록이 사라졌습니다.")
+        before = snapshot.to_dict() or {}
+        now = datetime.now(UTC)
+        changes = {
+            "preview_status": "failed" if error_code else "processing",
+            "preview_operation_name": operation_name,
+            "preview_error_code": error_code,
+            "updated_at": now,
+        }
+        after = {**before, **changes}
+        batch = self.db.batch()
+        batch.set(ref, changes, merge=True)
+        batch.set(
+            self.db.collection("admin_audit").document(str(uuid4())),
+            self._audit_payload(
+                actor=actor,
+                action="document.preview.dispatch",
+                target=document_id,
+                before=before,
+                after=after,
+                reason="미리보기 변환 작업 시작",
+                request_id=request_id,
+                result="failed" if error_code else "success",
+            ),
+        )
+        await batch.commit()
+        return {"id": document_id, **_safe_value(after)}
 
 
 def get_admin_store() -> AdminStore:

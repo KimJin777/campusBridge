@@ -21,6 +21,8 @@ _CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 class JobLauncher(Protocol):
     async def start(self, run_id: str, source_ids: list[str]) -> str: ...
 
+    async def start_document(self, document_id: str, action: str) -> str: ...
+
 
 class CloudRunJobLauncher:
     """Start a configured Cloud Run Job without blocking the API event loop."""
@@ -48,26 +50,21 @@ class CloudRunJobLauncher:
         return f"https://run.googleapis.com/v2/{resource}:run"
 
     @staticmethod
-    def _payload(run_id: str, source_ids: list[str]) -> dict[str, Any]:
+    def _payload(env: dict[str, str]) -> dict[str, Any]:
         return {
             "overrides": {
                 "containerOverrides": [
-                    {
-                        "env": [
-                            {"name": "INGESTION_RUN_ID", "value": run_id},
-                            {"name": "SOURCE_IDS", "value": ",".join(source_ids)},
-                        ]
-                    }
+                    {"env": [{"name": name, "value": value} for name, value in env.items()]}
                 ]
             }
         }
 
-    def _start_sync(self, run_id: str, source_ids: list[str]) -> str:
+    def _start_sync(self, env: dict[str, str]) -> str:
         credentials, _ = google.auth.default(scopes=[_CLOUD_PLATFORM_SCOPE])
         session = self._session_factory(credentials)
         response = session.post(
             self._resource_url(),
-            json=self._payload(run_id, source_ids),
+            json=self._payload(env),
             timeout=15,
         )
         response.raise_for_status()
@@ -78,7 +75,24 @@ class CloudRunJobLauncher:
         return name
 
     async def start(self, run_id: str, source_ids: list[str]) -> str:
-        return await asyncio.to_thread(self._start_sync, run_id, source_ids)
+        return await asyncio.to_thread(
+            self._start_sync,
+            {
+                "INGESTION_RUN_ID": run_id,
+                "SOURCE_IDS": ",".join(source_ids),
+            },
+        )
+
+    async def start_document(self, document_id: str, action: str) -> str:
+        if action not in {"preview", "publish", "archive", "purge"}:
+            raise ValueError("unsupported document ingestion action")
+        return await asyncio.to_thread(
+            self._start_sync,
+            {
+                "INGESTION_ACTION": action,
+                "DOCUMENT_ID": document_id,
+            },
+        )
 
 
 def get_job_launcher() -> JobLauncher:

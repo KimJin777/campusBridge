@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 from backend.admin.auth import AdminActor, require_admin
+from backend.admin.document_files import get_document_storage
 from backend.admin.jobs import get_job_launcher
 from backend.admin.router import router
 from backend.admin.store import get_admin_store
@@ -39,6 +40,15 @@ class FakeStore:
                 "processed": 3,
                 "total": 10,
                 "unsafe_log": "secret",
+            }
+        if collection == "documents" and document_id == "doc-ready":
+            return {
+                "id": "doc-ready",
+                "title": "학생 안내",
+                "status": "staging",
+                "preview_status": "ready",
+                "preview_chunks": [{"id": "c1", "text": "안내 내용"}],
+                "gcs_staging_path": "secret/path",
             }
         return None
 
@@ -82,6 +92,25 @@ class FakeStore:
             "error_code": kwargs.get("error_code"),
         }
 
+    async def create_document(self, document_id: str, payload: dict[str, Any], **kwargs):
+        self.document_create_args = (document_id, payload, kwargs)
+        return {
+            "id": document_id,
+            **payload,
+            "status": "staging",
+            "preview_status": "pending",
+        }, True
+
+    async def mark_document_preview(self, document_id: str, **kwargs):
+        self.document_mark_args = (document_id, kwargs)
+        return {
+            "id": document_id,
+            "title": "학생 안내",
+            "status": "staging",
+            "preview_status": "failed" if kwargs.get("error_code") else "processing",
+            "preview_error_code": kwargs.get("error_code"),
+        }
+
 
 class FakeLauncher:
     def __init__(self, *, fail: bool = False) -> None:
@@ -94,11 +123,27 @@ class FakeLauncher:
             raise RuntimeError("launch failed")
         return "operations/op-1"
 
+    async def start_document(self, document_id: str, action: str) -> str:
+        self.calls.append((document_id, action))
+        if self.fail:
+            raise RuntimeError("launch failed")
+        return "operations/doc-op-1"
+
+
+class FakeDocumentStorage:
+    def __init__(self) -> None:
+        self.calls = []
+
+    async def upload_staging(self, document_id, document):
+        self.calls.append((document_id, document))
+        return f"documents/staging/{document_id}/original.txt"
+
 
 def _client(
     store: FakeStore,
     *,
     launcher: FakeLauncher | None = None,
+    document_storage: FakeDocumentStorage | None = None,
     settings: Settings | None = None,
 ) -> TestClient:
     app = FastAPI()
@@ -113,9 +158,16 @@ def _client(
     )
     app.dependency_overrides[get_admin_store] = lambda: store
     app.dependency_overrides[get_job_launcher] = lambda: launcher or FakeLauncher()
-    app.dependency_overrides[get_settings] = lambda: settings or Settings(
-        gcp_project_id="campus-bridge1",
-        ingestion_job_name="campusbridge-ingest",
+    app.dependency_overrides[get_document_storage] = lambda: (
+        document_storage or FakeDocumentStorage()
+    )
+    app.dependency_overrides[get_settings] = lambda: (
+        settings
+        or Settings(
+            gcp_project_id="campus-bridge1",
+            ingestion_job_name="campusbridge-ingest",
+            rules_bucket="campusbridge-rules",
+        )
     )
     return TestClient(app)
 
@@ -157,9 +209,12 @@ def test_source_patch_and_disable_forward_audited_context() -> None:
 def test_mutations_reject_missing_reason_or_invalid_identifier() -> None:
     client = _client(FakeStore())
 
-    assert client.patch(
-        "/api/admin/sources/rules", json={"schedule": "daily", "request_id": "req"}
-    ).status_code == 422
+    assert (
+        client.patch(
+            "/api/admin/sources/rules", json={"schedule": "daily", "request_id": "req"}
+        ).status_code
+        == 422
+    )
     response = client.patch(
         "/api/admin/sources/bad%2Fid",
         json={"schedule": "daily", "reason": "test", "request_id": "req"},
@@ -243,3 +298,66 @@ def test_ingestion_run_records_dispatch_failure() -> None:
 
     assert response.status_code == 500
     assert store.mark_args[0][1]["error_code"] == "JOB_START_FAILED"
+
+
+def test_document_upload_stages_file_and_dispatches_preview() -> None:
+    store = FakeStore()
+    launcher = FakeLauncher()
+    storage = FakeDocumentStorage()
+    client = _client(store, launcher=launcher, document_storage=storage)
+
+    response = client.post(
+        "/api/admin/documents",
+        data={
+            "title": "학생 안내",
+            "department": "학사지원팀",
+            "doc_date": "2026-09-29",
+            "effective_from": "2026-10-01",
+            "source": "교내 승인 문서",
+            "approval_basis": "공개 답변 인용 승인 2026-09-29",
+            "expires_at_doc": "2027-09-29",
+            "reason": "신규 안내 반영",
+            "request_id": "upload-12345",
+        },
+        files={"file": ("guide.txt", "안내 내용".encode(), "text/plain")},
+    )
+
+    assert response.status_code == 202
+    assert response.json()["preview_status"] == "processing"
+    document_id = response.json()["id"]
+    assert storage.calls[0][0] == document_id
+    assert launcher.calls == [(document_id, "preview")]
+    assert store.document_create_args[1]["approval_basis"].startswith("공개 답변")
+
+
+def test_document_upload_rejects_expiry_before_effective_date() -> None:
+    store = FakeStore()
+    storage = FakeDocumentStorage()
+    client = _client(store, document_storage=storage)
+
+    response = client.post(
+        "/api/admin/documents",
+        data={
+            "title": "학생 안내",
+            "department": "학사지원팀",
+            "doc_date": "2026-09-29",
+            "effective_from": "2027-10-01",
+            "source": "교내 승인 문서",
+            "approval_basis": "공개 답변 인용 승인",
+            "expires_at_doc": "2027-09-29",
+            "reason": "신규 안내 반영",
+            "request_id": "upload-12345",
+        },
+        files={"file": ("guide.txt", b"text", "text/plain")},
+    )
+
+    assert response.status_code == 400
+    assert storage.calls == []
+
+
+def test_document_preview_exposes_only_safe_fields() -> None:
+    response = _client(FakeStore()).get("/api/admin/documents/doc-ready/preview")
+
+    assert response.status_code == 200
+    assert response.json()["preview_chunks"][0]["text"] == "안내 내용"
+    assert "gcs_staging_path" not in response.json()

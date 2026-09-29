@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import date
 from pathlib import Path
 from typing import Annotated, Any
 
 import yaml
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
 from backend.admin.auth import AdminActor, require_admin
+from backend.admin.document_files import (
+    DocumentStorage,
+    document_id_for_request,
+    get_document_storage,
+    validate_document,
+)
 from backend.admin.jobs import JobLauncher, get_job_launcher
 from backend.admin.models import DisableRequest, IngestionRunRequest, SourcePatch
 from backend.admin.store import AdminStore, get_admin_store
@@ -20,6 +27,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 Actor = Annotated[AdminActor, Depends(require_admin)]
 Store = Annotated[AdminStore, Depends(get_admin_store)]
 Launcher = Annotated[JobLauncher, Depends(get_job_launcher)]
+Documents = Annotated[DocumentStorage, Depends(get_document_storage)]
 Limit = Annotated[int, Query(ge=1, le=200)]
 Cursor = Annotated[str | None, Query(max_length=200)]
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
@@ -30,6 +38,39 @@ def _valid_id(value: str) -> str:
     if not clean or len(clean) > 200 or "/" in clean or clean in {".", ".."}:
         raise AppError("BAD_REQUEST", "식별자 형식이 올바르지 않습니다.")
     return clean
+
+
+def _required_text(value: str, field_name: str) -> str:
+    clean = value.strip()
+    if not clean:
+        raise AppError("BAD_REQUEST", f"{field_name} 항목은 비워 둘 수 없습니다.")
+    return clean
+
+
+def _document_view(item: dict[str, Any], *, include_preview: bool = False) -> dict[str, Any]:
+    allowed = {
+        "id",
+        "title",
+        "department",
+        "doc_date",
+        "effective_from",
+        "source",
+        "approval_basis",
+        "expires_at_doc",
+        "status",
+        "preview_status",
+        "preview_error_code",
+        "version",
+        "previous_version_id",
+        "sha256",
+        "format",
+        "size_bytes",
+        "created_at",
+        "updated_at",
+    }
+    if include_preview:
+        allowed.update({"preview_chunks", "preview_chunk_count", "preview_text_length"})
+    return {key: value for key, value in item.items() if key in allowed}
 
 
 @router.get("/sources")
@@ -91,9 +132,7 @@ async def list_unanswered(
     cursor: Cursor = None,
 ) -> dict[str, Any]:
     del actor
-    return await store.list_page(
-        "unanswered", limit=limit, cursor=cursor, order_by="last_at"
-    )
+    return await store.list_page("unanswered", limit=limit, cursor=cursor, order_by="last_at")
 
 
 @router.get("/feedback")
@@ -104,9 +143,7 @@ async def list_feedback(
     cursor: Cursor = None,
 ) -> dict[str, Any]:
     del actor
-    return await store.list_page(
-        "feedback", limit=limit, cursor=cursor, order_by="created_at"
-    )
+    return await store.list_page("feedback", limit=limit, cursor=cursor, order_by="created_at")
 
 
 @router.get("/stats")
@@ -204,6 +241,86 @@ def _ingestion_run_view(item: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in item.items() if key in allowed}
 
 
+@router.post("/documents", status_code=202)
+async def upload_document(
+    actor: Actor,
+    store: Store,
+    launcher: Launcher,
+    storage: Documents,
+    settings: Annotated[Settings, Depends(get_settings)],
+    file: Annotated[UploadFile, File()],
+    title: Annotated[str, Form(min_length=1, max_length=200)],
+    department: Annotated[str, Form(min_length=1, max_length=100)],
+    doc_date: Annotated[date, Form()],
+    effective_from: Annotated[date, Form()],
+    source: Annotated[str, Form(min_length=1, max_length=300)],
+    approval_basis: Annotated[str, Form(min_length=1, max_length=500)],
+    expires_at_doc: Annotated[date, Form()],
+    reason: Annotated[str, Form(min_length=1, max_length=300)],
+    request_id: Annotated[str, Form(min_length=8, max_length=100)],
+) -> dict[str, Any]:
+    if not settings.rules_bucket or not settings.gcp_project_id or not settings.ingestion_job_name:
+        raise AppError("BAD_REQUEST", "문서 저장소 또는 변환 Job 설정이 없습니다.")
+    if expires_at_doc < effective_from:
+        raise AppError("BAD_REQUEST", "문서 만료일은 시행일보다 빠를 수 없습니다.")
+    content = await file.read(20 * 1024 * 1024 + 1)
+    document = validate_document(file.filename, content)
+    document_id = document_id_for_request(request_id.strip())
+    staging_path = await storage.upload_staging(document_id, document)
+    item, created = await store.create_document(
+        document_id,
+        {
+            "title": _required_text(title, "제목"),
+            "department": _required_text(department, "소관부서"),
+            "doc_date": doc_date.isoformat(),
+            "effective_from": effective_from.isoformat(),
+            "source": _required_text(source, "출처"),
+            "approval_basis": _required_text(approval_basis, "승인 근거"),
+            "expires_at_doc": expires_at_doc.isoformat(),
+            "sha256": document.sha256,
+            "format": document.format,
+            "size_bytes": len(document.content),
+            "gcs_staging_path": staging_path,
+        },
+        actor=actor,
+        reason=_required_text(reason, "변경 사유"),
+        request_id=request_id.strip(),
+    )
+    if not created and item.get("preview_status") in {"processing", "ready"}:
+        return {**_document_view(item), "reused": True}
+    try:
+        operation_name = await launcher.start_document(document_id, "preview")
+    except Exception as exc:
+        await store.mark_document_preview(
+            document_id,
+            actor=actor,
+            request_id=request_id.strip(),
+            operation_name=None,
+            error_code="PREVIEW_JOB_START_FAILED",
+        )
+        raise AppError("INTERNAL", "문서 미리보기 작업을 시작하지 못했습니다.") from exc
+    item = await store.mark_document_preview(
+        document_id,
+        actor=actor,
+        request_id=request_id.strip(),
+        operation_name=operation_name,
+    )
+    return {**_document_view(item), "reused": not created}
+
+
+@router.get("/documents/{document_id}/preview")
+async def get_document_preview(
+    document_id: str,
+    actor: Actor,
+    store: Store,
+) -> dict[str, Any]:
+    del actor
+    item = await store.get_document("documents", _valid_id(document_id))
+    if item is None:
+        raise AppError("BAD_REQUEST", "문서를 찾지 못했습니다.")
+    return _document_view(item, include_preview=True)
+
+
 @router.get("/audit")
 async def list_audit(
     actor: Actor,
@@ -212,9 +329,7 @@ async def list_audit(
     cursor: Cursor = None,
 ) -> dict[str, Any]:
     del actor
-    return await store.list_page(
-        "admin_audit", limit=limit, cursor=cursor, order_by="created_at"
-    )
+    return await store.list_page("admin_audit", limit=limit, cursor=cursor, order_by="created_at")
 
 
 @router.get("/glossary")
