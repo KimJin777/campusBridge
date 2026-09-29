@@ -13,6 +13,17 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.7.1",
+        "date": "2026-09-29",
+        "deployed_at": None,
+        "revision": None,
+        "title": "수집 Job 색인 권한 오류 수정·첫 화면 문구 정리",
+        "items": [
+            "수집 Job이 검색 스키마를 갱신하지 않고 문서만 가져오도록 수정(규정·학사안내 재수집, 교내 문서 게시의 403 오류 해결)",
+            "첫 화면 보조 문구 삭제",
+        ],
+    },
+    {
         "version": "0.7.0",
         "date": "2026-09-29",
         "deployed_at": None,
