@@ -15,8 +15,8 @@ CHANGELOG: list[dict[str, Any]] = [
     {
         "version": "0.4.0",
         "date": "2026-09-29",
-        "deployed_at": None,
-        "revision": None,
+        "deployed_at": "2026-09-29T08:43:58Z",
+        "revision": "campusbridge-web-00002-kkr (+ Job campusbridge-ingest)",
         "title": "부서 연락처·위치 자동 수집, 전화번호부 자동 적용, 서비스 범위 규칙",
         "items": [
             "장소·부서 연락처 수집 에이전트: 조직도·캠퍼스투어·부서 페이지·하위 사이트(*.kyungnam.ac.kr) → 검수 대기 96건",
