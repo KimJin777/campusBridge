@@ -10,7 +10,16 @@ from typing import Annotated, Any, Literal
 import yaml
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
-from backend.admin.auth import AdminActor, invalidate_admin_cache, require_admin
+from backend.admin.auth import (
+    SUPER_ADMIN,
+    AdminActor,
+    GoogleUser,
+    admin_role,
+    invalidate_admin_cache,
+    require_admin,
+    require_google_user,
+    require_super_admin,
+)
 from backend.admin.document_files import (
     DocumentStorage,
     document_id_for_request,
@@ -19,7 +28,9 @@ from backend.admin.document_files import (
 )
 from backend.admin.jobs import JobLauncher, get_job_launcher
 from backend.admin.models import (
+    AccessRequest,
     AdminAddRequest,
+    AdminDecision,
     AdminRemoveRequest,
     DisableRequest,
     DocumentActionRequest,
@@ -111,6 +122,84 @@ async def list_sources(
     return page
 
 
+SuperActor = Annotated[AdminActor, Depends(require_super_admin)]
+Me = Annotated[GoogleUser, Depends(require_google_user)]
+
+
+@router.get("/me")
+async def my_status(
+    me: Me, store: Store, settings: Annotated[Settings, Depends(get_settings)]
+) -> dict[str, Any]:
+    """로그인한 계정의 관리자 상태: active(역할 포함) / pending / rejected / none."""
+    if settings.is_admin(me.email):
+        return {"email": me.email, "status": "active", "role": SUPER_ADMIN}
+    row = await store.get_document("admin_users", me.email) or {}
+    status = row.get("status") if row.get("status") in ("active", "pending", "rejected") else "none"
+    role = await admin_role(settings, me.email) if status == "active" else None
+    return {"email": me.email, "status": status, "role": role}
+
+
+@router.post("/access-request", status_code=202)
+async def request_access(
+    body: AccessRequest, me: Me, store: Store, settings: Annotated[Settings, Depends(get_settings)]
+) -> dict[str, Any]:
+    if settings.is_admin(me.email):
+        return {"email": me.email, "status": "active"}
+    row = await store.request_admin_access(me.email, name=me.name, note=body.note.strip())
+    return {"email": me.email, "status": row.get("status")}
+
+
+async def _decide(action: str, email: str, body: AdminDecision, actor: AdminActor, store, settings):
+    target = _admin_email(email)
+    if target in settings.admin_emails:
+        raise AppError("BAD_REQUEST", "부트스트랩 관리자는 배포 설정값으로만 바꿀 수 있습니다.")
+    if target == actor.email:
+        raise AppError("BAD_REQUEST", "자기 자신의 승인·역할은 바꿀 수 없습니다.")
+    item = await store.decide_admin(
+        target,
+        action=action,
+        role=body.role,
+        actor=actor,
+        reason=body.reason,
+        request_id=body.request_id.strip(),
+    )
+    invalidate_admin_cache()
+    return {**item, "bootstrap": False}
+
+
+@router.post("/admins/{email}/approve")
+async def approve_admin(
+    email: str,
+    body: AdminDecision,
+    actor: SuperActor,
+    store: Store,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    return await _decide("approve", email, body, actor, store, settings)
+
+
+@router.post("/admins/{email}/reject")
+async def reject_admin(
+    email: str,
+    body: AdminDecision,
+    actor: SuperActor,
+    store: Store,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    return await _decide("reject", email, body, actor, store, settings)
+
+
+@router.post("/admins/{email}/role")
+async def change_admin_role(
+    email: str,
+    body: AdminDecision,
+    actor: SuperActor,
+    store: Store,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    return await _decide("role", email, body, actor, store, settings)
+
+
 @router.get("/admins")
 async def list_admins(
     actor: Actor,
@@ -127,15 +216,27 @@ async def list_admins(
             by_email[email] = {**row, "email": email, "bootstrap": False}
     for email in settings.admin_emails:
         row = by_email.get(email, {"email": email})
-        by_email[email] = {**row, "email": email, "status": "active", "bootstrap": True}
-    items = sorted(by_email.values(), key=lambda row: (not row["bootstrap"], row["email"]))
-    return {"items": items, "current_email": actor.email}
+        by_email[email] = {
+            **row,
+            "email": email,
+            "status": "active",
+            "role": SUPER_ADMIN,
+            "bootstrap": True,
+        }
+    order = {"pending": 0, "active": 1}
+    items = sorted(
+        by_email.values(),
+        key=lambda row: (order.get(str(row.get("status")), 2), not row["bootstrap"], row["email"]),
+    )
+    for row in items:
+        row.setdefault("role", "admin")
+    return {"items": items, "current_email": actor.email, "current_role": actor.role}
 
 
 @router.post("/admins", status_code=201)
 async def add_admin(
     body: AdminAddRequest,
-    actor: Actor,
+    actor: SuperActor,
     store: Store,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, Any]:
@@ -156,7 +257,7 @@ async def add_admin(
 async def remove_admin(
     email: str,
     body: AdminRemoveRequest,
-    actor: Actor,
+    actor: SuperActor,
     store: Store,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, Any]:

@@ -159,6 +159,19 @@ class AdminStore(Protocol):
         request_id: str,
     ) -> tuple[dict[str, Any], bool]: ...
 
+    async def request_admin_access(self, email: str, *, name: str, note: str) -> dict[str, Any]: ...
+
+    async def decide_admin(
+        self,
+        email: str,
+        *,
+        action: str,
+        role: str,
+        actor: AdminActor,
+        reason: str,
+        request_id: str,
+    ) -> dict[str, Any]: ...
+
 
 class FirestoreAdminStore:
     def __init__(self, settings: Settings | None = None, client: Any = None):
@@ -896,6 +909,99 @@ class FirestoreAdminStore:
                 ),
             )
             return {"id": event_id, **_safe_value(after)}
+
+        return await txn(self.db.transaction())
+
+    async def request_admin_access(self, email: str, *, name: str, note: str) -> dict[str, Any]:
+        """승인 대기로 등록(이미 활성이면 그대로). 요청자 본인이 행위자로 감사 로그에 남는다."""
+        ref = self.db.collection("admin_users").document(email)
+
+        @self._fs.async_transactional
+        async def txn(tx) -> dict[str, Any]:
+            snap = await ref.get(transaction=tx)
+            before = snap.to_dict() if snap.exists else None
+            if before and before.get("status") in ("active", "pending"):
+                return {"id": email, **_safe_value(before)}
+            now = datetime.now(UTC)
+            after = {
+                "email": email,
+                "name": name,
+                "note": note,
+                "status": "pending",
+                "role": "admin",
+                "requested_at": now,
+            }
+            tx.set(ref, after, merge=True)
+            tx.set(
+                self.db.collection("admin_audit").document(str(uuid4())),
+                self._audit_payload(
+                    actor=AdminActor(email=email, subject="self"),
+                    action="admin.request",
+                    target=email,
+                    before=before,
+                    after=after,
+                    reason=note or "관리자 승인 요청",
+                    request_id=f"request-{email}-{now.timestamp():.0f}",
+                ),
+            )
+            return {"id": email, **_safe_value({**(before or {}), **after})}
+
+        return await txn(self.db.transaction())
+
+    async def decide_admin(
+        self,
+        email: str,
+        *,
+        action: str,
+        role: str,
+        actor: AdminActor,
+        reason: str,
+        request_id: str,
+    ) -> dict[str, Any]:
+        """approve(대기→활성) / reject(대기→거절) / role(활성 역할 변경).
+
+        감사 로그와 같은 트랜잭션.
+        """
+        allowed = {"approve": ("pending", "rejected"), "reject": ("pending",), "role": ("active",)}
+        ref = self.db.collection("admin_users").document(email)
+
+        @self._fs.async_transactional
+        async def txn(tx) -> dict[str, Any]:
+            snap = await ref.get(transaction=tx)
+            before = snap.to_dict() if snap.exists else None
+            if before and before.get("request_id") == request_id:
+                return {"id": email, **_safe_value(before)}  # 재전송 멱등
+            if not before or before.get("status") not in allowed[action]:
+                raise AppError("BAD_REQUEST", "처리할 수 있는 상태의 계정이 아닙니다.")
+            now = datetime.now(UTC)
+            changes: dict[str, Any] = {
+                "request_id": request_id,
+                "decided_by": actor.email,
+                "decided_at": now,
+            }
+            if action == "approve":
+                changes.update(
+                    {"status": "active", "role": role, "added_by": actor.email, "added_at": now}
+                )
+            elif action == "reject":
+                changes.update({"status": "rejected", "rejection_reason": reason})
+            else:
+                changes.update({"role": role})
+            after = {**before, **changes}
+            tx.set(ref, changes, merge=True)
+            tx.set(
+                self.db.collection("admin_audit").document(str(uuid4())),
+                self._audit_payload(
+                    actor=actor,
+                    action=f"admin.{action}",
+                    target=email,
+                    before=before,
+                    after=after,
+                    reason=reason,
+                    request_id=request_id,
+                ),
+            )
+            return {"id": email, **_safe_value(after)}
 
         return await txn(self.db.transaction())
 

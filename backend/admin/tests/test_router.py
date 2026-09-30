@@ -174,7 +174,7 @@ def _client(
 
     app.include_router(router)
     app.dependency_overrides[require_admin] = lambda: AdminActor(
-        email="admin@example.edu", subject="sub"
+        email="admin@example.edu", subject="sub", role="super_admin"
     )
     app.dependency_overrides[get_admin_store] = lambda: store
     app.dependency_overrides[get_job_launcher] = lambda: launcher or FakeLauncher()
@@ -219,8 +219,10 @@ def test_admin_list_merges_bootstrap_and_firestore_users() -> None:
     assert response.json()["items"][0] == {
         "email": "bootstrap@example.edu",
         "status": "active",
+        "role": "super_admin",
         "bootstrap": True,
     }
+    assert response.json()["current_role"] == "super_admin"
     assert response.json()["items"][1]["email"] == "dynamic@example.edu"
     assert response.json()["items"][1]["bootstrap"] is False
 
@@ -500,3 +502,50 @@ def test_event_patch_with_dates_for_date_missing_event() -> None:
     assert seen == {"start_date": "2026-10-07", "end_date": "2026-10-07"}
     bad = {**body, "start_date": "2026-10-10", "end_date": "2026-10-01"}
     assert client.patch("/api/admin/events/e1", json=bad).status_code == 422
+
+
+def test_access_request_me_and_super_admin_decisions() -> None:
+    from backend.admin.auth import GoogleUser, require_google_user
+
+    store = FakeStore()
+    rows: dict[str, dict[str, Any]] = {}
+    decided: dict[str, Any] = {}
+
+    async def request_admin_access(email, *, name, note):
+        rows[email] = {"email": email, "status": "pending", "note": note}
+        return rows[email]
+
+    async def decide_admin(email, *, action, role, actor, reason, request_id):
+        decided.update(email=email, action=action, role=role, actor=actor.email)
+        return {"email": email, "status": "active" if action == "approve" else "rejected"}
+
+    async def get_document(collection, document_id):
+        return rows.get(document_id)
+
+    store.request_admin_access = request_admin_access  # type: ignore[attr-defined]
+    store.decide_admin = decide_admin  # type: ignore[attr-defined]
+    store.get_document = get_document  # type: ignore[method-assign]
+    client = _client(store, settings=Settings(admin_emails=frozenset({"boot@example.edu"})))
+    client.app.dependency_overrides[require_google_user] = lambda: GoogleUser(
+        email="new@example.edu", subject="s2", name="새 관리자"
+    )
+    assert client.get("/api/admin/me").json()["status"] == "none"
+    assert (
+        client.post("/api/admin/access-request", json={"note": "학사팀"}).json()["status"]
+        == "pending"
+    )
+    assert client.get("/api/admin/me").json()["status"] == "pending"
+
+    body = {"role": "admin", "reason": "확인", "request_id": "req-00000009"}
+    ok = client.post("/api/admin/admins/new@example.edu/approve", json=body)
+    assert ok.status_code == 200 and decided["action"] == "approve"
+    boot = client.post("/api/admin/admins/boot@example.edu/role", json=body)
+    assert boot.status_code == 400  # 부트스트랩은 화면에서 못 바꿈
+
+    from backend.admin.auth import AdminActor, require_admin
+
+    client.app.dependency_overrides[require_admin] = lambda: AdminActor(
+        email="plain@example.edu", subject="s3", role="admin"
+    )
+    denied = client.post("/api/admin/admins/new@example.edu/reject", json=body)
+    assert denied.status_code == 403  # 일반 관리자는 승인·거절 불가

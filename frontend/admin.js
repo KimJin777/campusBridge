@@ -42,6 +42,40 @@ async function api(path, { method = "GET", body, form } = {}) {
 }
 
 // ── 로그인 ──────────────────────────────────────────────────────────────
+let myRole = "admin";
+
+// 관리자가 아닌 계정: 승인 요청(MatchProf 방식) 또는 대기 안내
+function showAccess(me) {
+  const box = $("#login-msg");
+  $("#app").hidden = true;
+  $("#login").hidden = false;
+  box.replaceChildren();
+  if (me.status === "pending") {
+    box.append(el("strong", null, `${me.email} — 승인 대기 중입니다.`), el("br"), document.createTextNode("최고관리자가 승인하면 다시 로그인해 들어올 수 있습니다."));
+    return;
+  }
+  const note = el("input");
+  note.placeholder = "소속·용도(예: 학사관리팀 업무 담당)";
+  note.maxLength = 200;
+  const ask = el("button", "act primary", "관리자 승인 요청");
+  ask.type = "button";
+  ask.addEventListener("click", async () => {
+    ask.disabled = true;
+    try {
+      await api("/access-request", { method: "POST", body: { note: note.value.trim() } });
+      showAccess({ ...me, status: "pending" });
+    } catch (e) {
+      box.append(el("p", "msg err", e.message));
+      ask.disabled = false;
+    }
+  });
+  box.append(
+    el("p", null, me.status === "rejected" ? `${me.email} — 이전 요청이 거절되었습니다. 다시 요청할 수 있습니다.` : `${me.email} — 아직 관리자가 아닙니다.`),
+    note,
+    ask,
+  );
+}
+
 function showLogin(msg) {
   $("#app").hidden = true;
   $("#login").hidden = false;
@@ -68,8 +102,10 @@ async function initLogin() {
     callback: async ({ credential }) => {
       token = credential;
       try {
-        await api("/glossary"); // 허용 목록 검증(서버)
-        $("#who").textContent = decodeEmail(credential);
+        const me = await api("/me"); // 관리자 상태(active/pending/rejected/none)
+        if (me.status !== "active") return showAccess(me);
+        myRole = me.role || "admin";
+        $("#who").textContent = `${decodeEmail(credential)}${myRole === "super_admin" ? " · 최고관리자" : ""}`;
         initVersion();
         $("#login").hidden = true;
         $("#app").hidden = false;
@@ -790,24 +826,40 @@ async function viewAdmins(view) {
     }
   });
 
+  const isSuper = data.current_role === "super_admin";
   const bootstrapLabel = (row) =>
-    row.bootstrap ? el("span", "status", "부트스트랩") : el("span", "hint", "화면 등록");
+    row.bootstrap ? el("span", "status", "부트스트랩") : el("span", "hint", row.requested_at && !row.added_by ? "승인 요청" : "화면 등록");
+  const roleLabel = (row) => el("span", row.role === "super_admin" ? "status" : "hint", row.role === "super_admin" ? "최고관리자" : "관리자");
+  const decide = (row, action, role, label) => async () => {
+    const reason = askReason(`${row.email} ${label}`);
+    if (!reason) return;
+    await api(`/admins/${encodeURIComponent(row.email)}/${action}`, { method: "POST", body: { role, reason, request_id: rid() } });
+    flash(`${row.email} ${label} 완료`);
+    openTab("admins");
+  };
   view.replaceChildren(
-    el("p", "hint", "OAuth 앱이 '테스트' 상태이면 Google 콘솔의 테스트 사용자에도 추가해야 로그인됩니다."),
-    el("p", "hint", "부트스트랩 관리자는 배포 설정값(최초·비상용)이므로 이 화면에서 삭제할 수 없습니다."),
-    form,
+    el("p", "hint", "관리자가 되려는 사람은 이 화면에서 Google 로그인 후 [관리자 승인 요청]을 누르고, 최고관리자가 여기서 승인합니다. 최고관리자만 승인·거절·삭제·역할 변경을 할 수 있습니다."),
+    el("p", "hint", "Google 로그인 앱이 '테스트' 상태인 동안에는 새 계정도 GCP 콘솔의 테스트 사용자에 등록돼 있어야 로그인됩니다(프로덕션 게시 후에는 불필요). 부트스트랩 관리자는 배포 설정값이라 이 화면에서 바꿀 수 없습니다."),
+    isSuper ? form : el("p", "hint", "일반 관리자는 목록만 볼 수 있습니다."),
     table(
       data.items,
       [
         ["email", "이메일"],
         [bootstrapLabel, "구분"],
+        [roleLabel, "역할"],
         [(row) => badge(row.status), "상태"],
         ["note", "메모"],
         ["added_by", "추가한 사람"],
         ["added_at", "추가 시각"],
       ],
       (row) => [
-        !row.bootstrap && row.status === "active" && row.email !== data.current_email
+        isSuper && row.status === "pending" ? btn("승인(관리자)", decide(row, "approve", "admin", "관리자로 승인"), "act primary") : null,
+        isSuper && row.status === "pending" ? btn("승인(최고관리자)", decide(row, "approve", "super_admin", "최고관리자로 승인")) : null,
+        isSuper && row.status === "pending" ? btn("거절", decide(row, "reject", "admin", "요청 거절"), "act danger") : null,
+        isSuper && !row.bootstrap && row.status === "active" && row.email !== data.current_email
+          ? btn(row.role === "super_admin" ? "관리자로 변경" : "최고관리자로 변경", decide(row, "role", row.role === "super_admin" ? "admin" : "super_admin", "역할 변경"))
+          : null,
+        isSuper && !row.bootstrap && row.status === "active" && row.email !== data.current_email
           ? btn("삭제", async () => {
               const reason = askReason(`${row.email} 관리자 삭제`);
               if (!reason || !confirm(`${row.email} 계정의 관리자 권한을 삭제할까요?`)) return;

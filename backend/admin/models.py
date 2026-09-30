@@ -46,6 +46,27 @@ class AdminAddRequest(BaseModel):
         return clean
 
 
+class AccessRequest(BaseModel):
+    """로그인한 사용자의 관리자 승인 요청(MatchProf 방식 — 교수님 2026-09-30)."""
+
+    note: str = Field(default="", max_length=200)
+
+
+class AdminDecision(BaseModel):
+    """최고관리자의 승인·거절·역할 변경."""
+
+    role: Literal["admin", "super_admin"] = "admin"
+    reason: str = Field(min_length=1, max_length=300)
+    request_id: str = Field(min_length=8, max_length=100)
+
+    @field_validator("reason")
+    @classmethod
+    def reason_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("blank reason")
+        return value.strip()
+
+
 class AdminRemoveRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=300)
     request_id: str = Field(min_length=8, max_length=100)

@@ -13,6 +13,18 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.13.0",
+        "date": "2026-09-30",
+        "deployed_at": None,
+        "revision": None,
+        "title": "관리자 승인 요청·최고관리자(MatchProf 방식)",
+        "items": [
+            "관리자가 아닌 계정은 로그인 후 [관리자 승인 요청] → '승인 대기'로 등록",
+            "최고관리자(부트스트랩 계정·승격된 계정)만 승인·거절·삭제·역할 변경, 일반 관리자는 데이터 운영만",
+            "관리자 탭에 역할 열·승인 대기 목록, 모든 결정은 감사 로그에 기록",
+        ],
+    },
+    {
         "version": "0.12.0",
         "date": "2026-09-30",
         "deployed_at": None,
