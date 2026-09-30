@@ -348,3 +348,11 @@ section.tile ul { margin: 7px 0 0; padding-left: 19px; font-size: 12px; }
 .agent-fix { display: grid; gap: 4px; min-width: 220px; font-size: 13px; }
 .agent-fix p { margin: 0; }
 .agent-fix q { font-size: 12px; }
+
+/* 쓸수록 똑똑해지는가(교수님 #796) */
+.eval-box { margin: 16px 0; }
+.eval-chart { width: 100%; max-width: 560px; height: auto; display: block; }
+.eval-chart .grid { stroke: var(--line); stroke-width: 1; }
+.eval-chart .line { fill: none; stroke: var(--primary); stroke-width: 2.5; }
+.eval-chart .dot { fill: var(--primary); }
+.eval-chart .lbl { fill: var(--muted); font-size: 10px; }

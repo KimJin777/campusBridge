@@ -105,6 +105,27 @@ steps:
       - >-
         --set-env-vars=^;^GCP_PROJECT_ID=$PROJECT_ID;GOOGLE_CLOUD_PROJECT=$PROJECT_ID;FIRESTORE_DB=${_FIRESTORE_DB};RULES_BUCKET=${_BUCKET_NAME};SEARCH_LOCATION=global;SEARCH_DATASTORE_ID=${_DATASTORE_ID};SEARCH_SERVING_CONFIG=${_SERVING_CONFIG};GEMINI_LOCATION=${_GEMINI_LOCATION};GEMINI_MODEL=${_GEMINI_MODEL};GEMINI_FALLBACK_MODEL=${_GEMINI_FALLBACK_MODEL};GOOGLE_OAUTH_CLIENT_ID=${_OAUTH_CLIENT_ID};KAKAO_JS_KEY=${_KAKAO_JS_KEY};ADMIN_EMAILS=${_ADMIN_EMAILS};INGESTION_JOB_NAME=${_INGESTION_JOB_NAME};COLLECTION_CONTACT_EMAIL=${_CONTACT_EMAIL}
 
+  # 매일 밤 평가셋 재실행(교수님 #796·#797) — 웹 이미지로 도는 Job, Cloud Scheduler가 03:30 KST에 실행
+  - id: deploy-eval-job
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - deploy
+      - campusbridge-eval
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/web:$BUILD_ID
+      - --region=${_REGION}
+      - --service-account=${_SA_NAME}@$PROJECT_ID.iam.gserviceaccount.com
+      - --cpu=1
+      - --memory=1Gi
+      - --task-timeout=3600
+      - --max-retries=0
+      - --command=python
+      - --args=-m,backend.app.nightly_eval
+      - >-
+        --set-env-vars=^;^GCP_PROJECT_ID=$PROJECT_ID;GOOGLE_CLOUD_PROJECT=$PROJECT_ID;FIRESTORE_DB=${_FIRESTORE_DB};RULES_BUCKET=${_BUCKET_NAME};SEARCH_LOCATION=global;SEARCH_DATASTORE_ID=${_DATASTORE_ID};SEARCH_SERVING_CONFIG=${_SERVING_CONFIG};GEMINI_LOCATION=${_GEMINI_LOCATION};GEMINI_MODEL=${_GEMINI_MODEL};GEMINI_FALLBACK_MODEL=${_GEMINI_FALLBACK_MODEL};COLLECTION_CONTACT_EMAIL=${_CONTACT_EMAIL}
+
   - id: smoke
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash

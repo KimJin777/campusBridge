@@ -1128,8 +1128,47 @@ async function viewUnanswered(view) {
   );
 }
 
+// '사용하면 할수록 더 똑똑해지는 챗봇' 실증(교수님 #796·#797): 매일 밤 같은 질문 묶음을 다시 실행한 결과
+function evalChart(runs) {
+  const box = el("div", "eval-box");
+  box.append(el("h3", null, "쓸수록 똑똑해지는가 — 예전에 못 답한 질문 중 지금 답하는 비율"));
+  if (!runs.length) {
+    box.append(el("p", "hint", "아직 결과가 없습니다. 매일 03:30에 평가셋(기존 20문항 + 미응답 + 제보 질문)을 다시 실행합니다."));
+    return box;
+  }
+  const W = 520, H = 160, P = 28;
+  const pts = runs.map((r, i) => [P + (runs.length === 1 ? (W - 2 * P) / 2 : (i * (W - 2 * P)) / (runs.length - 1)), H - P - (r.recovered_rate ?? 0) * (H - 2 * P)]);
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("class", "eval-chart");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "날짜별 회복률 곡선");
+  const add = (tag, attrs, text) => {
+    const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v));
+    if (text != null) n.textContent = text;
+    svg.append(n);
+    return n;
+  };
+  for (const y of [0, 0.5, 1]) {
+    const yy = H - P - y * (H - 2 * P);
+    add("line", { x1: P, x2: W - P, y1: yy, y2: yy, class: "grid" });
+    add("text", { x: 2, y: yy + 4, class: "lbl" }, `${y * 100}%`);
+  }
+  add("polyline", { points: pts.map((p) => p.join(",")).join(" "), class: "line" });
+  runs.forEach((r, i) => {
+    add("circle", { cx: pts[i][0], cy: pts[i][1], r: 3.5, class: "dot" });
+    add("text", { x: pts[i][0], y: H - 6, class: "lbl", "text-anchor": "middle" }, String(r.day).slice(5));
+  });
+  box.append(svg);
+  box.append(table(runs.map((r) => ({ ...r, rate: r.recovered_rate == null ? "—" : `${Math.round(r.recovered_rate * 100)}%` })), [["day", "날짜"], ["app_version", "버전"], ["total", "실행 질문"], ["ok", "통과"], ["was_failing", "예전 실패"], ["now_ok", "지금 답함"], ["rate", "회복률"]]));
+  box.append(el("p", "hint", "판정은 제보함과 같은 엄격 기준(인용 검증 통과, '찾지 못함'·제보된 답 반복은 실패)입니다. 질문 묶음이 고정되어 있어 곡선이 오르면 서비스가 실제로 나아진 것입니다."));
+  return box;
+}
+
 async function viewStats(view) {
   const s = await api("/stats?days=30");
+  const evalRuns = await api("/eval-runs").then((r) => r.items || []).catch(() => []);
   const tiles = el("div", "tiles");
   const add = (label, v) => {
     const t = el("div", "tile");
@@ -1162,6 +1201,7 @@ async function viewStats(view) {
   view.replaceChildren(
     warn,
     tiles,
+    evalChart(evalRuns),
     el("h3", null, "답을 못 한 이유"),
     table(pairs(s.fallback_reasons), [[(r) => ko(r.k), "사유"], ["n", "건수"]]),
     el("h3", null, "최근 답을 못 한 질문(개인정보 가림)"),

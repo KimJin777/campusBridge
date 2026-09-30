@@ -912,3 +912,11 @@ async def put_faq(body: dict[str, Any], actor: Actor, store: Store) -> dict[str,
     await store.save_faq(cfg, actor=actor)
     invalidate()
     return cfg
+
+
+@router.get("/eval-runs")
+async def list_eval_runs(actor: Actor, store: Store) -> dict[str, Any]:
+    """매일 밤 평가셋 재실행 결과(교수님 #796·#797) — 날짜 오름차순."""
+    del actor
+    page = await store.list_page("eval_runs", limit=60, cursor=None, order_by="day")
+    return {"items": sorted(page["items"], key=lambda r: str(r.get("day")))}
