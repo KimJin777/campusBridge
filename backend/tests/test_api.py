@@ -233,3 +233,32 @@ def test_unanswered_recheck_marks_verified_once(monkeypatch):
         assert len(llm.calls) == calls  # 이미 검증 → 모델 재호출 없음
     bad = c.post("/api/admin/unanswered/zz/recheck", headers={"Authorization": "Bearer good"})
     assert bad.status_code == 400
+
+
+def test_report_agent_endpoint_requires_admin_and_links_unanswered(monkeypatch):
+    """제보함 에이전트 조치 API(교수님 #786): 관리자만, 어긋난 답은 미응답 목록에 연결."""
+    import backend.admin.auth as auth
+    from backend.app.config import get_settings
+    from backend.reports.api import get_report_store
+
+    async def fake_admin(authorization):
+        if authorization != "Bearer good":
+            from backend.domain import AppError
+
+            raise AppError("UNAUTHORIZED", "no")
+        return type("A", (), {"email": "admin@kyungnam.ac.kr", "subject": "1"})()
+
+    monkeypatch.setattr(auth, "require_admin", fake_admin)
+    c, _ = client(FakeLLM())
+    rs = get_report_store(get_settings())
+    rs.rows["repapi01"] = {
+        "type": "wrong_info",
+        "status": "pending",
+        "snapshot": {"question_masked": "통학버스는 아무나 탈 수 있나요?"},
+    }
+    url = "/api/admin/reports/repapi01/agent/analyze"
+    assert c.post(url).status_code == 401
+    r = c.post(url, headers={"Authorization": "Bearer good"})
+    assert r.status_code == 200 and r.json()["status"] == "linked"
+    bad = c.post("/api/admin/reports/repapi01/agent/nope", headers={"Authorization": "Bearer good"})
+    assert bad.status_code == 400

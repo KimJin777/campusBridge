@@ -224,6 +224,119 @@ def recheck_state(query_masked: str, s: Settings) -> dict[str, Any]:
     }
 
 
+def fix_deps(r: Any, s: Settings, actor: Any) -> Any:
+    """제보함 에이전트 조치 의존성 조립(운영)."""
+    from backend.app.clients import deadline_after
+    from backend.reports import resolve
+    from backend.reports.agent_fix import FixDeps
+    from backend.reports.api import get_report_store
+
+    reports = get_report_store(s)
+
+    async def fetch_text(url: str) -> str:
+        from backend.ingest.webpage import extract_page, fetch_html
+
+        final, html = await fetch_html(url)
+        _title, sections = extract_page(html, final)
+        return "\n".join(f"{x.get('heading', '')} {x.get('text', '')}" for x in sections)
+
+    async def search(query: str) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for name, args in (
+            ("search_academic_knowledge", {"query": query, "kinds": ["guide"]}),
+            ("find_campus_location", {"query": query}),
+        ):
+            tool = r.deps.tools.get(name)
+            if tool is None:
+                continue
+            with contextlib.suppress(Exception):
+                res = await tool(**args)
+                out += [e.model_dump() for e in getattr(res, "items", [])]
+        return out
+
+    async def extract(user: str) -> Any:
+        return await r.deps.llm.structured(
+            resolve.PlaceDraftOut,
+            resolve.PLACE_PROMPT,
+            user,
+            node="report_place",
+            deadline=deadline_after(20000),
+        )
+
+    async def run_turn(query: str) -> dict[str, Any]:
+        return await r.graph.ainvoke(recheck_state(query, s))
+
+    async def paraphrase(query: str) -> str | None:
+        got = await r.deps.llm.structured(
+            resolve.Paraphrase,
+            resolve.PARAPHRASE_PROMPT,
+            query,
+            node="report_paraphrase",
+            deadline=deadline_after(8000),
+        )
+        return got.text
+
+    async def save_place(draft: dict[str, Any]) -> str:
+        from datetime import date
+
+        from backend.admin.store import get_admin_store
+
+        store = get_admin_store()
+        pid = resolve.place_id_for(draft["name"])
+        base = {
+            "name": draft["name"][:60],
+            "kind": "unit",
+            "raw_location": draft["location"][:120],
+            "source_url": draft["source_url"],
+            "snapshot_at": date.today(),
+            "note": f"제보함 에이전트 초안 · 근거: {draft['quote'][:200]}",
+        }
+        if draft.get("phone"):
+            base["phone"] = draft["phone"]
+        rid = f"report-place-{pid}-{int(time.time())}"
+        try:
+            await store.save_place(
+                pid,
+                base,
+                create=True,
+                settings=s,
+                actor=actor,
+                reason="제보 조치 초안",
+                request_id=rid,
+            )
+        except AppError:  # 이미 있는 장소면 내용만 고친다
+            await store.save_place(
+                pid,
+                base,
+                create=False,
+                settings=s,
+                actor=actor,
+                reason="제보 조치 초안",
+                request_id=rid,
+            )
+        await store.save_place(
+            pid,
+            {"status": "verified"},
+            create=False,
+            settings=s,
+            actor=actor,
+            reason="관리자 승인(제보함)",
+            request_id=f"{rid}-v",
+        )
+        return pid
+
+    return FixDeps(
+        reports=reports,
+        fetch_text=fetch_text,
+        search=search,
+        extract=extract,
+        run_turn=run_turn,
+        paraphrase=paraphrase,
+        save_place=save_place,
+        run_status=reports.run_status,
+    )
+
+
 def answer_preview(answer: Any) -> str:
     return " ".join(x.text for x in getattr(answer, "sentences", []))[:300]
 
@@ -614,6 +727,32 @@ def create_app(
         base["checks"] = checks
         base["status"] = "ok" if all(c["ok"] for c in checks.values()) else "degraded"
         return base
+
+    @app.post("/api/admin/reports/{rid}/agent/{step}")
+    async def report_agent_step(
+        rid: str,
+        step: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        """제보함 에이전트 조치(교수님 #786·CLI '1번 전부', GPT5 #792): analyze·apply·verify."""
+        from backend.admin.auth import require_admin
+        from backend.reports import agent_fix
+
+        actor = await require_admin(authorization)
+        if step not in ("analyze", "apply", "verify") or not re.fullmatch(
+            r"[A-Za-z0-9]{8,40}", rid
+        ):
+            raise AppError("BAD_REQUEST", "지원하지 않는 조치입니다.")
+        body: dict[str, Any] = {}
+        with contextlib.suppress(Exception):
+            body = await request.json()
+        d = fix_deps(runner(), s, actor)
+        if step == "analyze":
+            return await agent_fix.analyze(d, rid, actor)
+        if step == "apply":
+            return await agent_fix.apply(d, rid, actor, str(body.get("run_id") or "") or None)
+        return await agent_fix.verify(d, rid, actor)
 
     @app.post("/api/admin/unanswered/{uid}/recheck")
     async def recheck_unanswered(

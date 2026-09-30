@@ -343,3 +343,8 @@ section.tile ul { margin: 7px 0 0; padding-left: 19px; font-size: 12px; }
 .faq-chip.extra { opacity: .55; }
 .faq-x { border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 15px; line-height: 1; }
 .bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+
+/* 제보함 에이전트 조치(교수님 #786) */
+.agent-fix { display: grid; gap: 4px; min-width: 220px; font-size: 13px; }
+.agent-fix p { margin: 0; }
+.agent-fix q { font-size: 12px; }

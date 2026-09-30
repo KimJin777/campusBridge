@@ -32,6 +32,7 @@ class ReportStore(Protocol):
     async def take_quotas(self, limits: list[tuple[str, int]], day: str) -> bool:
         """여러 상한을 한 번에(원자적): 하나라도 차면 아무것도 쓰지 않는다(GPT5 #782)."""
         ...
+
     async def claim_text(self, text_hash: str) -> bool: ...
     async def create(self, doc: dict[str, Any]) -> str: ...
     async def get(self, report_id: str) -> dict[str, Any] | None: ...
@@ -49,6 +50,9 @@ class ReportStore(Protocol):
     async def add_eval_candidate(self, report_id: str, doc: dict[str, Any]) -> None: ...
     async def audit(self, doc: dict[str, Any]) -> None: ...
     async def add_client_error(self, doc: dict[str, Any]) -> None: ...
+    # 제보함 에이전트 조치(교수님 #786)
+    async def add_unanswered(self, query_masked: str) -> None: ...
+    async def run_status(self, run_id: str) -> dict[str, Any] | None: ...
 
 
 def apply_vote(
@@ -139,6 +143,8 @@ class MemoryReportStore:
         self.eval: dict[str, dict[str, Any]] = {}
         self.audits: list[dict[str, Any]] = []
         self.client_errors: list[dict[str, Any]] = []
+        self.unanswered: dict[str, dict[str, Any]] = {}
+        self.runs: dict[str, dict[str, Any]] = {}
         self._secret = b"test-secret"
 
     async def secret(self) -> bytes:
@@ -215,6 +221,15 @@ class MemoryReportStore:
 
     async def add_client_error(self, doc):
         self.client_errors.append(doc)
+
+    async def add_unanswered(self, query_masked: str) -> None:
+        self.unanswered[query_masked] = {
+            "query_masked": query_masked,
+            "fallback_reason": "reported",
+        }
+
+    async def run_status(self, run_id: str) -> dict[str, Any] | None:
+        return self.runs.get(run_id)
 
 
 class FirestoreReportStore:
@@ -375,3 +390,30 @@ class FirestoreReportStore:
 
     async def add_client_error(self, doc):
         await self.db.collection("client_errors").add(doc)
+
+    async def add_unanswered(self, query_masked: str) -> None:
+        """제보된 어긋난 답 → 미응답 목록(자료 보강 뒤 재확인). 90일 뒤 자동 삭제."""
+        from google.cloud import firestore
+
+        from backend.store.base import unanswered_id
+
+        now = datetime.now(UTC)
+        await (
+            self.db.collection("unanswered")
+            .document(unanswered_id(query_masked))
+            .set(
+                {
+                    "query_masked": query_masked,
+                    "fallback_reason": "reported",
+                    "count": firestore.Increment(1),
+                    "last_at": now,
+                    "status": None,
+                    "expires_at": now + timedelta(days=90),
+                },
+                merge=True,
+            )
+        )
+
+    async def run_status(self, run_id: str) -> dict[str, Any] | None:
+        snap = await self.db.collection("ingestion_runs").document(run_id).get()
+        return snap.to_dict() if snap.exists else None

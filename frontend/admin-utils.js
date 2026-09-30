@@ -1,4 +1,4 @@
-const SCHOOL_URL = /^https:\/\/([a-z0-9-]+\.)*kyungnam\.ac\.kr(?:\/|$)/i;
+const SCHOOL_URL = /^https:\/\/([a-z0-9-]+\.)*(kyungnam\.ac\.kr|kusemicamp\.com)(?:\/|$)/i; // 교내 + 소속 기관(#778)
 const PHONE = /^0\d{1,2}-\d{3,4}-\d{4}$/;
 
 export function normalizePhoneInput(value) {

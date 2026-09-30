@@ -475,6 +475,7 @@ REPORT_ACTIONS = {
 }
 ADMIN_FIELDS = (
     "seq",
+    "agent_fix",
     "type",
     "status",
     "category",

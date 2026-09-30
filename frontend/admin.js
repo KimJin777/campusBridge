@@ -820,6 +820,74 @@ async function reportAction(row, action, label, { ask = true, text = null } = {}
   openTab("reports");
 }
 
+// 제보함 에이전트 조치(교수님 #786·CLI '1번 전부', GPT5 #792): 조치안 → [승인·반영] 1회 → 2/2 재확인
+const FIX_TYPE = { place: "장소 초안", recollect: "원문 재비교", unanswered: "미응답 연결" };
+const FIX_STATUS = { proposed: "조치안 있음", no_draft: "초안 못 만듦", no_change: "원문 그대로", recollecting: "재수집 중", linked: "미응답 목록에 연결됨", applied: "반영함", verified: "재확인 2/2 통과", recheck_failed: "재확인 실패" };
+
+async function agentStep(row, step, body) {
+  const out = await api(`/reports/${encodeURIComponent(row.id)}/agent/${step}`, { method: "POST", body: body || {} });
+  await openTab("reports");
+  flash(out.status === "verified" ? "재확인 2/2 통과 — 수정 완료로 닫았습니다." : `에이전트: ${FIX_STATUS[out.status] || out.status}`, out.status === "recheck_failed" || out.status === "no_draft");
+  return out;
+}
+
+function agentCell(row) {
+  const f = row.agent_fix;
+  const box = el("div", "agent-fix");
+  if (!f) {
+    box.append(btn("조치안 만들기", () => agentStep(row, "analyze")));
+    return box;
+  }
+  box.append(el("strong", null, `${FIX_TYPE[f.type] || f.type} · ${FIX_STATUS[f.status] || f.status}`));
+  if (f.type === "place" && f.draft) {
+    const d = f.draft;
+    if (d.ok) {
+      box.append(el("p", null, `${d.name} — ${d.location}${d.phone ? ` · ${d.phone}` : ""}`), el("q", "hint", d.quote));
+      const a = sourceLink(d.source_url);
+      a.textContent = d.source_title || "근거 원문";
+      box.append(a);
+    } else {
+      box.append(el("p", "hint", d.reason));
+    }
+  }
+  if (f.type === "recollect") {
+    for (const p of f.pages || []) box.append(el("p", "hint", `${p.status === "changed" ? "바뀜" : p.status === "same" ? "그대로" : "읽지 못함"} · ${p.title || p.id}`));
+    if (f.status === "no_change") box.append(el("p", "hint", "인용한 원문이 그대로입니다. 학생 주장이 맞다면 학교 원문이 낡은 것이니 [원문 확인 필요]로 담당 부서에 알리세요."));
+  }
+  if (f.type === "unanswered" && f.status === "linked") box.append(el("p", "hint", "자료를 보강한 뒤(홈페이지 등록·용어 사전 등) [다시 확인]을 누르세요."));
+  if (f.check) {
+    for (const r of f.check.runs || []) box.append(el("p", r.ok ? "hint" : "msg err", `${r.ok ? "통과" : `실패(${r.reason})`} · ${r.query}`));
+  }
+  const acts = el("div");
+  if (f.type === "place" && ["proposed", "recheck_failed"].includes(f.status) && f.draft?.ok) {
+    acts.append(btn(f.status === "proposed" ? "승인·반영" : "다시 확인", () => {
+      if (f.status === "proposed" && !confirm(`장소표에 반영합니다.\n${f.draft.name} — ${f.draft.location}\n근거: ${f.draft.quote}`)) return;
+      return f.status === "proposed" ? agentStep(row, "apply") : agentStep(row, "verify");
+    }, "act primary"));
+  }
+  if (f.type === "recollect" && f.status === "proposed") {
+    acts.append(btn("재수집하고 다시 확인", async () => {
+      const r = await api("/ingestion-runs", { method: "POST", body: { source_ids: f.source_ids, idempotency_key: rid() } });
+      await agentStep(row, "apply", { run_id: r.id });
+    }, "act primary"));
+  }
+  if ((f.type === "recollect" && ["recollecting", "recheck_failed"].includes(f.status)) || (f.type === "unanswered" && ["linked", "recheck_failed"].includes(f.status))) {
+    acts.append(btn("다시 확인", () => agentStep(row, "verify"), "act primary"));
+  }
+  if (!["verified", "recollecting", "applied"].includes(f.status)) acts.append(btn("조치안 다시 만들기", () => agentStep(row, "analyze")));
+  box.append(acts);
+  return box;
+}
+
+// 새 제보는 화면을 열 때 에이전트가 스스로 조치안을 만든다(한 번에 3건)
+async function autoAnalyze(items) {
+  const todo = items.filter((r) => r.type === "wrong_info" && r.status === "pending" && !r.agent_fix).slice(0, 3);
+  if (!todo.length) return false;
+  flash(`에이전트가 새 제보 ${todo.length}건의 조치안을 만드는 중…`);
+  for (const r of todo) await api(`/reports/${encodeURIComponent(r.id)}/agent/analyze`, { method: "POST", body: {} }).catch(() => null);
+  return true;
+}
+
 function wrongGuide() {
   // 처리 버튼의 뜻 + '에이전트 의견이 맞을 때' 처리 순서(교수님 #776)
   const box = el("div", "msg");
@@ -839,7 +907,8 @@ function wrongGuide() {
 }
 
 async function viewReports(view) {
-  const { items } = await api(`/reports?type=${reportType}`);
+  let { items } = await api(`/reports?type=${reportType}`);
+  if (reportType === "wrong_info" && (await autoAnalyze(items))) ({ items } = await api(`/reports?type=${reportType}`));
   const tabs = el("div");
   for (const [t, label] of [["tip", "꿀팁"], ["wrong_info", "잘못된 정보"]]) {
     tabs.append(btn(label, async () => { reportType = t; openTab("reports"); }, t === reportType ? "act primary" : "act"));
@@ -855,7 +924,7 @@ async function viewReports(view) {
        [(r) => r.snapshot?.question_masked || "—", "질문"], [(r) => (r.snapshot?.answer_text || "").slice(0, 160) || "—", "답변(당시)"],
        [(r) => (r.answer_claim ? `${r.answer_claim} → 원문: ${r.evidence_value || "?"}` : "—"), "불일치"],
        [(r) => { const w = el("span"); for (const c of r.snapshot?.cards || []) { const a = sourceLink(c.url); a.textContent = c.title || c.id; w.append(a, document.createTextNode(" ")); } return w; }, "인용 근거"],
-       ["agent_reason", "에이전트 의견"], ["created_at", "제보"]];
+       ["agent_reason", "에이전트 의견"], [agentCell, "에이전트 조치"], ["created_at", "제보"]];
   const actions = (row) => isTip
     ? [
         ["pending", "verifying", "student_approved", "hidden"].includes(row.status) ? btn("승인", async () => {
