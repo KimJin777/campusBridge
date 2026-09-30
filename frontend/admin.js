@@ -762,7 +762,17 @@ async function viewWebPages(view) {
       checked = null;
       reg.disabled = true;
       // 실패 이유를 미리보기 자리에 바로 보인다(교수님 #775: 눌러도 아무 반응이 없어 보임)
-      preview.replaceChildren(el("p", "msg err", `미리보기 실패: ${e.message}`));
+      const fail = el("p", "msg err", `미리보기 실패: ${e.message} `);
+      // 원인은 서버 로그에 남는다(교수님 2026-10-01): 이 오류만 거른 로그 탐색기로 바로 이동
+      const q = 'resource.type="cloud_run_revision"
+resource.labels.service_name="campusbridge-web"
+textPayload:"web page preview failed"';
+      const logs = el("a", null, "오류 로그 확인 →");
+      logs.href = `${GCP}/logs/query;query=${encodeURIComponent(q)};duration=P1D?${PROJECT}`;
+      logs.target = "_blank";
+      logs.rel = "noopener noreferrer";
+      fail.append(logs);
+      preview.replaceChildren(fail);
       if (e.message === "unauthorized") throw e;
     }
   });
