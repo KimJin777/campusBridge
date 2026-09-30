@@ -391,3 +391,17 @@ def test_contact_in_raw_text_is_rejected_before_masking():
     assert not r.json()["accepted"]
     row = next(iter(store.rows.values()))
     assert row["status"] == "rejected" and row["text_masked"] is None and row["expire_at"]
+
+
+def test_polarity_handles_bulganeung():
+    """'가능하다' ↔ '불가능하다'도 가부 반전으로 판정(Gemini #725)."""
+    from backend.reports.triage import _polarity
+
+    assert _polarity("신청이 가능하다") == "pos" and _polarity("신청이 불가능하다") == "neg"
+    j = ReportJudge(
+        kind="answer_evidence_mismatch",
+        answer_claim="신청이 가능합니다",
+        evidence_value="신청이 불가능하다",
+        reason="x",
+    )
+    assert deterministic_mismatch(j, "신청이 가능합니다", "휴학생은 신청이 불가능하다")

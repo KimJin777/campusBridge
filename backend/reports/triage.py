@@ -63,8 +63,10 @@ REPORT_PROMPT = (
 
 # 비교 가능한 값: 숫자 + 같은 단위(연도·학기 숫자는 비교하지 않는다 — GPT5 #722-6)
 VALUE_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(학점|만\s*원|원|일|시간|주|개월|%|퍼센트|명|회|층|분)")
-POSITIVE_RE = re.compile(r"할\s*수\s*있|가능(합|하|$)")
-NEGATIVE_RE = re.compile(r"할\s*수\s*없|불가능|불가|할\s*수\s*없")
+POSITIVE_RE = re.compile(
+    r"할\s*수\s*있|(?<!불)가능(합|하|$)"
+)  # '불가능하다'는 긍정 아님(Gemini #725)
+NEGATIVE_RE = re.compile(r"할\s*수\s*없|불가능|불가")
 
 
 def _values(text: str) -> dict[str, set[str]]:
