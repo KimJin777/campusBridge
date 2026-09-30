@@ -167,6 +167,25 @@ def client_ip(request: Request) -> str:
     return request_ip(request)
 
 
+TRACK_PER_NET_DAY = 500  # 한 네트워크(학교 와이파이 포함)의 하루 클릭 기록 상한
+TRACK_GLOBAL_DAY = 20000
+
+
+async def track_quota_ok(request: Request) -> bool:
+    """클릭 기록의 네트워크별·전체 하루 상한(화면 오류 수집과 같은 방식, GPT5 #756)."""
+    from backend.app.config import get_settings
+    from backend.app.telemetry import KST as _KST
+    from backend.reports import rules
+    from backend.reports.api import get_report_store
+
+    store = get_report_store(get_settings())
+    day = datetime.now(_KST).date().isoformat()
+    net = rules.net_hash(await store.secret(), client_ip(request), day)
+    if not await store.take_quota(f"track_{net}", TRACK_PER_NET_DAY, day):
+        return False
+    return await store.take_quota("track_all", TRACK_GLOBAL_DAY, day)
+
+
 def log_turn(outcome: str, reason: str | None, elapsed_ms: int, version: str) -> None:
     """운영 경보용 구조화 로그 한 줄(질문·ID 없음). Cloud Logging이 jsonPayload로 읽는다."""
     print(
@@ -514,9 +533,10 @@ def create_app(
         return Response(status_code=204)
 
     @app.post("/api/track", status_code=204)
-    async def track(req: TrackRequest) -> Response:
+    async def track(req: TrackRequest, request: Request) -> Response:
         try:  # fire-and-forget — 화면에는 항상 204, 저장 실패는 본문 없이 경고만(GPT5 #746)
-            await runner().store.add_event(req.model_dump(exclude_none=True))
+            if await track_quota_ok(request):  # 공개 쓰기 상한(GPT5 #756) — 넘치면 조용히 버림
+                await runner().store.add_event(req.model_dump(exclude_none=True))
         except Exception:  # noqa: BLE001
             log.warning("track store failed event=%s", req.event)
         return Response(status_code=204)

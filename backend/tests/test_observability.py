@@ -92,3 +92,21 @@ def test_quality_warning_tiers_exclude_out_of_scope():
     assert quality_warning(ok + ["no_evidence"] * 4)["level"] == "warning"  # 4/20 = 20%
     assert quality_warning(ok + ["deadline"] * 9)["level"] == "critical"  # 9/25 = 36%
     assert quality_warning(ok + ["out_of_scope"] * 30)["level"] == "ok"  # 범위 밖은 분모에서도 제외
+
+
+def test_track_has_server_side_daily_cap(monkeypatch):
+    """공개 /api/track도 네트워크별 하루 상한 — 넘치면 204로 조용히 버린다(GPT5 #756)."""
+    import uuid
+
+    from backend.app import main
+    from backend.tests.test_api import client as api_client
+    from backend.tests.test_graph import FakeLLM
+
+    monkeypatch.setattr(main, "TRACK_PER_NET_DAY", 3)
+    c, s = api_client(FakeLLM())
+    before = len(s.events)
+    codes = {
+        c.post("/api/track", json={"thread_id": str(uuid.uuid4()), "event": "new_thread"}, headers={"x-forwarded-for": "9.9.4.4"}).status_code
+        for _ in range(6)
+    }
+    assert codes == {204} and len(s.events) - before == 3

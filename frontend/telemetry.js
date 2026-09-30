@@ -3,7 +3,11 @@
 
 const KINDS = new Set(["js_error", "unhandled_rejection", "sse_disconnect", "map_load", "calendar_fetch"]);
 const MAX_PER_SESSION = 3;
-let sent = 0;
+const SENT_KEY = "campusbridge.cerr.sent";
+let sent = 0; // 탭 세션 단위로 센다(새로고침해도 유지, GPT5 #756)
+try {
+  sent = Number(sessionStorage.getItem(SENT_KEY)) || 0;
+} catch {}
 let page = "chat";
 let version = "";
 
@@ -26,6 +30,9 @@ export function isNoise(message, filename, origin) {
 export function reportError(kind, fp = "") {
   if (!KINDS.has(kind) || sent >= MAX_PER_SESSION) return;
   sent += 1;
+  try {
+    sessionStorage.setItem(SENT_KEY, String(sent));
+  } catch {}
   fetch("/api/client-error", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

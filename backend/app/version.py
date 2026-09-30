@@ -13,9 +13,20 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
-        "version": "0.23.2",
+        "version": "0.23.3",
         "date": "2026-09-30",
         "deployed_at": None,
+        "revision": None,
+        "title": "클릭 기록 과다 저장 차단",
+        "items": [
+            "클릭 기록(/api/track)에도 네트워크별·전체 하루 상한을 둬 대량 요청으로 저장소가 채워지지 않게 함",
+            "화면 오류 보고를 새로고침과 상관없이 탭 세션당 3건으로 제한",
+        ],
+    },
+    {
+        "version": "0.23.2",
+        "date": "2026-09-30",
+        "deployed_at": "2026-09-30T11:55:00Z",
         "revision": None,
         "title": "달력 일반공지·행사세미나 구분 수정",
         "items": ["달력 보기 옵션에서 일반공지 게시판의 일정이 행사·세미나로 잘못 묶이던 문제 수정"],
