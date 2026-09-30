@@ -18,7 +18,7 @@ from backend.domain.evidence import Evidence, ToolResult
 from backend.reports.rules import chat_eligible
 
 APPROVED = ("approved", "student_approved")
-TTL_SECONDS = 300
+TTL_SECONDS = 60  # 관리자 회수·가림이 1분 안에 답변에서 빠지게
 MAX_TIPS = 3
 TIP_LABEL = "학생 제보 꿀팁 · 학교 공식 정보 아님"
 _cache: dict[str, Any] = {"at": 0.0, "rows": []}
@@ -44,8 +44,9 @@ def _rows(settings: Settings) -> list[dict[str, Any]]:
             for d in q.stream()
             if (d.to_dict() or {}).get("status") in APPROVED
         ]
-    except Exception:  # noqa: BLE001 — 꿀팁은 보조 근거. 실패하면 없는 것으로
-        rows = _cache["rows"]
+    except Exception:  # noqa: BLE001 — 보조 근거라 장애 시 빈 결과(fail-closed, GPT5 #722-7)
+        _cache.update(at=0.0, rows=[])  # 낡은 캐시를 되살리지 않고, 다음 호출에서 다시 조회
+        return []
     _cache.update(at=now, rows=rows)
     return rows
 

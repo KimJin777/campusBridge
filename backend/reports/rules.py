@@ -30,6 +30,7 @@ TIP_PER_NET_DAY = 3
 REPORT_PER_NET_DAY = 5
 SUBMIT_GLOBAL_DAY = 100
 VOTES_PER_TOKEN_DAY = 30
+VOTES_PER_NET_DAY = 300  # 쿠키를 지워 토큰을 새로 받아도 네트워크 단위 상한(교내 NAT 고려)
 
 # 자동 승인 기준(교수님 #709) — 운영 중 조정 가능
 MIN_VOTES = 10
@@ -186,16 +187,31 @@ FRESH_DAYS = 30  # 학생 확인 꿀팁: 승인 또는 최근 '맞아요'가 30�
 ADMIN_FRESH_DAYS = 180
 
 
+FRESH_CONFIRMS = 2  # 최근 30일 서로 다른 유효 '맞아요' 표 2개 이상이면 학생 확인 꿀팁 인용 연장
+
+
 def chat_eligible(tip: dict[str, Any], now: datetime) -> bool:
-    """챗봇 인용 자격: 승인 상태 + 신선도. 페이지에는 남기되 낡으면 답변에서만 뺀다."""
+    """챗봇 인용 자격: 승인 상태 + 신선도. 페이지에는 남기되 낡으면 답변에서만 뺀다.
+
+    - 관리자 승인: 승인 후 180일. 학생 표로는 연장하지 않는다(GPT5 #722-4).
+    - 학생 확인: 승인 후 30일, 이후엔 '현재 유효한' 맞아요 표 중 최근 30일 것이 2개 이상일 때.
+      철회된 표는 confirm_at에서 빠지므로 잠깐 눌렀다 바꾸는 것으로는 연장되지 않는다.
+    """
     status = tip.get("status")
-    if status not in ("approved", "student_approved"):
+    approved = tip.get("approved_at")
+    if status == "approved":
+        return isinstance(approved, datetime) and now - approved <= timedelta(days=ADMIN_FRESH_DAYS)
+    if status != "student_approved":
         return False
-    days = ADMIN_FRESH_DAYS if status == "approved" else FRESH_DAYS
-    marks = [
-        t for t in (tip.get("approved_at"), tip.get("last_confirm_at")) if isinstance(t, datetime)
+    window = timedelta(days=FRESH_DAYS)
+    if isinstance(approved, datetime) and now - approved <= window:
+        return True
+    recent = [
+        t
+        for t in (tip.get("confirm_at") or {}).values()
+        if isinstance(t, datetime) and now - t <= window
     ]
-    return bool(marks) and now - max(marks) <= timedelta(days=days)
+    return len(recent) >= FRESH_CONFIRMS
 
 
 def reconcile_tips(rows: list[dict[str, Any]], now: datetime) -> dict[str, dict[str, Any]]:

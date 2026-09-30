@@ -61,24 +61,45 @@ REPORT_PROMPT = (
     "글자 그대로 복사하라. 원문과 답변이 일치하는데 학생이 다른 사실을 주장하면 stale_source다."
 )
 
-NUM_RE = re.compile(r"\d+(?:[.,]\d+)?")
+# 비교 가능한 값: 숫자 + 같은 단위(연도·학기 숫자는 비교하지 않는다 — GPT5 #722-6)
+VALUE_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(학점|만\s*원|원|일|시간|주|개월|%|퍼센트|명|회|층|분)")
+POSITIVE_RE = re.compile(r"할\s*수\s*있|가능(합|하|$)")
+NEGATIVE_RE = re.compile(r"할\s*수\s*없|불가능|불가|할\s*수\s*없")
 
 
-def _nums(text: str) -> set[str]:
-    return {n.replace(",", "") for n in NUM_RE.findall(text or "")}
+def _values(text: str) -> dict[str, set[str]]:
+    out: dict[str, set[str]] = {}
+    for num, unit in VALUE_RE.findall(text or ""):
+        out.setdefault(re.sub(r"\s", "", unit), set()).add(num.replace(",", ""))
+    return out
+
+
+def _polarity(text: str) -> str | None:
+    neg, pos = bool(NEGATIVE_RE.search(text)), bool(POSITIVE_RE.search(text))
+    return "neg" if neg and not pos else "pos" if pos and not neg else None
 
 
 def deterministic_mismatch(judge: ReportJudge, answer_text: str, evidence_text: str) -> bool:
-    """모델이 뽑은 값이 실제 문장에 있고, 답변 주장의 숫자가 원문에 없으면 True."""
+    """답변과 인용 원문이 '명백히' 다를 때만 True(자동 확정). 나머지는 관리자 확인.
+
+    조건: 모델이 뽑은 answer_claim·evidence_value가 실제로 답변·원문에 글자 그대로 있고,
+    ① 같은 단위의 값이 양쪽에 있으면서 겹치는 값이 하나도 없고, 답변 값이 원문 어디에도
+       같은 단위로 나오지 않거나(예: 답변 24학점 / 원문 18·19·21학점)
+    ② 같은 문장 성격에서 '할 수 있다' ↔ '할 수 없다'가 뒤집혔을 때.
+    """
     if judge.kind != "answer_evidence_mismatch":
         return False
     claim, value = (judge.answer_claim or "").strip(), (judge.evidence_value or "").strip()
-    if len(claim) < 2 or len(value) < 2:
+    if len(claim) < 2 or len(value) < 2 or claim not in answer_text or value not in evidence_text:
         return False
-    if claim not in answer_text or value not in evidence_text:
-        return False
-    claim_nums = _nums(claim)
-    return bool(claim_nums) and not claim_nums <= _nums(evidence_text)
+    cv, vv, ev = _values(claim), _values(value), _values(evidence_text)
+    shared = set(cv) & set(vv)
+    if shared:
+        return all(not (cv[u] & vv[u]) and not (cv[u] & ev.get(u, set())) for u in shared)
+    if cv or vv:
+        return False  # 단위가 다르거나 한쪽에만 값 → 판단 불가
+    pc, pv = _polarity(claim), _polarity(value)
+    return pc is not None and pv is not None and pc != pv
 
 
 def _wrap(text: str) -> str:

@@ -41,6 +41,7 @@ class Docs(Protocol):
     def get(self, collection: str, doc_id: str) -> dict[str, Any] | None: ...
     def merge(self, collection: str, doc_id: str, data: dict[str, Any]) -> None: ...
     def find(self, collection: str, field: str, value: Any) -> list[tuple[str, dict[str, Any]]]: ...
+    def transact(self, collection: str, doc_id: str, fn: Callable[[dict], dict]) -> dict: ...
 
 
 class Index(Protocol):
@@ -332,14 +333,24 @@ def run_ingestion(
 
 
 def _reconcile_tips(deps: JobDeps) -> dict[str, int]:
-    from backend.reports.rules import reconcile_tips
+    """검증 중 꿀팁의 시간 전이. 후보는 목록에서 고르되, 쓰기는 문서마다 트랜잭션으로 다시
+    읽어 여전히 verifying일 때만 판정한다(관리자 결정·새 반대표를 덮어쓰지 않음 — GPT5 #722-5)."""
+    from backend.reports.rules import evaluate_tip, reconcile_tips
 
     now = _now()
     rows = [{"id": i, **r} for i, r in deps.docs.find("reports", "type", "tip")]
-    changes = reconcile_tips(rows, now)
-    for tip_id, change in changes.items():
-        deps.docs.merge("reports", tip_id, {**change, "updated_at": now, "reconciled_by": "job"})
-    return {"checked": len(rows), "changed": len(changes)}
+    changed = 0
+    for tip_id in reconcile_tips(rows, now):
+
+        def fn(current: dict[str, Any]) -> dict[str, Any]:
+            if current.get("status") != "verifying":
+                return {}
+            change = evaluate_tip(current, now)
+            return {**change, "updated_at": now, "reconciled_by": "job"} if change else {}
+
+        if deps.docs.transact("reports", tip_id, fn):
+            changed += 1
+    return {"checked": len(rows), "changed": changed}
 
 
 def _web_pages_enabled() -> bool:
@@ -385,6 +396,22 @@ class FirestoreDocs:
 
     def merge(self, collection: str, doc_id: str, data: dict[str, Any]) -> None:
         self.db.collection(collection).document(doc_id).set(data, merge=True)
+
+    def transact(self, collection: str, doc_id: str, fn) -> dict[str, Any]:
+        """문서를 트랜잭션으로 다시 읽어 fn(현재값)의 변경분만 쓴다(경쟁 상태 방지)."""
+        from google.cloud import firestore
+
+        ref = self.db.collection(collection).document(doc_id)
+
+        @firestore.transactional
+        def txn(tx) -> dict[str, Any]:
+            snap = ref.get(transaction=tx)
+            change = fn(snap.to_dict() or {}) if snap.exists else {}
+            if change:
+                tx.set(ref, change, merge=True)
+            return change
+
+        return txn(self.db.transaction())
 
     def find(self, collection: str, field: str, value: Any) -> list[tuple[str, dict[str, Any]]]:
         """단일 필드 동등 조회(정정 reconcile용 — 단일 필드 자동 색인으로 충분)."""

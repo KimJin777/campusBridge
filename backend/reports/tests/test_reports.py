@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -107,8 +108,10 @@ def test_tip_submit_screens_judges_and_masks():
     assert "net" in row and "ip" not in row  # IP 원문은 저장하지 않음
     dup = c.post("/api/reports/tip", json=tip_body("너른마당에서 스쿨버스 타요 학번 20231234"))
     assert not dup.json()["accepted"]  # 같은 본문 중복
-    bot = c.post("/api/reports/tip", json=tip_body("자동 제출 테스트 문장입니다", elapsed_ms=100))
-    assert bot.json()["accepted"] and len(store.rows) == 1  # 자동화는 저장하지 않음
+    fast = c.post("/api/reports/tip", json=tip_body("자동 제출 테스트 문장입니다", elapsed_ms=100))
+    assert not fast.json()["accepted"] and len(store.rows) == 1  # 너무 빠르면 저장 없이 재시도 안내
+    trap = c.post("/api/reports/tip", json=tip_body("자동 제출 테스트 문장입니다", website="x"))
+    assert trap.json()["accepted"] and len(store.rows) == 1  # 숨은 입력칸은 조용히 버림
 
 
 def test_tip_model_failure_goes_to_admin_not_reject():
@@ -145,7 +148,7 @@ def test_vote_one_per_token_and_listing():
     changed = c.post(f"/api/tips/{tid}/vote", json={"value": "dispute"}).json()
     assert (changed["confirm"], changed["dispute"]) == (0, 1)  # 값 변경만 가능
     listing = c.get("/api/tips").json()
-    assert listing["verifying"][0]["mine"] == "dispute" and listing["approved"] == []
+    assert listing["verifying"][0]["mine"]["ballot"] == "dispute" and listing["approved"] == []
 
 
 def test_wrong_info_auto_confirm_only_on_deterministic_mismatch():
@@ -230,6 +233,161 @@ def test_time_transition_without_new_votes_and_chat_freshness():
     approved = {"status": "student_approved", "approved_at": later}
     assert rules.chat_eligible(approved, later + timedelta(days=29))
     assert not rules.chat_eligible(approved, later + timedelta(days=31))  # 낡으면 답변에서 제외
-    refreshed = {**approved, "last_confirm_at": later + timedelta(days=30)}
-    assert rules.chat_eligible(refreshed, later + timedelta(days=45))  # 최근 '맞아요'로 연장
+    two = {"a": later + timedelta(days=30), "b": later + timedelta(days=31)}
+    assert rules.chat_eligible({**approved, "confirm_at": two}, later + timedelta(days=45))
+    one = {"a": later + timedelta(days=30)}
+    assert not rules.chat_eligible({**approved, "confirm_at": one}, later + timedelta(days=45))
+    admin = {"status": "approved", "approved_at": later, "confirm_at": two}
+    assert not rules.chat_eligible(admin, later + timedelta(days=181))  # 학생 표로 연장 안 됨
     assert not rules.chat_eligible({"status": "verifying"}, later)
+
+
+# ── GPT5 #722 회귀 테스트 ─────────────────────────────────────────────
+def test_client_ip_skips_google_proxy_and_spoofed_prefix():
+    from backend.reports.api import client_ip
+
+    assert client_ip("211.234.10.7, 35.191.0.1", "169.254.1.1") == "211.234.10.7"
+    assert client_ip("58.120.1.9, 211.234.10.7", None) == "211.234.10.7"  # 앞쪽 위조값 무시
+    assert client_ip(None, "211.234.10.8") == "211.234.10.8"
+
+
+def test_forged_vote_cookie_is_replaced():
+    store = MemoryReportStore()
+    c = client(store, FakeLLM(tip=TipJudge(verdict="ok", reason="ok")))
+    c.post("/api/reports/tip", json=tip_body("제2공학관 2층 매점 옆 자판기 있어요"))
+    tid = next(iter(store.rows))
+    for n in range(3):  # 위조 쿠키로 표를 늘릴 수 없다: 매번 서명 없는 값 → 새 토큰 발급
+        c.cookies.clear()
+        r = c.post(
+            f"/api/tips/{tid}/vote",
+            json={"value": "confirm"},
+            headers={"cookie": f"cb_vt={'A' * 40}{n}"},
+        )
+        assert r.status_code == 200 and "cb_vt=" in r.headers.get("set-cookie", "")
+    assert "." in r.headers["set-cookie"].split("cb_vt=")[1].split(";")[0]  # id.서명
+
+
+def _voted_tip(store, now=NOW):
+    store.rows["tip00001"] = {
+        "type": "tip",
+        "status": "verifying",
+        "published_at": now - timedelta(hours=30),
+        "confirm": 0,
+        "dispute": 0,
+        "flags": 0,
+        "net_counts": {},
+    }
+    return "tip00001"
+
+
+@pytest.mark.asyncio
+async def test_ballot_and_flag_are_independent_and_restore_consumes_flags():
+    store = MemoryReportStore()
+    tid = _voted_tip(store)
+    await store.vote(tid, "tok1", "netA", "confirm", None, NOW)
+    r = await store.vote(tid, "tok1", "netA", "flag", "abuse", NOW)
+    assert (r["confirm"], r["flags"]) == (1, 1)  # 신고해도 투표는 남는다
+    r = await store.vote(tid, "tok1", "netA", "dispute", None, NOW)
+    assert (r["confirm"], r["dispute"], r["flags"]) == (0, 1, 1)  # 투표를 바꿔도 신고는 남는다
+    for t in ("tok2", "tok3"):
+        await store.vote(tid, t, "netB", "flag", "abuse", NOW)
+    assert store.rows[tid]["status"] == "hidden"
+    c = client(store, FakeLLM())
+    restored = c.post(f"/api/admin/reports/{tid}/restore", json={"reason": "허위 신고"})
+    assert restored.json()["status"] == "verifying"
+    r = await store.vote(tid, "tok4", "netC", "confirm", None, NOW)
+    assert r["status"] == "verifying" and r["flags"] == 0  # 복구 후 한 표로 다시 가려지지 않음
+    again = await store.vote(tid, "tok2", "netB", "flag", "abuse", NOW)
+    assert again["flags"] == 1  # 새 세대에서는 다시 신고 가능
+
+
+@pytest.mark.asyncio
+async def test_vote_change_across_networks_keeps_net_sum():
+    store = MemoryReportStore()
+    tid = _voted_tip(store)
+    await store.vote(tid, "tok1", "netA", "confirm", None, NOW)
+    r = await store.vote(tid, "tok1", "netB", "dispute", None, NOW)
+    assert sum(r["net_counts"].values()) == r["confirm"] + r["dispute"] == 1
+    assert (
+        r["net_counts"] == {"netB": 1} and r["confirm_at"] == {}
+    )  # 철회한 맞아요는 신선도에서 빠짐
+
+
+def test_reconcile_is_transactional_and_keeps_latest_decision():
+    from backend.ingest.job import JobDeps, _reconcile_tips
+
+    real_now = datetime.now(UTC)
+    tip = {**_tip(published_at=real_now - timedelta(hours=30)), "type": "tip"}
+
+    class Docs:
+        def __init__(self):
+            self.rows = {"t1": dict(tip)}
+
+        def find(self, c, f, v):
+            return [(k, dict(r)) for k, r in self.rows.items()]
+
+        def transact(self, c, i, fn):
+            self.rows[i]["status"] = "hidden"  # 목록을 읽은 뒤 관리자가 가림(경쟁 상황)
+            change = fn(dict(self.rows[i]))
+            self.rows[i].update(change)
+            return change
+
+        def merge(self, *a):
+            raise AssertionError("비트랜잭션 쓰기 금지")
+
+    docs = Docs()
+    out = _reconcile_tips(JobDeps(blobs=None, docs=docs, index=None))  # type: ignore[arg-type]
+    assert out["changed"] == 0 and docs.rows["t1"]["status"] == "hidden"
+
+
+def test_no_false_confirm_for_numberless_value_or_year_semester():
+    def j(claim, value):
+        return ReportJudge(
+            kind="answer_evidence_mismatch", answer_claim=claim, evidence_value=value, reason="x"
+        )
+
+    assert deterministic_mismatch(
+        j("24학점", "18학점 | 19학점 | 21학점"),
+        "최대 24학점",
+        "[표] 최대 | 18학점 | 19학점 | 21학점",
+    )
+    assert not deterministic_mismatch(
+        j("24학점", "학생은 수강신청을 할 수 있다"), "최대 24학점", "학생은 수강신청을 할 수 있다"
+    )
+    assert not deterministic_mismatch(
+        j("2026년 2학기 최대 18학점", "최대 18학점"), "2026년 2학기 최대 18학점", "최대 18학점"
+    )
+    assert deterministic_mismatch(
+        j("신청할 수 있습니다", "신청할 수 없다"),
+        "신청할 수 있습니다",
+        "휴학 중에는 신청할 수 없다",
+    )
+
+
+def test_tips_tool_fails_closed_on_firestore_error(monkeypatch):
+    import google.cloud.firestore as fs
+
+    from backend.tools import tips
+
+    tips._cache.update(
+        at=0.0,
+        rows=[
+            {"id": "old", "status": "approved", "approved_at": NOW, "text_masked": "회수된 꿀팁"}
+        ],
+    )
+
+    def boom(*a, **k):
+        raise RuntimeError("firestore down")
+
+    monkeypatch.setattr(fs, "Client", boom)
+    assert tips._rows(Settings(gcp_project_id="p")) == []  # 회수된 캐시 꿀팁을 되살리지 않음
+    assert tips._cache["rows"] == []
+
+
+def test_contact_in_raw_text_is_rejected_before_masking():
+    store = MemoryReportStore()
+    c = client(store, FakeLLM(tip=TipJudge(verdict="ok", reason="ok")))
+    r = c.post("/api/reports/tip", json=tip_body("도서관 문의는 010-1234-5678로 연락"))
+    assert not r.json()["accepted"]
+    row = next(iter(store.rows.values()))
+    assert row["status"] == "rejected" and row["text_masked"] is None and row["expire_at"]

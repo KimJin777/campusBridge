@@ -15,6 +15,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import ipaddress
 import os
 import re
 from datetime import UTC, datetime, timedelta, timezone
@@ -28,7 +31,7 @@ from backend.admin.auth import AdminActor, require_admin
 from backend.app.config import Settings, get_settings
 from backend.domain import AppError
 from backend.reports import rules
-from backend.reports.store import FirestoreReportStore, MemoryReportStore, ReportStore
+from backend.reports.store import FirestoreReportStore, MemoryReportStore, ReportStore, mine
 from backend.reports.triage import deterministic_mismatch, judge_report, judge_tip
 from backend.store.mask import mask
 
@@ -37,6 +40,7 @@ VOTE_COOKIE = "cb_vt"
 VOTE_COOKIE_DAYS = 90
 TURN_ID = re.compile(r"^[0-9a-f-]{36}_[0-9a-f-]{36}$")
 PUBLIC_TIP_STATUSES = ("verifying", "student_approved", "approved")
+REJECTED_TTL = timedelta(days=90)  # 반려 제보는 90일 뒤 Firestore TTL로 삭제
 
 router = APIRouter(tags=["reports"])
 
@@ -68,12 +72,38 @@ Store = Annotated[ReportStore, Depends(get_report_store)]
 LLM = Annotated[Any, Depends(get_report_llm)]
 
 
+# 구글 프런트엔드·부하분산 프록시 대역(이 주소는 사용자가 아님)
+GOOGLE_PROXIES = tuple(ipaddress.ip_network(n) for n in ("35.191.0.0/16", "130.211.0.0/22"))
+
+
+def _trusted_proxy(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or any(ip in net for net in GOOGLE_PROXIES if ip.version == net.version)
+    )
+
+
+def client_ip(xff: str | None, peer: str | None) -> str:
+    """X-Forwarded-For를 오른쪽부터 보며 구글 프록시·사설망을 건너뛴 첫 공인 주소(GPT5 #722-1).
+
+    'client, google-proxy' → client, '위조값, client' → client(오른쪽이 우리 쪽에서 붙인 값).
+    """
+    for part in reversed([p.strip() for p in (xff or "").split(",") if p.strip()]):
+        try:
+            ip = ipaddress.ip_address(part)
+        except ValueError:
+            continue
+        if not _trusted_proxy(ip):
+            return str(ip)
+    return peer or "unknown"
+
+
 def _client_ip(request: Request) -> str:
-    """Cloud Run은 실제 접속 IP를 X-Forwarded-For 끝에 붙인다(앞쪽 값은 사용자가 꾸밀 수 있음)."""
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[-1].strip()
-    return request.client.host if request.client else "unknown"
+    return client_ip(
+        request.headers.get("x-forwarded-for"), request.client.host if request.client else None
+    )
 
 
 def _day() -> str:
@@ -104,8 +134,13 @@ class AdminAction(BaseModel):
     text: str | None = Field(default=None, max_length=rules.MAX_TIP_CHARS)  # 다듬어 승인
 
 
-def _bot(elapsed_ms: int, website: str) -> bool:
-    return bool(website.strip()) or elapsed_ms < rules.MIN_ELAPSED_MS
+def _bot(elapsed_ms: int, website: str) -> dict[str, Any] | None:
+    """숨은 입력칸이 채워지면 자동화로 보고 조용히 버린다. 너무 빠르면 다시 보내 달라고 한다."""
+    if website.strip():
+        return {"accepted": True}
+    if elapsed_ms < rules.MIN_ELAPSED_MS:
+        return {"accepted": False, "message": "너무 빨리 보냈습니다. 잠시 후 다시 보내 주세요."}
+    return None
 
 
 async def _net(store: ReportStore, request: Request) -> str:
@@ -140,19 +175,21 @@ def _rejected(reason: str) -> dict[str, Any]:
 # ── 꿀팁 제보 ───────────────────────────────────────────────────────────
 @router.post("/api/reports/tip")
 async def submit_tip(body: TipSubmit, request: Request, store: Store, llm: LLM) -> dict[str, Any]:
-    if _bot(body.elapsed_ms, body.website):
-        return {"accepted": True, **_receipt()[0]}  # 자동화에는 티를 내지 않는다
+    if (bot := _bot(body.elapsed_ms, body.website)) is not None:
+        return bot
     net = await _net(store, request)
     await _limits(store, net, "tip", rules.TIP_PER_NET_DAY)
+    # 연락처·링크 검사는 마스킹 전 원문으로(메모리에서만), 저장·모델에는 마스킹본만(GPT5 #722-8)
+    screen = rules.screen_tip(rules.normalize(body.text))
     text = rules.normalize(mask(body.text))
     now = datetime.now(UTC)
     base = {"type": "tip", "category": body.category, "created_at": now, "net": net}
-    screen = rules.screen_tip(text)
     if screen.verdict == "reject":
         await store.create(
             {
                 **base,
                 "status": "rejected",
+                "expire_at": now + REJECTED_TTL,
                 "decided_by": "rules",
                 "reason": screen.reason,
                 "text_masked": text if screen.keep_body else None,
@@ -171,6 +208,7 @@ async def submit_tip(body: TipSubmit, request: Request, store: Store, llm: LLM) 
             {
                 **base,
                 "status": "rejected",
+                "expire_at": now + REJECTED_TTL,
                 "decided_by": "agent",
                 "reason": judge.reason,
                 "text_masked": text,
@@ -219,12 +257,32 @@ def _answer_text(payload: dict[str, Any]) -> str:
     return "\n".join(p for p in parts if p)
 
 
+async def _auto_followups(
+    store: ReportStore, rid: str, turn_id: str, doc: dict[str, Any], snapshot: dict, now: datetime
+) -> None:
+    """자동 '확인됨' 후속: turn 무효 표시 + 평가 후보. 둘 다 멱등(같은 ID로 덮어쓰기)."""
+    await store.mark_turn(turn_id, rid)
+    await store.add_eval_candidate(
+        rid,
+        {
+            "status": "candidate",
+            "created_at": now,
+            "question_masked": snapshot["question_masked"],
+            "wrong_claim": doc["answer_claim"],
+            "source_value": doc["evidence_value"],
+            "cited_ids": snapshot["cited_ids"],
+            "versions": snapshot["versions"],
+        },
+    )
+    await store.update(rid, {"followups": "done"})
+
+
 @router.post("/api/reports/wrong-info")
 async def submit_wrong_info(
     body: WrongInfoSubmit, request: Request, store: Store, llm: LLM
 ) -> dict[str, Any]:
-    if _bot(body.elapsed_ms, body.website):
-        return {"accepted": True, **_receipt()[0]}
+    if (bot := _bot(body.elapsed_ms, body.website)) is not None:
+        return bot
     if not TURN_ID.match(body.turn_id):
         raise AppError("BAD_REQUEST", "제보할 답변을 찾지 못했습니다.")
     turn = await store.turn(body.turn_id)
@@ -232,9 +290,9 @@ async def submit_wrong_info(
         raise AppError("BAD_REQUEST", "제보할 답변을 찾지 못했습니다.")
     net = await _net(store, request)
     await _limits(store, net, "report", rules.REPORT_PER_NET_DAY)
+    screen = rules.screen_report(rules.normalize(body.text))  # 원문 검사, 저장은 마스킹본
     text = rules.normalize(mask(body.text))
     now = datetime.now(UTC)
-    screen = rules.screen_report(text)
     payload = turn.get("final_payload") or {}
     quotes = turn.get("cited_quotes") or {}
     evidence_text = "\n\n".join(quotes.values()) or "\n".join(
@@ -256,6 +314,7 @@ async def submit_wrong_info(
             {
                 **base,
                 "status": "rejected",
+                "expire_at": now + REJECTED_TTL,
                 "decided_by": "rules",
                 "reason": screen.reason,
                 "text_masked": text if screen.keep_body else None,
@@ -283,19 +342,18 @@ async def submit_wrong_info(
     }
     rid = await store.create(doc)
     if auto:
-        await store.mark_turn(body.turn_id, rid)
-        await store.add_eval_candidate(
-            rid,
-            {
-                "status": "candidate",
-                "created_at": now,
-                "question_masked": snapshot["question_masked"],
-                "wrong_claim": doc["answer_claim"],
-                "source_value": doc["evidence_value"],
-                "cited_ids": snapshot["cited_ids"],
-                "versions": snapshot["versions"],
-            },
-        )
+        try:  # 후속 처리(멱등: 평가 후보 ID = 제보 ID). 실패하면 관리자 확인으로 되돌린다
+            await _auto_followups(store, rid, body.turn_id, doc, snapshot, now)
+        except Exception:  # noqa: BLE001
+            await store.update(
+                rid,
+                {
+                    "status": "pending",
+                    "decided_by": None,
+                    "agent_reason": "자동 확정 후속 처리 실패 — 관리자 확인",
+                },
+            )
+            auto = False
     return {
         "accepted": True,
         **shown,
@@ -306,23 +364,31 @@ async def submit_wrong_info(
 
 
 # ── 꿀팁 목록·투표 ──────────────────────────────────────────────────────
-def _vote_token(request: Request, response: Response) -> str:
-    token = request.cookies.get(VOTE_COOKIE) or ""
-    if not re.fullmatch(r"[A-Za-z0-9_-]{40,60}", token):
-        token = rules.new_vote_token()
-        response.set_cookie(
-            VOTE_COOKIE,
-            token,
-            max_age=VOTE_COOKIE_DAYS * 86400,
-            httponly=True,
-            secure=True,
-            samesite="lax",
-            path="/api/tips",
-        )
-    return token
+def _sign(secret: bytes, tid: str) -> str:
+    return hmac.new(secret, f"vote|{tid}".encode(), hashlib.sha256).hexdigest()[:32]
 
 
-def _public_tip(row: dict[str, Any], mine: str | None) -> dict[str, Any]:
+async def _vote_token(request: Request, response: Response, store: ReportStore) -> str:
+    """서버가 서명한 투표 토큰(id.서명)만 인정. 위조·형식 오류는 새로 발급(GPT5 #722-2)."""
+    secret = await store.secret()
+    raw = request.cookies.get(VOTE_COOKIE) or ""
+    tid, _, sig = raw.partition(".")
+    if re.fullmatch(r"[A-Za-z0-9_-]{32,60}", tid) and hmac.compare_digest(sig, _sign(secret, tid)):
+        return tid
+    tid = rules.new_vote_token()
+    response.set_cookie(
+        VOTE_COOKIE,
+        f"{tid}.{_sign(secret, tid)}",
+        max_age=VOTE_COOKIE_DAYS * 86400,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/api/tips",
+    )
+    return tid
+
+
+def _public_tip(row: dict[str, Any], mine: dict[str, Any] | None) -> dict[str, Any]:
     confirm, dispute = int(row.get("confirm", 0)), int(row.get("dispute", 0))
     created = row.get("created_at")
     return {
@@ -346,10 +412,10 @@ def _public_tip(row: dict[str, Any], mine: str | None) -> dict[str, Any]:
 
 @router.get("/api/tips")
 async def list_tips(request: Request, response: Response, store: Store) -> dict[str, Any]:
-    token = rules.token_hash(_vote_token(request, response))
+    token = rules.token_hash(await _vote_token(request, response, store))
     rows = await store.list(type_="tip", statuses=PUBLIC_TIP_STATUSES)
-    mine = await store.my_votes(token, [r["id"] for r in rows])
-    items = [_public_tip(r, mine.get(r["id"])) for r in rows]
+    votes = await store.my_votes(token, [r["id"] for r in rows])
+    items = [_public_tip(r, mine(votes[r["id"]], r) if r["id"] in votes else None) for r in rows]
     items.sort(key=lambda t: t["created"] or "", reverse=True)
     return {
         "verifying": [t for t in items if t["status"] == "verifying"],
@@ -368,19 +434,22 @@ async def vote_tip(
 ) -> dict[str, Any]:
     if not re.fullmatch(r"[A-Za-z0-9]{8,40}", tip_id):
         raise AppError("BAD_REQUEST", "꿀팁을 찾지 못했습니다.")
-    token = rules.token_hash(_vote_token(request, response))
+    token = rules.token_hash(await _vote_token(request, response, store))
     tip = await store.get(tip_id)
     if not tip or tip.get("type") != "tip" or tip.get("status") not in PUBLIC_TIP_STATUSES:
         raise AppError("BAD_REQUEST", "투표할 수 없는 꿀팁입니다.")
-    if not await store.take_quota(f"vote_{token}", rules.VOTES_PER_TOKEN_DAY, _day()):
-        raise AppError("RATE_LIMITED", "오늘은 투표를 더 할 수 없습니다.")
     net = await _net(store, request)
-    updated = await store.vote(tip_id, token, net, body.value, datetime.now(UTC))
+    day = _day()
+    if not await store.take_quota(f"vote_{token}", rules.VOTES_PER_TOKEN_DAY, day):
+        raise AppError("RATE_LIMITED", "오늘은 투표를 더 할 수 없습니다.")
+    # 쿠키를 지워 새 토큰을 받아도 네트워크 단위 하루 상한은 넘지 못한다(토큰 양산 방지)
+    if not await store.take_quota(f"votenet_{net}", rules.VOTES_PER_NET_DAY, day):
+        raise AppError("RATE_LIMITED", "오늘은 이 네트워크에서 투표를 더 할 수 없습니다.")
+    reason = (body.reason or "other") if body.value == "flag" else None
+    updated = await store.vote(tip_id, token, net, body.value, reason, datetime.now(UTC))
     if updated is None:
         raise AppError("BAD_REQUEST", "꿀팁을 찾지 못했습니다.")
-    if body.value == "flag" and body.reason:
-        await store.update(tip_id, {"last_flag_reason": body.reason})
-    return _public_tip(updated, body.value)
+    return _public_tip(updated, updated.get("mine"))
 
 
 # ── 관리자 제보함 ───────────────────────────────────────────────────────
@@ -415,7 +484,7 @@ ADMIN_FIELDS = (
     "confirm",
     "dispute",
     "flags",
-    "last_flag_reason",
+    "flag_reasons",
     "kind",
     "answer_claim",
     "evidence_value",
@@ -481,6 +550,22 @@ async def admin_report_action(
         change["published_at"] = now
     if action == "hide":
         change["hidden_from"] = row.get("status")
+    if (
+        row.get("type") == "tip"
+        and action in ("restore", "approve", "to_vote")
+        and row.get("flags")
+    ):
+        # 관리자가 판단을 끝낸 신고는 소진: 세대를 올려 같은 신고로 다시 가려지지 않게 한다
+        change.update(
+            {
+                "flags": 0,
+                "flag_gen": int(row.get("flag_gen", 0)) + 1,
+                "flag_reasons": {},
+                "resolved_flags": row.get("flag_reasons") or {},
+            }
+        )
+    if status == "rejected":
+        change["expire_at"] = now + REJECTED_TTL
     await store.update(report_id, change)
     await store.audit(
         {

@@ -53,7 +53,7 @@ function tipItem(t, rule) {
   const b = (label, value, reason) => {
     const x = el("button", "fb", label);
     x.type = "button";
-    x.setAttribute("aria-pressed", String(t.mine === value));
+    x.setAttribute("aria-pressed", String(t.mine?.ballot === value));
     x.addEventListener("click", () => vote(t, value, reason));
     return x;
   };
@@ -67,6 +67,10 @@ function tipItem(t, rule) {
   flag.setAttribute("aria-label", "문제 신고");
   flag.append(new Option("문제 신고…", ""));
   for (const [v, label] of FLAG_REASONS) flag.append(new Option(label, v));
+  if (t.mine?.flagged) {
+    flag.disabled = true;
+    flag.options[0].textContent = "신고함";
+  }
   flag.addEventListener("change", () => flag.value && vote(t, "flag", flag.value));
   bar.append(flag);
   li.append(bar);
