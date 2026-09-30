@@ -230,6 +230,8 @@ class TurnRunner:
                 "intent": final.get("intent"),
                 "retrieved_ids": [e.id for e in evidence],
                 "cited_ids": cited,
+                # 오류 제보 시 비교할 인용 원문 스냅샷(교수님 #715 — 잘못된 정보 제보)
+                "cited_quotes": {c: ev[c].text[:1500] for c in cited if c in ev},
                 "fallback_reason": reason,
                 "elapsed_ms": elapsed_ms,
                 "llm_calls": final.get("llm_calls_count", 0),
@@ -555,6 +557,14 @@ def create_app(
     @app.get("/privacy", include_in_schema=False)
     async def privacy() -> RedirectResponse:
         return RedirectResponse("/privacy.html")
+
+    from backend.reports.api import router as reports_router
+
+    app.include_router(reports_router)  # 익명 꿀팁·오류 제보(교수님 #715)
+
+    @app.get("/tips", include_in_schema=False)
+    async def tips_page() -> RedirectResponse:
+        return RedirectResponse("/tips.html")
 
     try:  # 관리자 API(GPT5 소유)가 router를 내보내면 등록
         from backend.admin import router as admin_router  # type: ignore[attr-defined]

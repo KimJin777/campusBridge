@@ -42,6 +42,7 @@ ALLOWED_TOOLS = {
     "get_academic_calendar",
     "get_menu",
     "find_campus_location",
+    "find_campus_tips",
 }
 TOOL_TEXT_LIMIT = 1500
 MIN_SECONDS_FOR_TOOLS = 8.0  # 02 §3: 남은 시간 < 8초면 도구 호출 중단

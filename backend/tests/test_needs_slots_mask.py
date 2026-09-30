@@ -35,8 +35,11 @@ def test_single_search_call_and_original_query():
 def test_menu_and_location_without_search():
     assert names(plan_calls(["menu"], search_query="학식")) == ["get_menu"]
     assert names(plan_calls(["location"], search_query="학사지원팀 위치")) == [
-        "find_campus_location"
+        "find_campus_location",
+        "find_campus_tips",  # 승인된 학생 꿀팁은 위치 질문에서만(#715)
     ]
+    for need in ("eligibility_or_limit", "current_deadline", "procedure_and_contact", "menu"):
+        assert "find_campus_tips" not in names(plan_calls([need], search_query="휴학"))
     assert plan_calls([], search_query="x") == []
 
 

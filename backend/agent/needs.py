@@ -128,6 +128,10 @@ def plan_calls(
 
     if "location" in evidence_needs:
         calls.append({"name": "find_campus_location", "args": {"query": search_query}})
+        # 승인된 학생 꿀팁은 위치 질문에서만(공식 규정·일정 질문에는 호출하지 않는다 — #715)
+        calls.append(
+            {"name": "find_campus_tips", "args": {"query": original_query or search_query}}
+        )
 
     for i, c in enumerate(calls):
         c["id"] = f"plan_{i}"

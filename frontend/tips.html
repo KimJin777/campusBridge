@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>대학생활 꿀팁 — 캠퍼스 브릿지</title>
+  <meta name="description" content="경남대 학생들이 제보하고 함께 확인한 캠퍼스 생활 꿀팁.">
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="tips.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a href="/" class="brand-wrap" aria-label="캠퍼스 브릿지 첫 화면으로">
+      <img src="logo.svg" alt="" class="logo" width="32" height="32">
+      <h1 class="brand">캠퍼스 브릿지</h1>
+    </a>
+  </header>
+  <main class="chat tippage">
+    <h2>대학생활 꿀팁</h2>
+    <p class="hint">학생들이 익명으로 제보하고 함께 확인한 정보입니다. <strong>학교 공식 정보가 아닙니다.</strong> 승인된 꿀팁은 챗봇이 장소·길 안내에 덧붙여 씁니다.</p>
+
+    <form id="tip-form" class="tip-form" autocomplete="off">
+      <label>분류
+        <select name="category">
+          <option value="place">장소·길</option>
+          <option value="facility">편의시설</option>
+          <option value="life">캠퍼스 생활</option>
+        </select>
+      </label>
+      <label>꿀팁 (300자)
+        <textarea name="text" rows="3" maxlength="300" required placeholder="예: 제1공학관 2층을 거쳐 제2공학관 2층 엘리베이터를 타면 보건의료관까지 오르막이 줄어요"></textarea>
+      </label>
+      <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <p class="hint">익명으로 받습니다. 다른 사람의 이름·연락처·학번, 링크는 적지 마세요. 학칙·장학·학적 안내는 받지 않습니다.</p>
+      <button type="submit" class="primary">제보하기</button>
+      <div id="tip-result"></div>
+    </form>
+
+    <h2>승인된 꿀팁</h2>
+    <ul id="approved" class="tip-list" aria-live="polite"></ul>
+
+    <h2>검증 중인 꿀팁</h2>
+    <p class="hint" id="rule"></p>
+    <ul id="verifying" class="tip-list" aria-live="polite"></ul>
+  </main>
+</body>
+</html>

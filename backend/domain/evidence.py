@@ -10,7 +10,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-EvidenceKind = Literal["article", "guide", "notice", "calendar", "menu", "department", "place"]
+EvidenceKind = Literal[
+    "article", "guide", "notice", "calendar", "menu", "department", "place", "tip"
+]
 
 # 03 문서 1절 매핑표의 입력값(사실 종류). 모델은 저장소 구현값(rule/guide)을 고르지 않는다.
 EvidenceNeed = Literal[

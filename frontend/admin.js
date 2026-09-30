@@ -216,6 +216,7 @@ const TABS = {
   documents: ["교내 문서", viewDocuments, "book"],
   webpages: ["홈페이지 등록", viewWebPages, "external"],
   events: ["학사·행사 일정", viewEvents, "calendar"],
+  reports: ["제보함", viewReports, "alert"],
   places: ["장소 표", viewPlaces, "pin"],
   phonebook: ["전화번호부", viewPhonebook, "phone"],
   review: ["검수 대기함", viewReview, "check"],
@@ -763,6 +764,68 @@ async function viewWebPages(view) {
       row.status === "stopped" ? act(row, "resume", "재개") : null,
       row.status !== "deleted" ? act(row, "delete", "삭제") : null,
     ]),
+  );
+}
+
+// ── 제보함(교수님 #697~#715): 꿀팁 검수 · 잘못된 정보 제보 처리 ─────────────
+const TIP_STATUS = { pending: "관리자 확인 필요", verifying: "검증 중(공개 투표)", student_approved: "학생 확인 승인", approved: "관리자 승인", hidden: "임시 가림", rejected: "반려", withdrawn: "회수" };
+const WRONG_STATUS = { pending: "확인 필요", confirmed: "확인됨(수정 필요)", no_issue: "이상 없음", needs_source_review: "원문 확인 필요", resolved: "수정 완료", rejected: "반려" };
+const WRONG_KIND = { answer_evidence_mismatch: "답변-근거 불일치", stale_source: "원문이 낡음", missing_evidence: "근거 없음", display_error: "화면 오류", other: "기타" };
+let reportType = "tip";
+
+async function reportAction(row, action, label, { ask = true, text = null } = {}) {
+  const reason = ask ? askReason(`제보 ${label}`) : label;
+  if (!reason) return;
+  await api(`/reports/${encodeURIComponent(row.id)}/${action}`, { method: "POST", body: text ? { reason, text } : { reason } });
+  flash(`${label} 처리했습니다.`);
+  openTab("reports");
+}
+
+async function viewReports(view) {
+  const { items } = await api(`/reports?type=${reportType}`);
+  const tabs = el("div");
+  for (const [t, label] of [["tip", "꿀팁"], ["wrong_info", "잘못된 정보"]]) {
+    tabs.append(btn(label, async () => { reportType = t; openTab("reports"); }, t === reportType ? "act primary" : "act"));
+  }
+  const isTip = reportType === "tip";
+  const statusMap = isTip ? TIP_STATUS : WRONG_STATUS;
+  const cols = isTip
+    ? [[(r) => badge(r.status), "상태"], [(r) => statusMap[r.status] || r.status, "설명"], ["text_masked", "제보 내용(마스킹)"], ["published_text", "다듬은 문장"],
+       [(r) => `${r.confirm ?? 0} / ${r.dispute ?? 0} / 신고 ${r.flags ?? 0}`, "맞아요/달라요/신고"],
+       [(r) => [r.safety && "안전", r.contested && "이견 많음", r.burst_risk && "몰표 의심", r.recheck && "확인 권장"].filter(Boolean).join(" · ") || "—", "표시"],
+       ["agent_reason", "에이전트 의견"], ["reason", "반려 사유"], ["created_at", "제보"]]
+    : [[(r) => badge(r.status), "상태"], [(r) => statusMap[r.status] || r.status, "설명"], [(r) => WRONG_KIND[r.kind] || "—", "유형"], ["text_masked", "제보 내용"],
+       [(r) => r.snapshot?.question_masked || "—", "질문"], [(r) => (r.snapshot?.answer_text || "").slice(0, 160) || "—", "답변(당시)"],
+       [(r) => (r.answer_claim ? `${r.answer_claim} → 원문: ${r.evidence_value || "?"}` : "—"), "불일치"],
+       [(r) => { const w = el("span"); for (const c of r.snapshot?.cards || []) { const a = sourceLink(c.url); a.textContent = c.title || c.id; w.append(a, document.createTextNode(" ")); } return w; }, "인용 근거"],
+       ["agent_reason", "에이전트 의견"], ["created_at", "제보"]];
+  const actions = (row) => isTip
+    ? [
+        ["pending", "verifying", "student_approved", "hidden"].includes(row.status) ? btn("승인", async () => {
+          const edited = prompt("학생 답변에 쓸 문장으로 다듬을 수 있습니다(그대로 두면 원문).", row.published_text || row.text_masked || "");
+          if (edited === null) return;
+          await reportAction(row, "approve", "승인", { ask: false, text: edited });
+        }, "act primary") : null,
+        row.status === "pending" ? btn("공개 투표로", () => reportAction(row, "to_vote", "공개 투표로 전환", { ask: false })) : null,
+        ["pending", "verifying"].includes(row.status) ? btn("반려", () => reportAction(row, "reject", "반려")) : null,
+        ["verifying", "student_approved", "approved"].includes(row.status) ? btn("가림", () => reportAction(row, "hide", "가림")) : null,
+        row.status === "hidden" ? btn("복구", () => reportAction(row, "restore", "복구")) : null,
+        ["student_approved", "approved"].includes(row.status) ? btn("회수", () => reportAction(row, "withdraw", "회수")) : null,
+      ]
+    : [
+        row.status !== "confirmed" && row.status !== "resolved" ? btn("확인됨", () => reportAction(row, "confirm", "확인됨"), "act primary") : null,
+        row.status !== "resolved" ? btn("수정 완료", () => reportAction(row, "resolve", "수정 완료")) : null,
+        ["pending", "confirmed"].includes(row.status) ? btn("원문 확인 필요", () => reportAction(row, "needs_source_review", "원문 확인 필요")) : null,
+        row.status === "pending" ? btn("이상 없음", () => reportAction(row, "no_issue", "이상 없음")) : null,
+        row.status === "pending" ? btn("반려", () => reportAction(row, "reject", "반려")) : null,
+      ];
+  view.replaceChildren(
+    el("div", "section-head", "제보함"),
+    el("p", "hint", isTip
+      ? "학생 꿀팁: 에이전트가 광고·개인정보·범위 밖은 자동 반려하고, 통과한 것은 공개 투표(24시간·10표·맞아요 80%)로 학생 확인 승인됩니다. 안전 관련·이견 많음·몰표 의심은 관리자가 결정합니다. 이벤트 경품은 관리자 확인 건만 인정합니다."
+      : "잘못된 정보 제보: 답변과 인용 원문의 숫자·날짜가 명백히 다를 때만 에이전트가 '확인됨'으로 표시합니다. 원문과 일치한다는 이유로 자동 반려하지 않습니다(원문이 낡았을 수 있음). 인용 근거 링크에서 원본을 고친 뒤 '수정 완료'로 닫으세요."),
+    tabs,
+    table(items, cols, actions),
   );
 }
 

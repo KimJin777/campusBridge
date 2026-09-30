@@ -21,7 +21,7 @@ NEED_PRIORITY: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "current_deadline": (("calendar", "notice"), ("article",)),
     "procedure_and_contact": (("guide",), ("article",)),
     "menu": (("menu",), ()),
-    "location": (("place",), ()),
+    "location": (("place",), ("tip",)),
 }
 
 CHANGE_MARK = re.compile(r"변경|연장|정정|수정")

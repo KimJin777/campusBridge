@@ -27,7 +27,9 @@ const KIND_LABEL = {
   menu: "식단",
   department: "부서",
   place: "위치",
+  tip: "학생 꿀팁",
 };
+const TIP_LABEL = "학생 제보 꿀팁 · 학교 공식 정보 아님";
 const SLOT_LABEL = { grade: "학년", scholarship: "장학금", dept: "학과" };
 const FALLBACK_TEXT = {
   out_of_scope: "학사·장학·학생생활 안내 범위 밖의 질문이에요.",
@@ -146,6 +148,7 @@ class Turn {
       if (meta) detail.append(el("div", "meta", meta));
       if (c.has_table) detail.append(el("div", "meta", "표 포함 — 원문 확인"));
       if (c.stale) detail.append(el("div", "meta stale", "마지막 확인 정보"));
+      if (c.kind === "tip") detail.append(el("div", "meta tip-note", TIP_LABEL));
       head.addEventListener("click", () => {
         const open = detail.hidden;
         detail.hidden = !open;
@@ -465,7 +468,49 @@ class Turn {
     }
   }
 
+  // 잘못된 정보 제보(교수님 #715): 익명, 답변·인용 근거는 서버가 스냅샷으로 붙인다
+  enableReport() {
+    const btn = $(".fb.report", this.node);
+    const slot = $(".report-slot", this.node);
+    if (!btn || !slot) return;
+    const opened = Date.now();
+    btn.addEventListener("click", () => {
+      if (!this.turnId || slot.childElementCount) return;
+      const form = el("form", "report-form");
+      const label = el("label", null, "무엇이 틀렸나요? (선택, 200자)");
+      const text = el("textarea");
+      text.maxLength = 200;
+      text.rows = 2;
+      text.placeholder = "예: 최대 수강학점이 21학점이 아니라 19학점이에요";
+      label.append(text);
+      const trap = el("input", "hp");
+      trap.name = "website";
+      trap.tabIndex = -1;
+      trap.autocomplete = "off";
+      trap.setAttribute("aria-hidden", "true");
+      const note = el("p", "hint", "익명으로 관리자에게 전달됩니다. 이름·연락처·학번은 적지 마세요.");
+      const submit = el("button", "primary", "보내기");
+      submit.type = "submit";
+      form.append(label, trap, note, submit);
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        submit.disabled = true;
+        const r = await fetch("/api/reports/wrong-info", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ turn_id: this.turnId, text: text.value, website: trap.value, elapsed_ms: Date.now() - opened }),
+        }).catch(() => null);
+        const data = r ? await r.json().catch(() => ({})) : {};
+        slot.replaceChildren(receiptBox(r && r.ok ? data : { accepted: false, message: data.message || "보내지 못했습니다. 잠시 후 다시 시도해 주세요." }));
+        track("report_submit", { turn_id: this.turnId });
+      });
+      slot.replaceChildren(form);
+      text.focus();
+    });
+  }
+
   enableFeedback() {
+    this.enableReport();
     const fb = $(".feedback", this.node);
     fb.hidden = false;
     const stateEl = $(".fb-state", fb);
@@ -490,6 +535,16 @@ class Turn {
       });
     }
   }
+}
+
+// 제보 접수 결과: 제보 번호는 이벤트 때 제보자 확인용(서버에는 해시만 저장)
+function receiptBox(d) {
+  const box = el("div", `receipt${d.accepted ? "" : " err"}`);
+  box.append(el("p", null, d.message || (d.accepted ? "접수되었습니다." : "접수하지 않았습니다.")));
+  if (d.accepted && d.receipt) {
+    box.append(el("p", "receipt-no", `제보 번호 ${d.receipt}`), el("p", "hint", "이 번호를 가진 사람이 제보자로 인정됩니다(이벤트용). 잃어버리면 다시 발급할 수 없으니 캡처해 두세요."));
+  }
+  return box;
 }
 
 function answerSentence(picked) {

@@ -9,6 +9,7 @@ from backend.app.config import Settings
 from backend.tools.directory import dept_lookup, find_campus_location
 from backend.tools.knowledge import search_academic_knowledge
 from backend.tools.public_sources import get_academic_calendar, get_menu, get_notices
+from backend.tools.tips import find_campus_tips  # noqa: E402
 
 
 def build_tools(settings: Settings) -> dict[str, Any]:
@@ -20,6 +21,7 @@ def build_tools(settings: Settings) -> dict[str, Any]:
         "get_academic_calendar": partial(get_academic_calendar, settings=settings),
         "get_menu": partial(get_menu, settings=settings),
         "find_campus_location": partial(find_campus_location, settings=settings),
+        "find_campus_tips": partial(find_campus_tips, settings=settings),
     }
 
 
@@ -27,6 +29,7 @@ __all__ = [
     "build_tools",
     "dept_lookup",
     "find_campus_location",
+    "find_campus_tips",
     "get_academic_calendar",
     "get_menu",
     "get_notices",

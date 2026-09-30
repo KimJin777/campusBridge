@@ -349,3 +349,33 @@ a.calpage-t:hover { text-decoration: underline; }
 .route-start { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px; color: var(--muted); font-size: 13px; font-weight: 600; }
 .route-start select { padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px; }
 .route-tips .hint { margin: 0 0 8px; }
+
+/* 꿀팁·제보(교수님 #715) */
+.tips-link { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 9999px; background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 600; text-decoration: none; }
+.tips-link:hover { border-color: var(--primary); color: var(--text); }
+@media (max-width: 480px) { .tips-word { display: none; } }
+.fb.report { margin-left: auto; color: var(--muted); }
+.report-form { display: grid; gap: 6px; margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.report-form label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+.report-form textarea, .tip-form textarea, .tip-form select { padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--canvas); color: var(--text); font: inherit; font-size: 13px; }
+.report-form .primary { justify-self: start; }
+.hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.receipt { margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--primary-soft); font-size: 13px; }
+.receipt.err { background: var(--surface); }
+.receipt p { margin: 0 0 4px; }
+.receipt-no { font: 700 15px/1.4 "Plus Jakarta Sans", Inter, monospace; letter-spacing: .04em; }
+.tip-note { color: #b45309; font-weight: 600; }
+.card.kind-tip .kind { background: color-mix(in srgb, #f59e0b 18%, transparent); color: #b45309; }
+.tippage h2 { margin: 18px 0 8px; font: 700 18px/1.3 "Plus Jakarta Sans", Inter, sans-serif; }
+.tip-form { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.tip-form label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+.tip-form .primary { justify-self: start; }
+.tip-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.tip { padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.tip-top { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 5px; font-size: 11px; color: var(--muted); }
+.tip-badge { padding: 1px 7px; border-radius: 9999px; background: var(--primary-soft); color: var(--secondary); font-weight: 700; }
+.tip-badge.warn { background: color-mix(in srgb, #f59e0b 18%, transparent); color: #b45309; }
+.tip-text { margin: 0 0 8px; font-size: 14px; white-space: pre-wrap; }
+.tip-votes { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tip-votes .fb[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-soft); }
+.tip-progress { color: var(--muted); font-size: 12px; }

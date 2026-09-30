@@ -34,6 +34,7 @@ def test_build_tools_exposes_exact_agent_contract() -> None:
         "get_academic_calendar",
         "get_menu",
         "find_campus_location",
+        "find_campus_tips",
     }
 
 
