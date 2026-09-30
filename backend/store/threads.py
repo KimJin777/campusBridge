@@ -124,6 +124,13 @@ class FirestoreStore:
             .set({**doc, "created_at": now, "expires_at": now + LOG_TTL})
         )
 
+    async def get_unanswered(self, uid: str) -> dict[str, Any] | None:
+        snap = await self.db.collection("unanswered").document(uid).get()
+        return snap.to_dict() if snap.exists else None
+
+    async def update_unanswered(self, uid: str, fields: dict[str, Any]) -> None:
+        await self.db.collection("unanswered").document(uid).set(fields, merge=True)
+
     async def add_event(self, doc: dict[str, Any]) -> None:
         now = datetime.now(UTC)
         await self.db.collection("events").add(

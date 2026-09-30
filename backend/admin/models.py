@@ -203,3 +203,17 @@ class WebPageCreate(WebPagePreview):
 class WebPageAction(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
     request_id: str = Field(min_length=8, max_length=100)
+
+
+class GlossaryTermSave(BaseModel):
+    """경남대 고유 용어 등록·수정(교수님 #767)."""
+
+    term: str = Field(min_length=1, max_length=30)
+    aliases: list[str] = Field(default_factory=list, max_length=10)
+    meaning: str = Field(min_length=2, max_length=200)
+    reason: str = Field(default="", max_length=200)
+
+
+class GlossaryTermDelete(BaseModel):
+    term: str = Field(min_length=1, max_length=30)
+    reason: str = Field(default="", max_length=200)

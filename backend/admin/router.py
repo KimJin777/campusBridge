@@ -35,6 +35,8 @@ from backend.admin.models import (
     DisableRequest,
     DocumentActionRequest,
     EventPatch,
+    GlossaryTermDelete,
+    GlossaryTermSave,
     IngestionRunRequest,
     SourcePatch,
     WebPageAction,
@@ -800,7 +802,7 @@ async def list_versions(actor: Actor) -> dict[str, Any]:
 
 
 @router.get("/glossary")
-async def get_glossary(actor: Actor) -> dict[str, Any]:
+async def get_glossary(actor: Actor, store: Store) -> dict[str, Any]:
     del actor
     path = CONFIG_DIR / "glossary.yml"
     try:
@@ -809,9 +811,58 @@ async def get_glossary(actor: Actor) -> dict[str, Any]:
         modified = path.stat().st_mtime_ns
     except (OSError, ValueError, yaml.YAMLError) as exc:
         raise AppError("INTERNAL", "용어 사전을 읽지 못했습니다.") from exc
+    from backend.app.glossary import merge_terms, seed_terms
+
+    page = await store.list_page("glossary_terms", limit=200, cursor=None, order_by="updated_at")
     return {
         "version": data.get("version"),
         "content_sha256": hashlib.sha256(payload).hexdigest(),
         "applied_at_ns": modified,
-        "glossary": data,
+        "protected_confusions": data.get("protected_confusions") or [],
+        "campus_terms": merge_terms(seed_terms(path), page["items"]),
     }
+
+
+def _term_id(term: str) -> str:
+    from backend.app.glossary import _norm
+
+    return hashlib.sha1(_norm(term).encode()).hexdigest()
+
+
+@router.post("/glossary/terms")
+async def save_glossary_term(body: GlossaryTermSave, actor: Actor, store: Store) -> dict[str, Any]:
+    """경남대 고유 용어 등록·수정(교수님 #767). 5분 안에 답변에 반영."""
+    from backend.app.glossary import invalidate
+
+    aliases = [a.strip()[:30] for a in body.aliases if a.strip()]
+    row = await store.save_glossary_term(
+        _term_id(body.term),
+        {
+            "term": body.term.strip(),
+            "aliases": aliases,
+            "meaning": body.meaning.strip(),
+            "status": "active",
+        },
+        action="save",
+        actor=actor,
+        reason=body.reason.strip() or "용어 등록",
+    )
+    invalidate()
+    return row
+
+
+@router.post("/glossary/terms/delete")
+async def delete_glossary_term(
+    body: GlossaryTermDelete, actor: Actor, store: Store
+) -> dict[str, Any]:
+    from backend.app.glossary import invalidate
+
+    row = await store.save_glossary_term(
+        _term_id(body.term),
+        {"term": body.term.strip(), "status": "deleted"},
+        action="delete",
+        actor=actor,
+        reason=body.reason.strip() or "용어 삭제",
+    )
+    invalidate()
+    return row

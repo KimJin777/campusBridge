@@ -76,6 +76,12 @@ class MemoryStore:
         now = self.clock()
         self.feedback[doc["turn_id"]] = {**doc, "created_at": now, "expires_at": now + LOG_TTL}
 
+    async def get_unanswered(self, uid: str) -> dict[str, Any] | None:
+        return self.unanswered.get(uid)
+
+    async def update_unanswered(self, uid: str, fields: dict[str, Any]) -> None:
+        self.unanswered[uid].update(fields)
+
     async def add_event(self, doc: dict[str, Any]) -> None:
         now = self.clock()
         self.events.append({**doc, "created_at": now, "expires_at": now + LOG_TTL})

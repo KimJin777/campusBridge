@@ -819,13 +819,19 @@ async function viewReports(view) {
         row.status === "pending" ? btn("이상 없음", () => reportAction(row, "no_issue", "이상 없음")) : null,
         row.status === "pending" ? btn("반려", () => reportAction(row, "reject", "반려")) : null,
       ];
+  // 되돌리기(교수님 #763): 마지막 처리를 직전 상태로 — 그 뒤 상태가 바뀌었으면 서버가 거부
+  const withUndo = (row) => [
+    ...actions(row),
+    row.undo_action ? btn("되돌리기", () => reportAction(row, "undo", "되돌리기", { ask: false })) : null,
+  ];
   view.replaceChildren(
     el("div", "section-head", "제보함"),
     el("p", "hint", isTip
       ? "학생 꿀팁: 에이전트가 광고·개인정보·범위 밖은 자동 반려하고, 통과한 것은 공개 투표(24시간·10표·맞아요 80%)로 학생 확인 승인됩니다. 안전 관련·이견 많음·몰표 의심은 관리자가 결정합니다. 이벤트 경품은 관리자 확인 건만 인정합니다."
       : "잘못된 정보 제보: 답변과 인용 원문의 숫자·날짜가 명백히 다를 때만 에이전트가 '확인됨'으로 표시합니다. 원문과 일치한다는 이유로 자동 반려하지 않습니다(원문이 낡았을 수 있음). 인용 근거 링크에서 원본을 고친 뒤 '수정 완료'로 닫으세요."),
     tabs,
-    table(items, cols, actions),
+    el("p", "hint", "처리를 잘못 눌렀으면 [되돌리기]로 직전 상태로 돌릴 수 있습니다(마지막 처리 1회, 감사 로그에 남음)."),
+    table(items, cols, withUndo),
   );
 }
 
@@ -893,7 +899,19 @@ function showVersions(v) {
 async function viewReview(view) {
   const [sources, places, docs] = await Promise.all([api("/sources"), api("/places"), api("/documents")]);
   const rules = sources.items.find((s) => s.id === "rules");
+  // 사용 안내(교수님 #764: 어떻게 쓰는지 모르겠다)
+  const guide = el("div", "msg");
+  guide.append(el("strong", null, "검수 대기함 쓰는 법 — 자동 수집한 내용 중 사람이 확인해야 게시되는 것만 모였습니다."));
+  const steps = el("ol");
+  for (const s of [
+    "장소·부서: 각 행의 근거(원문 문장)와 원문 링크를 보고 위치·전화가 맞는 행만 체크한 뒤 [선택 항목 검수 완료]를 누르세요. 검수한 항목만 학생 답변에 나옵니다.",
+    "위치·전화가 틀린 행은 [장소 표] 탭에서 [편집]으로 고친 뒤 검수하세요. 맞지 않는 행은 그대로 두면 학생에게 보이지 않습니다.",
+    "교내 문서: 여기서는 상태만 보여 줍니다. [교내 문서] 탭에서 미리보기를 확인하고 게시하세요.",
+    "검수 실패 규정: 학칙 자동 파싱에서 형식이 깨져 뺀 규정입니다. 학생 답변에는 이전 버전이 계속 쓰이며, 처리할 일은 없습니다.",
+  ]) steps.append(el("li", null, s));
+  guide.append(steps);
   view.replaceChildren(
+    guide,
     el("h3", null, "검수 실패 규정(색인 제외, 이전 버전 유지)"),
     el("p", rules?.rejected_rule_nos?.length ? "msg err" : "hint", rules?.rejected_rule_nos?.length ? `규정 번호: ${rules.rejected_rule_nos.join(", ")}` : "없음"),
     el("h3", null, "장소·부서 검수 대기 — 원문 문장을 보고 맞는 것만 체크"),
@@ -905,9 +923,34 @@ async function viewReview(view) {
 
 async function viewUnanswered(view) {
   const [un, fb] = await Promise.all([api("/unanswered"), api("/feedback")]);
+  // 재확인(교수님 #765): 지금 답할 수 있으면 '검증완료'로 바뀌고 30일 뒤 목록에서 사라진다
+  const state = (r) => {
+    if (r.status === "verified") {
+      const b = el("span", "status", `검증완료 ${String(r.verified_at || "").slice(0, 10)}`);
+      if (r.verified_answer) b.title = r.verified_answer;
+      return b;
+    }
+    const wrap = el("span");
+    if (r.status === "unresolved") wrap.append(el("span", "hint", "아직 답 못 함 "));
+    const b = btn("재확인", async () => {
+      b.disabled = true;
+      b.textContent = "확인 중…";
+      let got = null;
+      try {
+        got = await api(`/unanswered/${encodeURIComponent(r.id)}/recheck`, { method: "POST" });
+      } finally {
+        await openTab("unanswered");
+      }
+      flash(got.status === "verified" ? "이제 답할 수 있습니다 — 검증완료로 표시했습니다." : "아직 답하지 못합니다.", got.status !== "verified");
+    });
+    wrap.append(b);
+    return wrap;
+  };
+  const rank = (r) => (r.status === "verified" ? 1 : 0);
   view.replaceChildren(
     el("h3", null, "답하지 못한 질문(범위 밖 제외, 빈도순 참고)"),
-    table([...un.items].sort((a, b) => (b.count || 0) - (a.count || 0)), [["query_masked", "질문(마스킹)"], ["count", "횟수"], ["fallback_reason", "사유"], ["last_at", "최근"]]),
+    el("p", "hint", "자료를 보강한 뒤 [재확인]을 누르면 지금 답할 수 있는지 다시 확인합니다. 답할 수 있으면 '검증완료'로 바뀌고(마우스를 올리면 답변 요약) 30일 뒤 목록에서 사라집니다."),
+    table([...un.items].sort((a, b) => rank(a) - rank(b) || (b.count || 0) - (a.count || 0)), [["query_masked", "질문(마스킹)"], ["count", "횟수"], ["fallback_reason", "사유"], ["last_at", "최근"], [state, "확인"]]),
     el("h3", null, "피드백"),
     table(fb.items, [["rating", "평가"], ["comment_masked", "의견"], ["turn_id", "턴"], ["created_at", "시각"]]),
   );
@@ -1028,9 +1071,52 @@ async function viewAudit(view) {
   view.replaceChildren(table(items, [["created_at", "시각"], ["actor", "누가"], ["action", "무엇을"], ["target", "대상"], ["reason", "왜"], [(r) => badge(r.result), "결과"]]));
 }
 
+// 용어 사전(교수님 #767): 경남대 고유 용어를 등록하면 질문 분석·답변 작성에 뜻이 참고로 들어간다
 async function viewGlossary(view) {
   const g = await api("/glossary");
-  view.replaceChildren(el("p", "hint", "용어 사전은 읽기 전용입니다. 편집은 코드 리뷰 경로로만 합니다."), el("pre", "preview", JSON.stringify(g, null, 2)));
+  const form = el("form", "inline");
+  form.append(
+    field("용어", "term", "text", { required: true, placeholder: "예: 너른마당" }),
+    field("다른 이름(쉼표로)", "aliases", "text", { placeholder: "예: 너른 마당" }),
+    field("뜻·위치", "meaning", "text", { required: true, placeholder: "학생이 이 말을 쓸 때 뜻하는 것" }),
+  );
+  const save = el("button", "act primary", "저장");
+  save.type = "submit";
+  form.append(save);
+  const fill = (t) => {
+    form.term.value = t.term;
+    form.aliases.value = (t.aliases || []).join(", ");
+    form.meaning.value = t.meaning;
+    form.meaning.focus();
+  };
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await api("/glossary/terms", {
+      method: "POST",
+      body: { term: form.term.value.trim(), aliases: form.aliases.value.split(",").map((a) => a.trim()).filter(Boolean), meaning: form.meaning.value.trim() },
+    });
+    await openTab("glossary");
+    flash("저장했습니다. 5분 안에 답변에 반영됩니다.");
+  });
+  const terms = table(g.campus_terms || [], [["term", "용어"], [(r) => (r.aliases || []).join(", ") || "—", "다른 이름"], ["meaning", "뜻·위치"], ["source", "출처"]], (row) => [
+    btn("수정", () => fill(row)),
+    btn("삭제", async () => {
+      if (!confirm(`'${row.term}' 용어를 지울까요?`)) return;
+      await api("/glossary/terms/delete", { method: "POST", body: { term: row.term } });
+      await openTab("glossary");
+      flash("삭제했습니다.");
+    }),
+  ]);
+  const pairs = (g.protected_confusions || []).map((p) => ({ p: p.join(" ↔ ") }));
+  view.replaceChildren(
+    el("div", "section-head", "경남대 용어"),
+    el("p", "hint", "학생들이 쓰는 학교 고유의 말(너른마당·월영지 등)을 등록하면, 질문에 그 말이 나올 때 AI가 뜻을 알고 알맞은 자료를 찾습니다. 답변의 근거(인용)는 여전히 학교 원문만 씁니다. '기본'은 처음 넣어 둔 용어이며 수정·삭제하면 관리자 값이 우선합니다."),
+    form,
+    terms,
+    el("h3", null, "혼동 주의 단어(자동 교정 금지)"),
+    el("p", "hint", "오타 교정 중에 뜻이 크게 바뀌는 쌍입니다. AI가 둘 사이를 멋대로 바꾸지 않고 학생에게 되묻습니다(예: 휴학을 퇴학으로 고치지 않음). 코드 설정(config/glossary.yml)으로 관리합니다."),
+    table(pairs, [["p", "단어 쌍"]]),
+  );
 }
 
 window.addEventListener("hashchange", () => token && openTab(location.hash.slice(1)));

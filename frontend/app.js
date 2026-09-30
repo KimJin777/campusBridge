@@ -745,7 +745,7 @@ async function init() {
     ]);
     $("#version-foot").textContent = ` · v${status.version}`;
     setVersion(status.version);
-    for (const text of sug.items || []) {
+    const chip = (text) => {
       const b = el("button", "chip", text);
       b.type = "button";
       b.setAttribute("role", "listitem");
@@ -754,8 +754,29 @@ async function init() {
         track("chip_click", { target: text.slice(0, 200) });
         send(text); // 원클릭 시연 — 입력창을 거치지 않음
       });
-      $("#chips").append(b);
+      return b;
+    };
+    for (const text of sug.items || []) $("#chips").append(chip(text));
+    // 이달 많이 묻는 질문 + 전체 보기(교수님 #769)
+    if (sug.month) $("#chips-title").textContent = `${sug.month}월에 많이 묻는 질문`;
+    const all = $("#faq-all");
+    for (const g of sug.groups || []) {
+      const sec = el("section", "faq-group");
+      sec.append(el("h3", null, g.hot ? `${g.label} · 이달` : g.label));
+      const row = el("div", "chips");
+      row.setAttribute("role", "list");
+      for (const q of g.items || []) row.append(chip(q));
+      sec.append(row);
+      all.append(sec);
     }
+    const toggle = $("#faq-toggle");
+    toggle.hidden = !(sug.groups || []).length;
+    toggle.addEventListener("click", () => {
+      const open = all.hidden;
+      all.hidden = !open;
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.textContent = open ? "접기" : "전체 보기";
+    });
   } catch {}
   loadToday();
 }

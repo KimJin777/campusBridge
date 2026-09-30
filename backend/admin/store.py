@@ -177,6 +177,10 @@ class AdminStore(Protocol):
 
     async def request_admin_access(self, email: str, *, name: str, note: str) -> dict[str, Any]: ...
 
+    async def save_glossary_term(
+        self, term_id: str, changes: dict[str, Any], *, action: str, actor: AdminActor, reason: str
+    ) -> dict[str, Any]: ...
+
     async def save_web_page(
         self,
         page_id: str,
@@ -856,6 +860,31 @@ class FirestoreAdminStore:
             return {"id": document_id, **_safe_value(after)}
 
         return await txn(self.db.transaction())
+
+    async def save_glossary_term(
+        self, term_id: str, changes: dict[str, Any], *, action: str, actor: AdminActor, reason: str
+    ) -> dict[str, Any]:
+        """경남대 고유 용어 저장 + 감사 로그(한 배치)."""
+        now = datetime.now(UTC)
+        ref = self.db.collection("glossary_terms").document(term_id)
+        before = await ref.get()
+        row = {**changes, "updated_at": now, "updated_by": actor.email}
+        batch = self.db.batch()
+        batch.set(ref, row, merge=True)
+        batch.set(
+            self.db.collection("admin_audit").document(str(uuid4())),
+            self._audit_payload(
+                actor=actor,
+                action=f"glossary.{action}",
+                target=str(changes.get("term") or term_id),
+                before=_safe_value(before.to_dict() or {}) if before.exists else None,
+                after=_safe_value(row),
+                reason=reason,
+                request_id=f"glossary-{term_id}-{now.timestamp():.0f}",
+            ),
+        )
+        await batch.commit()
+        return {"id": term_id, **_safe_value(row)}
 
     async def save_web_page(
         self,

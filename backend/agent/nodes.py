@@ -61,6 +61,8 @@ class AgentDeps:
     dept_lookup: Callable[[str], Dept | None] = lambda _id: None
     default_dept_id: Callable[[str | None], str | None] = lambda _intent: None
     glossary_confusables: list[set[str]] = field(default_factory=list)
+    # 경남대 고유 용어 → '용어: 뜻' 줄(교수님 #767). 없으면 넣지 않는다.
+    term_hints: Callable[[str], list[str]] | None = None
     max_tool_calls: int = 4
     max_llm_calls: int = 6
 
@@ -109,7 +111,16 @@ class Nodes:
             )
         prof = state.get("profile") or Profile()
         parts.append(f"[알려진 조건]\n{prof.model_dump_json(exclude_none=True)}")
+        terms = self._terms(state.get("query") or "")
+        if terms:
+            parts.append("[경남대 용어(참고)]\n" + "\n".join(terms))
         return "\n\n".join(parts)
+
+    def _terms(self, text: str) -> list[str]:
+        try:
+            return self.d.term_hints(text) if self.d.term_hints else []
+        except Exception:  # noqa: BLE001 — 용어 사전은 부가 정보
+            return []
 
     def _block_confusables(self, out: ClassifyOut) -> ClassifyOut:
         """혼동쌍 사이 보정·숫자가 바뀌는 보정은 서버가 거부하고 확인 후보로 돌린다(02 §4-2-1)."""
@@ -374,6 +385,9 @@ class Nodes:
                 "질문": state.get("effective_query"),
                 "학생 조건": prof.model_dump(exclude_none=True),
                 "조건 부족(가정 금지)": state.get("missing_slots", []),
+                "경남대 용어(뜻 참고용, 인용 근거 아님)": self._terms(
+                    f"{state.get('query') or ''} {state.get('effective_query') or ''}"
+                ),
                 "채택 근거": r.adopted,
                 "근거": ev,
             },

@@ -506,3 +506,30 @@ def test_three_real_networks_satisfy_flag_diversity():
             headers={"x-forwarded-for": ip},
         )
     assert store.rows[tid]["status"] == "hidden"
+
+
+def test_admin_undo_restores_previous_state_once():
+    """잘못 누른 처리는 직전 상태로 되돌린다(교수님 #763). 한 번뿐이고 감사 로그에 남는다."""
+    store = MemoryReportStore()
+    c = client(store, FakeLLM(tip=None))
+    c.post("/api/reports/tip", json=tip_body("한마관 5층 학생지원팀 옆 휴게실 조용함"))
+    tid = next(iter(store.rows))
+    before = store.rows[tid]["status"]
+    r = c.post(f"/api/admin/reports/{tid}/reject", json={"reason": "실수"})
+    assert r.json()["status"] == "rejected" and r.json()["undo_action"] == "reject"
+    assert store.rows[tid]["expire_at"]
+    u = c.post(f"/api/admin/reports/{tid}/undo", json={})
+    assert u.status_code == 200 and store.rows[tid]["status"] == before
+    assert store.rows[tid]["expire_at"] is None and store.rows[tid]["reviewed_by"] is None
+    assert store.audits[-1]["action"] == "report.undo.reject"
+    assert c.post(f"/api/admin/reports/{tid}/undo", json={}).status_code == 400  # 두 번은 안 됨
+
+
+def test_admin_undo_refused_after_status_moved_on():
+    store = MemoryReportStore()
+    c = client(store, FakeLLM(tip=None))
+    c.post("/api/reports/tip", json=tip_body("한마관 5층 학생지원팀 옆 휴게실 조용함"))
+    tid = next(iter(store.rows))
+    c.post(f"/api/admin/reports/{tid}/to_vote", json={})
+    store.rows[tid]["status"] = "student_approved"  # 그 뒤 투표로 승인됨
+    assert c.post(f"/api/admin/reports/{tid}/undo", json={}).status_code == 400

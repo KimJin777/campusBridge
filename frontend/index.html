@@ -48,8 +48,12 @@
         <li><span class="ico" data-icon="bolt"></span>실시간 학사공지 연동</li>
         <li><span class="ico" data-icon="phone"></span>담당 부서 연결</li>
       </ul>
-      <p class="chips-label"><span class="ico" data-icon="help"></span>자주 묻는 학사 질문</p>
+      <div class="chips-head">
+        <p class="chips-label"><span class="ico" data-icon="help"></span><span id="chips-title">자주 묻는 질문</span></p>
+        <button type="button" id="faq-toggle" class="faq-toggle" aria-expanded="false" aria-controls="faq-all" hidden>전체 보기</button>
+      </div>
       <div id="chips" class="chips" role="list"></div>
+      <div id="faq-all" class="faq-all" hidden></div>
     </section>
     <ol id="turns" class="turns"></ol>
   </main>

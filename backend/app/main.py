@@ -9,11 +9,12 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import time
 from collections import defaultdict, deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +74,12 @@ def load_confusables(path: Path) -> list[set[str]]:
     return [set(g) for g in data.get("protected_confusions", []) if isinstance(g, list)]
 
 
+def _term_hints(text: str) -> list[str]:
+    from backend.app.glossary import term_hints
+
+    return term_hints(text)
+
+
 def default_deps(s: Settings) -> AgentDeps:
     """운영 조립. 도구·부서 조회는 backend.tools가 제공하면 연결한다(GPT5 소유)."""
     from backend.agent.llm import GeminiLLM
@@ -93,6 +100,7 @@ def default_deps(s: Settings) -> AgentDeps:
         llm=GeminiLLM(s),
         tools=tools,
         glossary_confusables=confusables,
+        term_hints=_term_hints,
         max_tool_calls=s.max_tool_calls,
         max_llm_calls=s.max_llm_calls,
     )
@@ -184,6 +192,44 @@ async def track_quota_ok(request: Request) -> bool:
     if not await store.take_quota(f"track_{net}", TRACK_PER_NET_DAY, day):
         return False
     return await store.take_quota("track_all", TRACK_GLOBAL_DAY, day)
+
+
+VERIFIED_KEEP_DAYS = 30
+VERIFIED_KEEP = timedelta(days=VERIFIED_KEEP_DAYS)
+
+
+def recheck_state(query_masked: str, s: Settings) -> dict[str, Any]:
+    """재확인용 1회 턴 상태(대화 맥락 없음)."""
+    from backend.app.clients import deadline_after
+    from backend.domain import Profile
+
+    return {
+        "thread_id": "recheck",
+        "request_id": "recheck",
+        "query": query_masked,
+        "started": time.monotonic(),
+        "deadline": deadline_after(s.hard_deadline_ms),
+        "profile": Profile(),
+        "pending_question": None,
+        "clarification_count": 0,
+        "last_turn": None,
+        "evidence": [],
+        "tool_calls_count": 0,
+        "llm_calls_count": 0,
+        "tool_failures": [],
+        "review_flags": [],
+        "act_used": False,
+        "pending_tool_calls": [],
+    }
+
+
+def answer_preview(answer: Any) -> str:
+    return " ".join(x.text for x in getattr(answer, "sentences", []))[:300]
+
+
+def _unanswered_view(row: dict[str, Any]) -> dict[str, Any]:
+    keep = ("query_masked", "count", "fallback_reason", "last_at", "status", "verified_at")
+    return {k: row.get(k) for k in (*keep, "verified_answer", "recheck_reason") if k in row}
 
 
 def log_turn(outcome: str, reason: str | None, elapsed_ms: int, version: str) -> None:
@@ -300,6 +346,10 @@ class TurnRunner:
 
         async def produce() -> None:
             final: dict[str, Any] = {}
+            with contextlib.suppress(Exception):  # 용어 사전 갱신(5분 캐시, 실패해도 답변은 계속)
+                from backend.app.glossary import refresh
+
+                await asyncio.wait_for(refresh(self.settings), timeout=1.5)
             try:
                 async with asyncio.timeout(self.settings.hard_deadline_ms / 1000 + 5):
                     async for mode, chunk in self.graph.astream(
@@ -564,9 +614,46 @@ def create_app(
         base["status"] = "ok" if all(c["ok"] for c in checks.values()) else "degraded"
         return base
 
+    @app.post("/api/admin/unanswered/{uid}/recheck")
+    async def recheck_unanswered(
+        uid: str, authorization: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """미응답 질문 재확인(교수님 #765): 지금 답할 수 있으면 '검증완료', 30일 뒤 자동 삭제."""
+        from backend.admin.auth import require_admin
+
+        await require_admin(authorization)
+        if not re.fullmatch(r"[0-9a-f]{8,64}", uid):
+            raise AppError("BAD_REQUEST", "잘못된 질문 번호입니다.")
+        store = runner().store
+        row = await store.get_unanswered(uid)
+        if row is None:
+            raise AppError("BAD_REQUEST", "질문을 찾지 못했습니다.")
+        if row.get("status") == "verified":  # 이미 검증된 질문은 다시 돌리지 않는다
+            return {"id": uid, **_unanswered_view(row)}
+        final = await runner().graph.ainvoke(recheck_state(row.get("query_masked") or "", s))
+        now = datetime.now(UTC)
+        if final.get("outcome") == "answer" and final.get("answer"):
+            fields = {
+                "status": "verified",
+                "verified_at": now,
+                "verified_answer": answer_preview(final["answer"]),
+                "expires_at": now + VERIFIED_KEEP,
+            }
+        else:
+            fields = {
+                "status": "unresolved",
+                "rechecked_at": now,
+                "recheck_reason": final.get("fallback_reason") or final.get("outcome"),
+            }
+        await store.update_unanswered(uid, fields)
+        return {"id": uid, **_unanswered_view({**row, **fields})}
+
     @app.get("/api/suggestions")
     async def suggestions() -> dict[str, Any]:
-        return {"items": list(s.suggestions)}
+        """자주 묻는 질문: 이달 추천 칩 + 전체 분류(교수님 #768·#769)."""
+        from backend.app.faq import this_month
+
+        return this_month()
 
     @app.get("/api/campus/map")
     async def campus_map_api() -> dict[str, Any]:

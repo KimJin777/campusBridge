@@ -131,9 +131,12 @@ def test_rate_limiter():
 
 def test_suggestions_privacy_and_static_frontend():
     c, _ = client(FakeLLM())
-    items = c.get("/api/suggestions").json()["items"]
-    assert "휴학 신청 절차 알려 주세요" in items and len(items) == 5
-    assert not any("주식" in i for i in items)  # 서비스 범위 규칙: 범위 밖 예시 금지
+    got = c.get("/api/suggestions").json()
+    items = got["items"]
+    assert 1 <= len(items) <= 6 and any("통학버스" in i for i in items)  # 교수님 #768
+    every = [q for g in got["groups"] for q in g["items"]]
+    assert "휴학 신청 절차 알려 주세요" in every
+    assert not any("주식" in i for i in every)  # 서비스 범위 규칙: 범위 밖 예시 금지
     r = c.get("/privacy", follow_redirects=False)
     assert r.status_code in (302, 307) and r.headers["location"] == "/privacy.html"
     page = c.get("/")
@@ -200,3 +203,33 @@ def test_admin_page_csp_and_auth_config():
     student = c.get("/")
     assert "accounts.google.com" not in student.headers["content-security-policy"]
     assert "google_client_id" in c.get("/api/auth/config").json()
+
+
+def test_unanswered_recheck_marks_verified_once(monkeypatch):
+    """재확인(교수님 #765): 지금 답하면 검증완료+30일 뒤 삭제, 이미 검증된 건 다시 돌리지 않는다."""
+    import backend.admin.auth as auth
+    from backend.store.base import unanswered_id
+
+    async def fake_admin(authorization):
+        if authorization != "Bearer good":
+            raise PermissionError("no")
+
+    monkeypatch.setattr(auth, "require_admin", fake_admin)
+    llm = FakeLLM(classify=leave_classify(), compose=GOOD_DRAFT)
+    c, store = client(llm)
+    q = "휴학하려면 어떻게 해요?"
+    uid = unanswered_id(q)
+    store.unanswered[uid] = {"query_masked": q, "count": 2, "fallback_reason": "no_evidence"}
+    url = f"/api/admin/unanswered/{uid}/recheck"
+    r = c.post(url, headers={"Authorization": "Bearer good"})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "verified", r.json()
+    row = store.unanswered[uid]
+    assert (row["expires_at"] - row["verified_at"]).days == 30
+    calls = len(llm.calls) if hasattr(llm, "calls") else None
+    again = c.post(url, headers={"Authorization": "Bearer good"})
+    assert again.json()["status"] == "verified"
+    if calls is not None:
+        assert len(llm.calls) == calls  # 이미 검증 → 모델 재호출 없음
+    bad = c.post("/api/admin/unanswered/zz/recheck", headers={"Authorization": "Bearer good"})
+    assert bad.status_code == 400

@@ -438,3 +438,10 @@ button.calpage-t:hover { color: var(--primary); text-decoration: underline; }
 .cal-group[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: #fff; }
 .cal-group[aria-pressed="false"] { text-decoration: line-through; }
 .cal-add-btn.off { opacity: .45; pointer-events: none; }
+
+/* 자주 묻는 질문: 이달 추천 + 전체 보기(교수님 #769) */
+.chips-head { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 0 0 14px; flex-wrap: wrap; }
+.chips-head .chips-label { margin: 0; }
+.faq-toggle { border: 1px solid var(--line); background: var(--surface); color: var(--primary); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.faq-all { margin-top: 10px; display: grid; gap: 10px; }
+.faq-group h3 { font-size: 13px; color: var(--muted); margin: 0 0 6px; font-weight: 600; }

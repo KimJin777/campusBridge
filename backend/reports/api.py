@@ -499,6 +499,9 @@ def _admin_view(row: dict[str, Any], now: datetime) -> dict[str, Any]:
     view["recheck"] = bool(
         days and isinstance(approved, datetime) and now - approved > timedelta(days=days)
     )
+    undo = row.get("undo") or {}
+    # 되돌리기(교수님 #763): 마지막 관리자 처리 직후 상태 그대로일 때만
+    view["undo_action"] = undo.get("action") if undo.get("after") == row.get("status") else None
     return view
 
 
@@ -521,6 +524,8 @@ async def admin_report_action(
     row = await store.get(report_id) if re.fullmatch(r"[A-Za-z0-9]{8,40}", report_id) else None
     if not row:
         raise AppError("BAD_REQUEST", "제보를 찾지 못했습니다.")
+    if action == "undo":
+        return await _undo(row, report_id, actor, store)
     actions = TIP_ACTIONS if row.get("type") == "tip" else REPORT_ACTIONS
     if action not in actions:
         raise AppError("BAD_REQUEST", "지원하지 않는 처리입니다.")
@@ -561,6 +566,12 @@ async def admin_report_action(
         )
     if status == "rejected":
         change["expire_at"] = now + REJECTED_TTL
+    # 잘못 누른 처리를 되돌릴 수 있게 바뀌기 전 값을 남긴다(교수님 #763)
+    change["undo"] = {
+        "action": action,
+        "after": status,
+        "prev": {k: row.get(k) for k in change if k != "undo"},
+    }
     await store.update(report_id, change)
     await store.audit(
         {
@@ -572,6 +583,31 @@ async def admin_report_action(
             "after": {"status": status},
             "reason": body.reason.strip() or action,
             "request_id": f"report-{report_id}-{now.timestamp():.0f}",
+            "result": "success",
+            "created_at": now,
+        }
+    )
+    return _admin_view({**row, **change}, now)
+
+
+async def _undo(row: dict[str, Any], report_id: str, actor: Any, store: ReportStore) -> dict:
+    """마지막 관리자 처리를 되돌린다. 그 뒤 투표 등으로 상태가 바뀌었으면 거부."""
+    undo = row.get("undo") or {}
+    if not undo or undo.get("after") != row.get("status"):
+        raise AppError("BAD_REQUEST", "되돌릴 처리가 없거나 그 뒤 상태가 바뀌었습니다.")
+    now = datetime.now(UTC)
+    change = {**(undo.get("prev") or {}), "undo": None}
+    await store.update(report_id, change)
+    await store.audit(
+        {
+            "actor": actor.email,
+            "actor_sub": actor.subject,
+            "action": f"report.undo.{undo.get('action')}",
+            "target": report_id,
+            "before": {"status": row.get("status")},
+            "after": {"status": change.get("status", row.get("status"))},
+            "reason": "관리자 되돌리기",
+            "request_id": f"report-{report_id}-undo-{now.timestamp():.0f}",
             "result": "success",
             "created_at": now,
         }
