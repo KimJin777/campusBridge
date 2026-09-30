@@ -29,6 +29,8 @@ INLINE_NOTE = re.compile(r"<\s*(?:개정|본조신설|전문개정|제목개정)
 NOTE_LINE = re.compile(r"^[\[<]\s*(?:본조신설|종전|전문개정|제목개정|개정)[^\]>]*[\]>]$")
 DOT_DATE = re.compile(r"(?<!\d)(\d{2,4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})(?:\s*\.)?")
 KOREAN_DATE = re.compile(r"(?<!\d)(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일")
+TABLE_PREFIX = "[표] "  # 표 행 머리(조문 제목 정규식에 걸리지 않게)
+TABLE_TOKEN = re.compile(r"<\s*표\s*>")
 PARAGRAPH_HEAD = re.compile(r"^([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])")
 
 _CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
@@ -75,7 +77,7 @@ class Article:
 
     @property
     def has_table(self) -> bool:
-        return "[표 — 원문 참조]" in self.body or "<표>" in self.body
+        return any(t in self.body for t in ("[표 — 원문 참조]", "<표>", TABLE_PREFIX))
 
     @property
     def indexable(self) -> bool:
@@ -372,6 +374,62 @@ def validate_articles(
     return report
 
 
+def render_table(table) -> list[str]:
+    """HTML 표 → 행마다 '[표] 칸 | 칸' 한 줄. 병합 칸(rowspan·colspan)은 값을 펼쳐 채운다."""
+    grid: dict[tuple[int, int], str] = {}
+    for r, tr in enumerate(table.find_all("tr", recursive=False) or table.find_all("tr")):
+        c = 0
+        for cell in tr.find_all(["td", "th"], recursive=False):
+            while (r, c) in grid:
+                c += 1
+            text = " ".join(cell.get_text(" ", strip=True).split())
+            rs, cs = int(cell.get("rowspan", 1) or 1), int(cell.get("colspan", 1) or 1)
+            for dr in range(rs):
+                for dc in range(cs):
+                    grid[(r + dr, c + dc)] = text
+            c += cs
+    if not grid:
+        return []
+    rows = max(r for r, _ in grid) + 1
+    cols = max(c for _, c in grid) + 1
+    out = []
+    for r in range(rows):
+        cells = [grid.get((r, c), "") for c in range(cols)]
+        if any(cells):
+            out.append(TABLE_PREFIX + " | ".join(cells))
+    return out
+
+
+def hwp_tables(source: Path, *, command: str = "hwp5html") -> list[list[str]] | None:
+    """HWP 속 표들을 문서 순서대로(바깥 표만). 변환 실패면 None."""
+    from bs4 import BeautifulSoup
+
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    with tempfile.TemporaryDirectory(prefix="campusbridge-hwphtml-") as temp_dir:
+        out = Path(temp_dir, "doc.html")
+        done = subprocess.run(
+            [command, "--html", "--output", str(out), str(source)],
+            check=False,
+            capture_output=True,
+            env=env,
+        )
+        if done.returncode != 0 or not out.exists():
+            return None
+        soup = BeautifulSoup(out.read_text(encoding="utf-8", errors="replace"), "html.parser")
+    tables = [t for t in soup.find_all("table") if t.find_parent("table") is None]
+    return [render_table(t) for t in tables]
+
+
+def fill_tables(text: str, tables: list[list[str]] | None) -> tuple[str, bool]:
+    """hwp5txt의 '<표>' 자리에 표 내용을 순서대로 넣는다. 개수가 다르면 손대지 않는다."""
+    tokens = TABLE_TOKEN.findall(text)
+    if not tokens or tables is None or len(tokens) != len(tables):
+        return text, False
+    it = iter(tables)
+    return TABLE_TOKEN.sub(lambda _m: "\n".join(next(it)) or "<표>", text), True
+
+
 def convert_hwp(
     source: Path,
     *,
@@ -422,6 +480,11 @@ def convert_hwp(
         stderr = first.stderr.decode("utf-8", errors="replace").strip()
         message = stderr or "unknown converter error"
         raise RuntimeError(f"HWP conversion produced no text: {message}")
+
+    if TABLE_TOKEN.search(text):  # 표는 hwp5html로 읽어 본문에 넣는다(교수님 2026-09-30)
+        text, filled = fill_tables(text, hwp_tables(source))
+        if filled:
+            converter += " + hwp5html tables"
 
     output = output_dir / f"{output_stem or source.stem.split('_', 1)[0]}.txt"
     output.write_text(text, encoding="utf-8", newline="\n")

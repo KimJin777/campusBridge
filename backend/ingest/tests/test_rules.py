@@ -142,3 +142,27 @@ def test_addenda_without_number_gets_zero_id() -> None:
 def test_empty_addenda_preamble_is_not_emitted_before_numbered_article() -> None:
     articles = split_articles("부칙(2025. 1. 1.)\n제1조(시행일) 시행한다.", rule_no="101")
     assert [article.article_id for article in articles] == ["101_add_s01_1"]
+
+
+def test_tables_are_filled_in_order_with_merged_cells_expanded():
+    """표는 '[표] 칸 | 칸'으로 본문에 들어간다(교수님 2026-09-30: 학기당 최대 수강학점)."""
+    from bs4 import BeautifulSoup
+
+    from backend.ingest.registry import is_excluded_rule
+    from backend.ingest.rules import fill_tables, render_table
+
+    html = (
+        "<table><tr><td rowspan='2'>구분</td><td colspan='2'>총졸업소요이수학점</td></tr>"
+        "<tr><td>120학점</td><td>130학점</td></tr>"
+        "<tr><td>최대 수강신청학점</td><td>18학점</td><td>19학점</td></tr></table>"
+    )
+    rows = render_table(BeautifulSoup(html, "html.parser").table)
+    assert rows == [
+        "[표] 구분 | 총졸업소요이수학점 | 총졸업소요이수학점",
+        "[표] 구분 | 120학점 | 130학점",
+        "[표] 최대 수강신청학점 | 18학점 | 19학점",
+    ]
+    text, ok = fill_tables("제30조(학점)\n① 다음과 같다.\n<표>\n② 끝", [rows])
+    assert ok and "[표] 최대 수강신청학점 | 18학점 | 19학점" in text
+    assert fill_tables("<표> <표>", [rows]) == ("<표> <표>", False)  # 개수가 다르면 그대로
+    assert is_excluded_rule("대학원 학칙 시행규정") and not is_excluded_rule("학사운영 규정")

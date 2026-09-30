@@ -25,7 +25,7 @@ from pathlib import Path
 from backend.ingest.download import download_rules
 from backend.ingest.indexing import _write_jsonl, build_structured_document
 from backend.ingest.manifest import load_manifest, save_manifest
-from backend.ingest.registry import RuleRecord, read_rules
+from backend.ingest.registry import RuleRecord, is_excluded_rule, read_rules
 from backend.ingest.rules import chunk_article, convert_hwp, split_articles, validate_articles
 
 INDEX_VERSION = "articles-v1"
@@ -44,6 +44,9 @@ def build_documents(
     per_rule: dict[str, object] = {}
     seen: set[str] = set()
     for rule in records:
+        if is_excluded_rule(rule.rule_name):
+            per_rule[rule.rule_no] = {"status": "excluded", "reason": "graduate"}
+            continue
         entry = entries.get(rule.rule_no)
         source = raw_dir / f"{rule.rule_no}_{rule.file_version}.hwp"
         if entry is None or not source.exists():

@@ -23,6 +23,11 @@ HWP_NAME = re.compile(r"/reg(\d+)_(\d+)\.hwp$", re.IGNORECASE)
 REVISION_NUMBER = re.compile(r"(\d+)\s*차")
 
 
+def is_excluded_rule(rule_name: str) -> bool:
+    """서비스 대상은 학부 재학생 — 대학원 학칙·시행규정은 색인하지 않는다(교수님 2026-09-30)."""
+    return "대학원" in (rule_name or "")
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class RuleRecord:
     rule_no: str
