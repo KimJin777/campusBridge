@@ -89,7 +89,9 @@ def dept_lookup(dept_id: str, *, path: Path | None = None) -> Dept | None:
 
 
 DIRECTORY_TTL_SECONDS = 300
-_directory_cache: dict[str, Any] = {"at": 0.0, "rows": {}}
+# "at"은 time.monotonic() 기준. 새 인스턴스는 monotonic이 작아 0.0을 "안 읽음"으로 쓰면
+# 켜진 뒤 5분간 DB를 읽지 않고 빈 값을 돌려준다(배포 직후 위치 0건의 원인) → -inf로 둔다
+_directory_cache: dict[str, Any] = {"at": float("-inf"), "rows": {}}
 
 
 def _directory_rows(settings: Settings) -> dict[str, dict[str, Any]]:
@@ -107,8 +109,8 @@ def _directory_rows(settings: Settings) -> dict[str, dict[str, Any]]:
             (d.to_dict() or {}).get("name", ""): {"id": d.id, **(d.to_dict() or {})}
             for d in client.collection("directory_entries").stream()
         }
-    except Exception:  # noqa: BLE001
-        rows = _directory_cache["rows"]
+    except Exception:  # noqa: BLE001 — 실패는 캐시하지 않고 직전 값(다음 호출에서 다시 조회)
+        return _directory_cache["rows"]
     _directory_cache.update(at=now, rows=rows)
     return rows
 
@@ -200,7 +202,7 @@ def _tenants(
 
 
 PLACES_TTL_SECONDS = 300
-_places_cache: dict[str, Any] = {"at": 0.0, "rows": []}
+_places_cache: dict[str, Any] = {"at": float("-inf"), "rows": []}
 
 
 def _firestore_place_rows(settings: Settings) -> list[dict[str, str]]:

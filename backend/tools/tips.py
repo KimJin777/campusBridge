@@ -21,7 +21,7 @@ APPROVED = ("approved", "student_approved")
 TTL_SECONDS = 60  # 관리자 회수·가림이 1분 안에 답변에서 빠지게
 MAX_TIPS = 3
 TIP_LABEL = "학생 제보 꿀팁 · 학교 공식 정보 아님"
-_cache: dict[str, Any] = {"at": 0.0, "rows": []}
+_cache: dict[str, Any] = {"at": float("-inf"), "rows": []}  # 새 인스턴스도 첫 호출에 바로 조회
 STOP = {"어디", "어디야", "어디에", "있어", "있나요", "가는", "가려면", "위치", "알려줘", "어떻게"}
 
 
@@ -45,7 +45,9 @@ def _rows(settings: Settings) -> list[dict[str, Any]]:
             if (d.to_dict() or {}).get("status") in APPROVED
         ]
     except Exception:  # noqa: BLE001 — 보조 근거라 장애 시 빈 결과(fail-closed, GPT5 #722-7)
-        _cache.update(at=0.0, rows=[])  # 낡은 캐시를 되살리지 않고, 다음 호출에서 다시 조회
+        _cache.update(
+            at=float("-inf"), rows=[]
+        )  # 낡은 캐시를 되살리지 않고, 다음 호출에서 다시 조회
         return []
     _cache.update(at=now, rows=rows)
     return rows

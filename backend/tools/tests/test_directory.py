@@ -116,8 +116,41 @@ def test_place_lookup_failure_is_not_cached_as_empty(monkeypatch):
 
     monkeypatch.setattr(fs, "Client", Client)
     monkeypatch.setattr(directory.time, "sleep", lambda s: None)
-    directory._places_cache.update(at=0.0, rows=[])
+    directory._places_cache.update(at=float("-inf"), rows=[])
     settings = Settings(gcp_project_id="p")
     assert directory._firestore_place_rows(settings) == []  # 두 번 모두 실패
     rows = directory._firestore_place_rows(settings)  # 다음 호출에서 바로 다시 조회
     assert rows and rows[0]["name"] == "학사관리팀"
+
+
+def test_fresh_instance_queries_immediately(monkeypatch):
+    """새 인스턴스(time.monotonic이 작음)도 첫 호출에 바로 DB를 읽는다 — 배포 직후 위치 0건 원인."""
+    import google.cloud.firestore as fs
+
+    from backend.app.config import Settings
+    from backend.tools import directory
+
+    class Snap:
+        id = "u1"
+
+        def to_dict(self):
+            return {"name": "학사관리팀", "status": "verified", "raw_location": "본관 1층"}
+
+    class Query:
+        def where(self, *a, **k):
+            return self
+
+        def stream(self):
+            return [Snap()]
+
+    class Client:
+        def __init__(self, *a, **k):
+            pass
+
+        def collection(self, _):
+            return Query()
+
+    monkeypatch.setattr(fs, "Client", Client)
+    monkeypatch.setattr(directory.time, "monotonic", lambda: 12.0)  # 켜진 지 12초
+    directory._places_cache.update(at=float("-inf"), rows=[])
+    assert directory._firestore_place_rows(Settings(gcp_project_id="p"))[0]["name"] == "학사관리팀"

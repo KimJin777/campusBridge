@@ -379,7 +379,7 @@ def test_tips_tool_fails_closed_on_firestore_error(monkeypatch):
     from backend.tools import tips
 
     tips._cache.update(
-        at=0.0,
+        at=float("-inf"),
         rows=[
             {"id": "old", "status": "approved", "approved_at": NOW, "text_masked": "회수된 꿀팁"}
         ],
