@@ -13,6 +13,16 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.18.1",
+        "date": "2026-09-30",
+        "deployed_at": None,
+        "revision": None,
+        "title": "너른마당 길찾기",
+        "items": [
+            "학생들이 부르는 '너른마당'(창조관·대학일자리센터 옆, 한마관으로 이어지는 길)을 길찾기 지도와 장소표에 등록",
+        ],
+    },
+    {
         "version": "0.18.0",
         "date": "2026-09-30",
         "deployed_at": None,
