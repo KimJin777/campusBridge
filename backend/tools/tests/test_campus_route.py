@@ -55,3 +55,25 @@ def test_campus_map_has_paths_places_and_credit():
     m = campus_map()
     assert len(m["paths"]) > 50 and "정문" in m["places"]
     assert "경남대학교" in (m["photo_credit"] or "")
+
+
+def test_route_from_chosen_start_and_origin_phrase():
+    """출발지 선택·'OO에서' 문장(교수님 2026-09-30)."""
+    from backend.tools.campus_route import resolve_origin, start_choices
+
+    r = route("본관", start="한마관")
+    assert r and (r["from"], r["to"]) == ("한마관", "본관")
+    assert resolve_origin("한마관에서 본관 가는 길") == ("한마관", "본관 가는 길")
+    r = route("한마관에서 본관 가는 길")
+    assert r and (r["from"], r["to"]) == ("한마관", "본관")
+    assert route("본관 어디예요?")["from"] == "정문"
+    assert route("본관", start="본관") is None
+    assert start_choices()[:3] == ["정문", "서문", "북문"]
+
+
+def test_elevator_tip_for_upper_buildings():
+    """제2공학관 위쪽 건물: 제1공학관 2층 → 제2공학관 2층 엘리베이터 안내(교수님 2026-09-30)."""
+    for dest in ("혁신융합관", "성훈관", "건강과학관", "보건의료관"):
+        assert "엘리베이터" in route(dest)["tips"][0], dest
+    assert route("본관")["tips"] == []
+    assert route("보건의료관", start="성훈관")["tips"] == []

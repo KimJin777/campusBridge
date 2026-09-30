@@ -32,6 +32,15 @@ ALIASES = {
     "운동장": "대운동장",
     "은행": "BNK경남은행",
 }
+GATES = ("정문", "서문", "북문")  # 출발지 선택 목록 맨 앞(동문 2곳은 좌표 확보 후)
+
+# 제2공학관 위쪽(오르막) 건물 — 학생들이 자주 쓰는 엘리베이터 길(교수님 2026-09-30)
+UPPER_BUILDINGS = frozenset({"혁신융합관", "성훈관", "건강과학관", "보건의료관"})
+ELEVATOR_TIP = (
+    "오르막을 줄이려면 제1공학관 2층을 거쳐 제2공학관 2층 엘리베이터로 올라가는 길도 있습니다"
+    "(학생들이 자주 이용)."
+)
+ORIGIN_RE = re.compile(r"(\S+?)\s*에서")
 
 
 @lru_cache(maxsize=1)
@@ -55,6 +64,21 @@ def resolve_place(text: str) -> str | None:
         if alias in (text or "") and name in places:
             return name
     return None
+
+
+def resolve_origin(text: str) -> tuple[str | None, str]:
+    """'한마관에서 본관 가는 길' → ("한마관", "본관 가는 길"). 출발지가 없으면 (None, 원문)."""
+    for m in ORIGIN_RE.finditer(text or ""):
+        name = resolve_place(m.group(1))
+        if name:
+            return name, (text[: m.start()] + text[m.end() :]).strip()
+    return None, text
+
+
+def start_choices() -> list[str]:
+    """출발지 선택 목록: 문(정문·서문·북문) 먼저, 나머지 건물은 가나다순."""
+    places = load()["places"]
+    return [g for g in GATES if g in places] + sorted(p for p in places if p not in GATES)
 
 
 def _project(
@@ -101,10 +125,13 @@ def _oriented(ei: int, frm: int) -> list[list[float]]:
 
 
 def route(dest_text: str, start: str | None = None) -> dict[str, Any] | None:
+    """도보 경로. start가 없으면 문장 속 'OO에서'를, 그것도 없으면 정문을 출발지로 쓴다."""
     data = load()
-    dest = resolve_place(dest_text)
+    if start is None:
+        start, dest_text = resolve_origin(dest_text)
     start = start or data["start"]
-    if not dest or start not in data["places"]:
+    dest = resolve_place(dest_text)
+    if not dest or start not in data["places"] or dest == start:
         return None
     scale = float(data["meters_per_px"])
     s_edge, s_off, s_head, s_tail = _snap(data["places"][start]["xy"])
@@ -172,12 +199,14 @@ def route(dest_text: str, start: str | None = None) -> dict[str, Any] | None:
         line.extend(seg if len(line) > 1 else [s_q, *seg[1:]])
     line.append(list(d_xy))
     meters = (math.dist(s_xy, s_q) + dist["D"] + math.dist(d_q, d_xy)) * scale
+    tips = [ELEVATOR_TIP] if dest in UPPER_BUILDINGS and start not in UPPER_BUILDINGS else []
     return {
         "from": start,
         "to": dest,
         "distance_m": round(meters),
         "minutes": max(1, math.ceil(meters / WALK_M_PER_MIN)),
         "line": [[round(x, 1), round(y, 1)] for x, y in line],
+        "tips": tips,
     }
 
 
@@ -189,5 +218,6 @@ def campus_map() -> dict[str, Any]:
         "paths": [e[3] for e in data["edges"]],
         "places": {k: {"xy": v["xy"], "photo": v.get("photo")} for k, v in data["places"].items()},
         "start": data["start"],
+        "starts": start_choices(),
         "photo_credit": data.get("photo_credit"),
     }

@@ -345,3 +345,7 @@ a.brand-wrap { color: inherit; text-decoration: none; }
 a.calpage-t:hover { text-decoration: underline; }
 .today-all { display: block; padding: 7px 9px; border-top: 1px solid var(--line); color: var(--primary); font-size: 13px; font-weight: 600; text-align: right; text-decoration: none; }
 .today-all:hover { background: var(--primary-soft); border-radius: 8px; }
+
+.route-start { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px; color: var(--muted); font-size: 13px; font-weight: 600; }
+.route-start select { padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px; }
+.route-tips .hint { margin: 0 0 8px; }

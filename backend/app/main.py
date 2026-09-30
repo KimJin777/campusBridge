@@ -519,11 +519,15 @@ def create_app(
         return campus_map()
 
     @app.get("/api/campus/route")
-    async def campus_route_api(to: str = "") -> dict[str, Any]:
-        """정문 출발 도보 경로(교수님이 표시한 도보길 기반). 지도에 없는 곳이면 found=false."""
-        from backend.tools.campus_route import route
+    async def campus_route_api(to: str = "", start: str = "") -> dict[str, Any]:
+        """도보 경로(교수님이 표시한 도보길 기반). start 없으면 문장 속 'OO에서' 또는 정문.
 
-        r = route(to[:200]) if to.strip() else None
+        지도에 없는 곳이면 found=false.
+        """
+        from backend.tools.campus_route import resolve_place, route
+
+        origin = resolve_place(start[:50]) if start.strip() else None
+        r = route(to[:200], origin) if to.strip() else None
         return {"found": bool(r), **(r or {})}
 
     @app.get("/api/events/today")

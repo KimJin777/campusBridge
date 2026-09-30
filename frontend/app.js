@@ -338,23 +338,52 @@ class Turn {
   async routeWidget(target) {
     if (!target) return null;
     try {
-      const r = await fetch(`/api/campus/route?to=${encodeURIComponent(target.slice(0, 200))}`).then((x) => x.json());
+      const get = (start) => fetch(`/api/campus/route?to=${encodeURIComponent(target.slice(0, 200))}${start ? `&start=${encodeURIComponent(start)}` : ""}`).then((x) => x.json());
+      let r = await get("");
       this.routesShown = this.routesShown || new Set();
       if (!r.found || this.routesShown.has(r.to)) return null;
       this.routesShown.add(r.to);
       const wrap = el("section", "route-wrap");
       const toggle = el("button", "route-toggle");
       toggle.type = "button";
-      toggle.append(icon("pin", 15), document.createTextNode(`${r.from}에서 ${r.to}까지 걸어서 약 ${r.minutes}분 (${r.distance_m}m)`));
+      const label = () => toggle.replaceChildren(icon("pin", 15), document.createTextNode(`${r.from}에서 ${r.to}까지 걸어서 약 ${r.minutes}분 (${r.distance_m}m)`));
+      label();
       const body = el("div", "route-body");
       body.hidden = true;
+      // 출발지 고르기(교수님 2026-09-30): 바꾸면 경로·거리·시간을 다시 그린다
+      const pick = el("label", "route-start", "출발 ");
+      const select = el("select");
+      const fig = el("div");
+      const tips = el("div", "route-tips");
+      const drawTips = () => tips.replaceChildren(...(r.tips || []).map((t) => el("p", "hint", t)));
+      const draw = async () => fig.replaceChildren(await routeFigure(r));
+      select.addEventListener("change", async () => {
+        const next = await get(select.value).catch(() => null);
+        if (!next?.found) return;
+        r = next;
+        label();
+        drawTips();
+        await draw();
+        track("route_start", { turn_id: this.turnId, target: `${r.from}>${r.to}` });
+      });
+      pick.append(select);
+      body.append(pick, tips, fig);
+      drawTips();
       let drawn = false;
       toggle.addEventListener("click", async () => {
         body.hidden = !body.hidden;
         toggle.setAttribute("aria-expanded", String(!body.hidden));
         if (!drawn && !body.hidden) {
           drawn = true;
-          body.append(await routeFigure(r));
+          campusMapCache = campusMapCache || (await fetch("/api/campus/map").then((x) => x.json()));
+          for (const name of campusMapCache.starts || [r.from]) {
+            if (name === r.to) continue;
+            const o = el("option", null, name);
+            o.value = name;
+            o.selected = name === r.from;
+            select.append(o);
+          }
+          await draw();
           track("route_open", { turn_id: this.turnId, target: r.to });
         }
       });
