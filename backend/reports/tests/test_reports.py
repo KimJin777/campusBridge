@@ -146,6 +146,7 @@ def test_vote_one_per_token_and_listing():
     c = client(store, FakeLLM(tip=TipJudge(verdict="ok", reason="ok")))
     c.post("/api/reports/tip", json=tip_body("제2공학관 2층 매점 옆 자판기 있어요"))
     tid = next(iter(store.rows))
+    c.cookies.clear()  # 작성자가 아닌 다른 학생
     c.get("/api/tips")  # 목록을 보며 투표 토큰을 먼저 받는다
     assert c.post(f"/api/tips/{tid}/vote", json={"value": "confirm"}).json()["confirm"] == 1
     again = c.post(f"/api/tips/{tid}/vote", json={"value": "confirm"}).json()
@@ -533,3 +534,16 @@ def test_admin_undo_refused_after_status_moved_on():
     c.post(f"/api/admin/reports/{tid}/to_vote", json={})
     store.rows[tid]["status"] = "student_approved"  # 그 뒤 투표로 승인됨
     assert c.post(f"/api/admin/reports/{tid}/undo", json={}).status_code == 400
+
+
+def test_author_cannot_vote_own_tip():
+    """방금 쓴 꿀팁에 본인이 '맞아요'를 누를 수 없다(교수님 #783)."""
+    store = MemoryReportStore()
+    c = client(store, FakeLLM(tip=TipJudge(verdict="ok", reason="ok")))
+    c.post("/api/reports/tip", json=tip_body("제2공학관 2층 매점 옆 자판기 있어요"))
+    tid = next(iter(store.rows))
+    assert store.rows[tid]["author_token"]
+    listing = c.get("/api/tips").json()
+    assert listing["verifying"][0]["own"] is True and "author_token" not in listing["verifying"][0]
+    r = c.post(f"/api/tips/{tid}/vote", json={"value": "confirm"})
+    assert r.status_code == 400 and store.rows[tid]["confirm"] == 0

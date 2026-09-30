@@ -1048,11 +1048,12 @@ async function loadToday() {
       li.append(row, calendarButtons({ title: e.title, start: e.start_date || e.end_date, end: e.end_date, url: e.url }, el));
       list.append(li);
     }
+    // [전체보기]는 목록 맨 위(교수님 #780: 목록이 길면 입력창 뒤로 가려 안 보임)
     const all = el("a", "today-all", "전체보기 →");
     all.href = "/calendar.html";
     const allLi = el("li");
     allLi.append(all);
-    list.append(allLi);
+    list.prepend(allLi);
     $("#today-count").textContent = String(items.length);
     const box = $("#today");
     const btn = $(".today-btn", box);

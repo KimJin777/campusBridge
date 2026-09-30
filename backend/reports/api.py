@@ -149,7 +149,9 @@ def _rejected(reason: str) -> dict[str, Any]:
 
 # ── 꿀팁 제보 ───────────────────────────────────────────────────────────
 @router.post("/api/reports/tip")
-async def submit_tip(body: TipSubmit, request: Request, store: Store, llm: LLM) -> dict[str, Any]:
+async def submit_tip(
+    body: TipSubmit, request: Request, response: Response, store: Store, llm: LLM
+) -> dict[str, Any]:
     if (bot := _bot(body.elapsed_ms, body.website)) is not None:
         return bot
     net = await _net(store, request)
@@ -207,6 +209,9 @@ async def submit_tip(body: TipSubmit, request: Request, store: Store, llm: LLM) 
     }
     if public:
         doc["published_at"] = now
+    # 본인 제보에 본인이 '맞아요'를 누르지 못하게 작성자 투표 토큰 해시를 남긴다(교수님 #783)
+    tid, _ = await _vote_token(request, response, store)
+    doc["author_token"] = rules.token_hash(tid)
     await store.create(doc)
     return {
         "accepted": True,
@@ -363,12 +368,14 @@ async def _vote_token(request: Request, response: Response, store: ReportStore) 
         httponly=True,
         secure=True,
         samesite="lax",
-        path="/api/tips",
+        path="/api",  # 꿀팁 제보(/api/reports/tip)에서도 읽어 작성자를 표시(교수님 #783)
     )
     return tid, True
 
 
-def _public_tip(row: dict[str, Any], mine: dict[str, Any] | None) -> dict[str, Any]:
+def _public_tip(
+    row: dict[str, Any], mine: dict[str, Any] | None, token: str = ""
+) -> dict[str, Any]:
     confirm, dispute = int(row.get("confirm", 0)), int(row.get("dispute", 0))
     created = row.get("created_at")
     return {
@@ -387,6 +394,7 @@ def _public_tip(row: dict[str, Any], mine: dict[str, Any] | None) -> dict[str, A
         if isinstance(created, datetime)
         else None,
         "mine": mine,
+        "own": bool(token) and row.get("author_token") == token,
     }
 
 
@@ -396,7 +404,9 @@ async def list_tips(request: Request, response: Response, store: Store) -> dict[
     token = rules.token_hash(tid) if tid else ""
     rows = await store.list(type_="tip", statuses=PUBLIC_TIP_STATUSES)
     votes = await store.my_votes(token, [r["id"] for r in rows]) if token else {}
-    items = [_public_tip(r, mine(votes[r["id"]], r) if r["id"] in votes else None) for r in rows]
+    items = [
+        _public_tip(r, mine(votes[r["id"]], r) if r["id"] in votes else None, token) for r in rows
+    ]
     items.sort(key=lambda t: t["created"] or "", reverse=True)
     return {
         "verifying": [t for t in items if t["status"] == "verifying"],
@@ -428,6 +438,8 @@ async def vote_tip(
     tip = await store.get(tip_id)
     if not tip or tip.get("type") != "tip" or tip.get("status") not in PUBLIC_TIP_STATUSES:
         raise AppError("BAD_REQUEST", "투표할 수 없는 꿀팁입니다.")
+    if tip.get("author_token") and tip.get("author_token") == token:
+        raise AppError("BAD_REQUEST", "내가 쓴 꿀팁에는 투표할 수 없습니다.")
     net = await _net(store, request)
     day = _day()
     if not await store.take_quota(f"vote_{token}", rules.VOTES_PER_TOKEN_DAY, day):
@@ -441,7 +453,7 @@ async def vote_tip(
     updated = await store.vote(tip_id, token, tip_net, body.value, reason, datetime.now(UTC))
     if updated is None:
         raise AppError("BAD_REQUEST", "꿀팁을 찾지 못했습니다.")
-    return _public_tip(updated, updated.get("mine"))
+    return _public_tip(updated, updated.get("mine"), token)
 
 
 # ── 관리자 제보함 ───────────────────────────────────────────────────────

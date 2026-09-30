@@ -63,6 +63,11 @@ function tipItem(t, rule) {
     return x;
   };
   bar.append(b(`직접 확인했어요 · 맞아요 ${t.confirm}`, "confirm"), b(`사실과 달라요 ${t.dispute}`, "dispute"));
+  if (t.own) {
+    // 내가 쓴 꿀팁은 스스로 확인할 수 없다(교수님 #783)
+    for (const x of bar.querySelectorAll("button")) x.disabled = true;
+    bar.append(el("span", "tip-progress", "내가 쓴 꿀팁"));
+  }
   if (t.status === "verifying" && rule) {
     const total = t.confirm + t.dispute;
     const ratio = total ? Math.round((t.confirm / total) * 100) : 0;
@@ -72,7 +77,7 @@ function tipItem(t, rule) {
   flag.setAttribute("aria-label", "문제 신고");
   flag.append(new Option("문제 신고…", ""));
   for (const [v, label] of FLAG_REASONS) flag.append(new Option(label, v));
-  if (t.mine?.flagged) {
+  if (t.mine?.flagged || t.own) {
     flag.disabled = true;
     flag.options[0].textContent = "신고함";
   }

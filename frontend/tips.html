@@ -24,6 +24,15 @@
     <h2>대학생활 꿀팁</h2>
     <p class="hint">학생들이 익명으로 제보하고 함께 확인한 정보입니다. <strong>학교 공식 정보가 아닙니다.</strong> 승인된 꿀팁은 챗봇이 장소·길 안내에 덧붙여 씁니다.</p>
 
+
+    <h2>승인된 꿀팁</h2>
+    <ul id="approved" class="tip-list" aria-live="polite"></ul>
+
+    <h2>검증 중인 꿀팁</h2>
+    <p class="hint" id="rule"></p>
+    <ul id="verifying" class="tip-list" aria-live="polite"></ul>
+
+    <h2>꿀팁 제보하기</h2>
     <form id="tip-form" class="tip-form" autocomplete="off">
       <label>분류
         <select name="category">
@@ -40,13 +49,6 @@
       <button type="submit" class="primary">제보하기</button>
       <div id="tip-result"></div>
     </form>
-
-    <h2>승인된 꿀팁</h2>
-    <ul id="approved" class="tip-list" aria-live="polite"></ul>
-
-    <h2>검증 중인 꿀팁</h2>
-    <p class="hint" id="rule"></p>
-    <ul id="verifying" class="tip-list" aria-live="polite"></ul>
   </main>
 </body>
 </html>
