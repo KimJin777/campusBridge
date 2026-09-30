@@ -138,8 +138,17 @@ def receipt_matches(shown: str, stored_hash: str) -> bool:
 
 # ── 네트워크·투표 토큰(원문은 저장하지 않는다) ─────────────────────────────
 def net_hash(secret: bytes, ip: str, day: str) -> str:
-    """일 단위 HMAC — 같은 날 같은 네트워크 판별만 가능, 원래 IP로 되돌릴 수 없다."""
+    """일 단위 HMAC — 하루 한도(quota) 전용. 날짜가 바뀌면 값이 바뀐다(판정에는 쓰지 않는다)."""
     return hmac.new(secret, f"{day}|{ip}".encode(), hashlib.sha256).hexdigest()[:20]
+
+
+def tip_net_hash(secret: bytes, tip_id: str, ip: str) -> str:
+    """꿀팁별로 고정된 네트워크 키 — 투표·신고의 네트워크 다양성 판정용(GPT5 #736).
+
+    같은 꿀팁 안에서는 날짜가 지나도 같은 값이라 '날짜×네트워크'로 부풀지 않고,
+    꿀팁이 다르면 값이 달라 여러 꿀팁 사이의 활동을 서로 연결할 수 없다.
+    """
+    return hmac.new(secret, f"tip-net|{tip_id}|{ip}".encode(), hashlib.sha256).hexdigest()[:20]
 
 
 def new_vote_token() -> str:

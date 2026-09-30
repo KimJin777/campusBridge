@@ -462,7 +462,9 @@ async def vote_tip(
     if not await store.take_quota(f"votenet_{net}", rules.VOTES_PER_NET_DAY, day):
         raise AppError("RATE_LIMITED", "오늘은 이 네트워크에서 투표를 더 할 수 없습니다.")
     reason = (body.reason or "other") if body.value == "flag" else None
-    updated = await store.vote(tip_id, token, net, body.value, reason, datetime.now(UTC))
+    # 판정용 네트워크 키는 꿀팁별 고정값(날짜별 해시로 다양성이 부풀던 문제 — GPT5 #736)
+    tip_net = rules.tip_net_hash(await store.secret(), tip_id, _client_ip(request))
+    updated = await store.vote(tip_id, token, tip_net, body.value, reason, datetime.now(UTC))
     if updated is None:
         raise AppError("BAD_REQUEST", "꿀팁을 찾지 못했습니다.")
     return _public_tip(updated, updated.get("mine"))

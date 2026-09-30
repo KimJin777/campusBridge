@@ -454,3 +454,55 @@ def test_polarity_negative_forms():
     assert (
         _polarity("신청이 가능하지 않다") == "neg" and _polarity("휴학이 허용되지 않는다") == "neg"
     )
+
+
+def test_tip_net_key_is_stable_across_days_and_unlinkable_across_tips():
+    """판정 키는 같은 꿀팁·같은 IP면 날짜가 달라도 같고, 꿀팁이 다르면 다르다(GPT5 #736)."""
+    s = b"secret"
+    assert rules.net_hash(s, "211.234.10.7", "2026-10-01") != rules.net_hash(
+        s, "211.234.10.7", "2026-10-02"
+    )
+    a = rules.tip_net_hash(s, "tipAAAA1", "211.234.10.7")
+    assert a == rules.tip_net_hash(s, "tipAAAA1", "211.234.10.7")
+    assert a != rules.tip_net_hash(s, "tipBBBB1", "211.234.10.7")
+
+
+def test_same_ip_over_several_days_cannot_approve_or_hide(monkeypatch):
+    """같은 IP가 여러 날에 걸쳐 투표·신고해도 한 네트워크로 집계되어 자동 승인·가림 안 됨(GPT5 #736)."""
+    from backend.reports import api
+
+    store = MemoryReportStore()
+    tid = _voted_tip(store, now=datetime.now(UTC))
+    c = client(store, FakeLLM())
+    days = iter([f"2026-10-0{d}" for d in range(1, 10)] * 3)
+    for _i in range(10):
+        monkeypatch.setattr(api, "_day", lambda: next(days))
+        c.cookies.clear()
+        c.get("/api/tips")
+        r = c.post(f"/api/tips/{tid}/vote", json={"value": "confirm"})
+        assert r.status_code == 200
+    row = store.rows[tid]
+    assert row["confirm"] == 10 and len(row["net_counts"]) == 1
+    assert row["status"] == "verifying" and row.get("burst_risk")  # 한 네트워크 몰표 → 승인 안 됨
+    for _i in range(3):
+        c.cookies.clear()
+        c.get("/api/tips")
+        c.post(f"/api/tips/{tid}/vote", json={"value": "flag", "reason": "abuse"})
+    assert store.rows[tid]["status"] != "hidden" and len(store.rows[tid]["flag_nets"]) == 1
+
+
+def test_three_real_networks_satisfy_flag_diversity():
+    from backend.reports.api import client_ip  # noqa: F401 — 실제 IP 3곳 시나리오
+
+    store = MemoryReportStore()
+    tid = _voted_tip(store)
+    c = client(store, FakeLLM())
+    for ip in ("211.234.10.7", "58.120.1.9", "121.140.3.3"):
+        c.cookies.clear()
+        c.get("/api/tips", headers={"x-forwarded-for": ip})
+        c.post(
+            f"/api/tips/{tid}/vote",
+            json={"value": "flag", "reason": "abuse"},
+            headers={"x-forwarded-for": ip},
+        )
+    assert store.rows[tid]["status"] == "hidden"
