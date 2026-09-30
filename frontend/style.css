@@ -167,6 +167,20 @@ a.brand-wrap { color: inherit; text-decoration: none; }
 .fu-label { margin-right: 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .chip.fu { padding: 6px 12px; font-size: 13px; }
 .chip.fu:disabled { opacity: .45; cursor: default; }
+.route-wrap { margin-top: 12px; }
+.route-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border: 1px solid var(--line); border-radius: 9999px; background: var(--surface); color: var(--secondary); font-size: 13px; font-weight: 600; cursor: pointer; }
+.route-toggle:hover { border-color: var(--primary); }
+.route-body { margin-top: 10px; }
+.route-fig { margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.route-svg { display: block; width: 100%; height: auto; max-height: 420px; background: color-mix(in srgb, var(--primary-soft) 35%, var(--surface)); border-radius: 10px; }
+.rt-path { fill: none; stroke: #c7cedb; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.rt-route { fill: none; stroke: var(--primary); stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; }
+.rt-dot { fill: #94a3b8; }
+.rt-start { fill: #10b981; stroke: #fff; stroke-width: 3; }
+.rt-end { fill: #ef4444; stroke: #fff; stroke-width: 3; }
+.rt-label { fill: #64748b; font-size: 13px; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+.rt-label.main { fill: var(--text); font-size: 17px; font-weight: 700; }
+.route-photo { display: block; width: 100%; max-height: 260px; margin-top: 10px; border-radius: 10px; object-fit: cover; }
 .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 .chip {
   display: inline-flex;

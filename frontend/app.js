@@ -130,6 +130,7 @@ class Turn {
       if (c.kind === "calendar" && /^\d{4}-\d{2}-\d{2}$/.test(c.start_date || "")) {
         this.calendarEvents.set(c.id, { title: c.title, start: c.start_date, end: c.end_date || c.start_date, url: c.url });
       }
+      if (c.kind === "place") this.placeText = `${this.placeText || ""} ${c.title} ${c.snippet}`;
       const kind = Object.hasOwn(KIND_LABEL, c.kind) ? c.kind : "guide";
       const card = el("article", `card kind-${kind}`);
       card.setAttribute("role", "listitem");
@@ -289,6 +290,7 @@ class Turn {
     }
     this.renderDept(a.dept);
     this.renderCalendar(a.cited || []);
+    this.renderRoute();
     this.renderFollowUps(a.follow_ups || []);
     if (a.as_of) box.append(el("p", "asof", `${formatKst(a.as_of)} 기준 정보`));
     if (a.notice) box.append(el("p", "safety", a.notice));
@@ -316,6 +318,36 @@ class Turn {
     this.answer.append(wrap);
   }
 
+  // 정문 출발 도보 길안내: 장소 근거가 있거나 '어디·가는 길'을 물으면 지도에 경로를 그린다
+  async renderRoute() {
+    const asksWay = /어디|위치|가는\s*길|가려면|찾아가|길\s*안내|몇\s*분/.test(this.message);
+    const target = this.placeText || (asksWay ? this.message : "");
+    if (!target) return;
+    try {
+      const r = await fetch(`/api/campus/route?to=${encodeURIComponent(target.slice(0, 200))}`).then((x) => x.json());
+      if (!r.found) return;
+      const wrap = el("section", "route-wrap");
+      const toggle = el("button", "route-toggle");
+      toggle.type = "button";
+      toggle.append(icon("pin", 15), document.createTextNode(`${r.from}에서 ${r.to}까지 걸어서 약 ${r.minutes}분 (${r.distance_m}m)`));
+      const body = el("div", "route-body");
+      body.hidden = true;
+      let drawn = false;
+      toggle.addEventListener("click", async () => {
+        body.hidden = !body.hidden;
+        toggle.setAttribute("aria-expanded", String(!body.hidden));
+        if (!drawn && !body.hidden) {
+          drawn = true;
+          body.append(await routeFigure(r));
+          track("route_open", { turn_id: this.turnId, target: r.to });
+        }
+      });
+      wrap.append(toggle, body);
+      const fu = $(".follow-ups", this.answer);
+      this.answer.insertBefore(wrap, fu || null);
+    } catch {}
+  }
+
   renderFollowUps(list) {
     if (!list.length) return;
     const wrap = el("div", "follow-ups");
@@ -340,6 +372,7 @@ class Turn {
     box.replaceChildren(el("p", null, FALLBACK_TEXT[f.reason] || f.message));
     if (f.dept) box.append(el("p", "hint", "담당 부서에 문의해 주세요."));
     this.renderDept(f.dept);
+    this.renderRoute();
   }
 
   renderAsk(q) {
@@ -570,6 +603,51 @@ async function init() {
     }
   } catch {}
   loadToday();
+}
+
+// ── 캠퍼스 도보 길안내 약도(SVG, 외부 지도 없음) ─────────────────────────
+let campusMapCache = null;
+const SVG_NS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs) {
+  const n = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v));
+  return n;
+}
+
+async function routeFigure(r) {
+  campusMapCache = campusMapCache || (await fetch("/api/campus/map").then((x) => x.json()));
+  const m = campusMapCache;
+  const all = m.paths.flat();
+  const xs = all.map((p) => p[0]);
+  const ys = all.map((p) => p[1]);
+  const pad = 40;
+  const [x0, y0] = [Math.min(...xs) - pad, Math.min(...ys) - pad];
+  const [w, h] = [Math.max(...xs) - x0 + pad, Math.max(...ys) - y0 + pad];
+  const svg = svgEl("svg", { viewBox: `${x0} ${y0} ${w} ${h}`, class: "route-svg", role: "img", "aria-label": `${r.from}에서 ${r.to}까지 도보 경로` });
+  const pts = (line) => line.map((p) => p.join(",")).join(" ");
+  for (const line of m.paths) svg.append(svgEl("polyline", { points: pts(line), class: "rt-path" }));
+  svg.append(svgEl("polyline", { points: pts(r.line), class: "rt-route" }));
+  for (const [name, info] of Object.entries(m.places)) {
+    const [x, y] = info.xy;
+    const main = name === r.to || name === r.from;
+    svg.append(svgEl("circle", { cx: x, cy: y, r: main ? 9 : 4, class: name === r.from ? "rt-start" : name === r.to ? "rt-end" : "rt-dot" }));
+    const t = svgEl("text", { x: x + 8, y: y - 6, class: main ? "rt-label main" : "rt-label" });
+    t.textContent = name;
+    svg.append(t);
+  }
+  const fig = el("figure", "route-fig");
+  fig.append(svg);
+  const cap = el("figcaption", "hint", "교수님이 표시한 교내 도보길 기준 · 경사·계단 구간이 있어 실제 시간은 더 걸릴 수 있습니다.");
+  fig.append(cap);
+  const photo = m.places[r.to]?.photo;
+  if (photo) {
+    const img = el("img", "route-photo");
+    img.src = photo;
+    img.alt = `${r.to} 사진`;
+    img.loading = "lazy";
+    fig.append(img, el("figcaption", "hint", m.photo_credit || "사진 출처: 경남대학교 홈페이지"));
+  }
+  return fig;
 }
 
 // ── 달력 보기 ──────────────────────────────────────────────────────────

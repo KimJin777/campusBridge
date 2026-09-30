@@ -1,0 +1,25 @@
+from backend.tools.campus_route import campus_map, resolve_place, route
+
+
+def test_route_from_main_gate_follows_graph():
+    r = route("중앙도서관은 어디에 있어?")
+    assert r and r["from"] == "정문" and r["to"] == "중앙도서관"
+    assert 300 < r["distance_m"] < 1500 and r["minutes"] >= 5
+    assert len(r["line"]) > 5
+    ends = r["line"][0], r["line"][-1]
+    assert ends[0] != ends[1]
+
+
+def test_resolve_from_unit_location_and_aliases():
+    assert resolve_place("학사관리팀: 본관 1층") == "본관"
+    assert resolve_place("장학복지팀: 한마관 5층") == "한마관"  # 한마관 ⊂ 한마미래관 오인 없이
+    assert resolve_place("한마미래관 가는 길") == "한마미래관"
+    assert resolve_place("도서관 가려면") == "중앙도서관"
+    assert resolve_place("오늘 학식 메뉴") is None
+    assert route("없는 건물") is None
+
+
+def test_campus_map_has_paths_places_and_credit():
+    m = campus_map()
+    assert len(m["paths"]) > 50 and "정문" in m["places"]
+    assert "경남대학교" in (m["photo_credit"] or "")

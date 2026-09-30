@@ -512,6 +512,20 @@ def create_app(
     async def suggestions() -> dict[str, Any]:
         return {"items": list(s.suggestions)}
 
+    @app.get("/api/campus/map")
+    async def campus_map_api() -> dict[str, Any]:
+        from backend.tools.campus_route import campus_map
+
+        return campus_map()
+
+    @app.get("/api/campus/route")
+    async def campus_route_api(to: str = "") -> dict[str, Any]:
+        """정문 출발 도보 경로(교수님이 표시한 도보길 기반). 지도에 없는 곳이면 found=false."""
+        from backend.tools.campus_route import route
+
+        r = route(to[:200]) if to.strip() else None
+        return {"found": bool(r), **(r or {})}
+
     @app.get("/api/events/today")
     async def events_today() -> dict[str, Any]:
         return {"items": await today_events(s)}

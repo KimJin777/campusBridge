@@ -1,0 +1,406 @@
+[
+{
+"seq": "5",
+"name": "전경",
+"lat": 35.180283154136625,
+"lng": 128.55324423106424,
+"photos": []
+},
+{
+"seq": "6",
+"name": "정문",
+"lat": 35.180785706818924,
+"lng": 128.55692016295836,
+"photos": []
+},
+{
+"seq": "7",
+"name": "정문게시판",
+"lat": 35.180785706818924,
+"lng": 128.55692016295836,
+"photos": []
+},
+{
+"seq": "8",
+"name": "정문수위실",
+"lat": 35.18069814418277,
+"lng": 128.55672090431875,
+"photos": []
+},
+{
+"seq": "9",
+"name": "한마상",
+"lat": 35.18102873345637,
+"lng": 128.55554167338423,
+"photos": []
+},
+{
+"seq": "10",
+"name": "월영지",
+"lat": 35.18071829681852,
+"lng": 128.55585409449603,
+"photos": []
+},
+{
+"seq": "11",
+"name": "10.18광장",
+"lat": 35.18097946467742,
+"lng": 128.55516751040378,
+"photos": []
+},
+{
+"seq": "12",
+"name": "국제어학관",
+"lat": 35.18153824834298,
+"lng": 128.55446463531055,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_국제어학관1.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_국제어학관2.jpg",
+"/sites/ko/atchmnfl/campusTour/국제.jpg",
+"/sites/ko/atchmnfl/campusTour/국제2.jpg"
+]
+},
+{
+"seq": "13",
+"name": "본관",
+"lat": 35.18088219144349,
+"lng": 128.5543204153113,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_본관1.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_본관2.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_본관3.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_본관4.jpg",
+"/sites/ko/atchmnfl/campusTour/본관.jpg"
+]
+},
+{
+"seq": "14",
+"name": "대운동장",
+"lat": 35.18078209626195,
+"lng": 128.55369281151528,
+"photos": []
+},
+{
+"seq": "15",
+"name": "고운관",
+"lat": 35.180220499442974,
+"lng": 128.55461517364677,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_고운관1.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_고운관2.jpg"
+]
+},
+{
+"seq": "16",
+"name": "제1공학관",
+"lat": 35.17951543694811,
+"lng": 128.55547990428443,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_제1공학관1.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_제1공학관2.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_제1공학관3.jpg",
+"/sites/ko/atchmnfl/campusTour/1공.jpg",
+"/sites/ko/atchmnfl/campusTour/1공2.jpg"
+]
+},
+{
+"seq": "17",
+"name": "팔각정",
+"lat": 35.17937606540879,
+"lng": 128.55510403179088,
+"photos": []
+},
+{
+"seq": "18",
+"name": "제2공학관",
+"lat": 35.179087315000395,
+"lng": 128.55513146170642,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_제2공학관.jpg",
+"/sites/ko/atchmnfl/campusTour/2공.jpg"
+]
+},
+{
+"seq": "19",
+"name": "혁신융합관",
+"lat": 35.17888557510074,
+"lng": 128.55469951942786,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/생활.jpg"
+]
+},
+{
+"seq": "20",
+"name": "성훈관",
+"lat": 35.179082678641144,
+"lng": 128.55408856558637,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/3공.jpg"
+]
+},
+{
+"seq": "21",
+"name": "보건의료관",
+"lat": 35.1784160614905,
+"lng": 128.55406489787663,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/보건의료관1.jpg",
+"/sites/ko/atchmnfl/campusTour/보건의료관2.jpg"
+]
+},
+{
+"seq": "22",
+"name": "건강과학관",
+"lat": 35.17893386999947,
+"lng": 128.55374544850645,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_건강과학관1.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_건강과학관2.jpg",
+"/sites/ko/atchmnfl/campusTour/건강.jpg"
+]
+},
+{
+"seq": "23",
+"name": "제4공학관",
+"lat": 35.17942605473711,
+"lng": 128.55331573784127,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_제4공학관.jpg",
+"/sites/ko/atchmnfl/campusTour/4공.jpg"
+]
+},
+{
+"seq": "24",
+"name": "제5공학관",
+"lat": 35.17971381679718,
+"lng": 128.55266259293424,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_제5공학관1.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_제5공학관2.jpg",
+"/sites/ko/atchmnfl/campusTour/5공.jpg"
+]
+},
+{
+"seq": "25",
+"name": "교육관",
+"lat": 35.18053036685253,
+"lng": 128.55223903994283,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_교육관1.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_교육관2.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_교육관3.jpg",
+"/sites/ko/atchmnfl/campusTour/교육.jpg"
+]
+},
+{
+"seq": "26",
+"name": "제1경영관",
+"lat": 35.18187782371793,
+"lng": 128.55258300638764,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_제1경영관 (2).jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_제1경영관 (3).jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_제1경영관 (4).jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_제1경영관 (5).jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_제1경영관.jpg"
+]
+},
+{
+"seq": "27",
+"name": "제2경영관",
+"lat": 35.18071212480454,
+"lng": 128.55282428513462,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_제2경영관1.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_제2경영관2.jpg"
+]
+},
+{
+"seq": "28",
+"name": "중앙도서관",
+"lat": 35.18123922193581,
+"lng": 128.55248304163118,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_중앙도서관1.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_중앙도서관2.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_중앙도서관3.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_중앙도서관4.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_중앙도서관6.jpg"
+]
+},
+{
+"seq": "29",
+"name": "법정관",
+"lat": 35.18113081020098,
+"lng": 128.5518003930023,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_법정관1.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_법정관2.jpg",
+"/sites/ko/atchmnfl/campusTour/법정.jpg"
+]
+},
+{
+"seq": "30",
+"name": "테니스장",
+"lat": 35.18163791550683,
+"lng": 128.55161244301,
+"photos": []
+},
+{
+"seq": "32",
+"name": "산복도로진입로",
+"lat": 35.18335015179164,
+"lng": 128.55232559832922,
+"photos": []
+},
+{
+"seq": "33",
+"name": "서문(IC수위실)",
+"lat": 35.183426459824325,
+"lng": 128.55270028509167,
+"photos": []
+},
+{
+"seq": "34",
+"name": "한마미래관",
+"lat": 35.18317389318997,
+"lng": 128.55341999378416,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_한마미래관2.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_한마미래관4.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_한마미래관1.jpg"
+]
+},
+{
+"seq": "35",
+"name": "체육관",
+"lat": 35.18374548010043,
+"lng": 128.55312350128938,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/체육.jpg"
+]
+},
+{
+"seq": "36",
+"name": "제1한마생활관",
+"lat": 35.184116303847205,
+"lng": 128.55231821518348,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/기숙.jpg"
+]
+},
+{
+"seq": "37",
+"name": "제2한마생활관",
+"lat": 35.184222318924924,
+"lng": 128.55318746349718,
+"photos": []
+},
+{
+"seq": "38",
+"name": "제3한마생활관",
+"lat": 35.184744771968795,
+"lng": 128.55320838392507,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/기숙2.jpg"
+]
+},
+{
+"seq": "39",
+"name": "문무관",
+"lat": 35.184426034714406,
+"lng": 128.55346578149545,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_문무관1.jpg",
+"/sites/ko/atchmnfl/campusTour/문무관2.jpg",
+"/sites/ko/atchmnfl/campusTour/문무.jpg"
+]
+},
+{
+"seq": "40",
+"name": "북문(후문)",
+"lat": 35.18488485276822,
+"lng": 128.55352940335786,
+"photos": []
+},
+{
+"seq": "41",
+"name": "디자인관",
+"lat": 35.18463847359018,
+"lng": 128.5544687933628,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/디자인관1.jpg",
+"/sites/ko/atchmnfl/campusTour/디자인관2.jpg",
+"/sites/ko/atchmnfl/campusTour/디자인.jpg"
+]
+},
+{
+"seq": "42",
+"name": "화영운동장",
+"lat": 35.184012828620475,
+"lng": 128.55406168393856,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_화영운동장1.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_화영운동장2.jpg",
+"/sites/ko/atchmnfl/campusTour/화영.jpg"
+]
+},
+{
+"seq": "43",
+"name": "조소실A",
+"lat": 35.183849087916904,
+"lng": 128.5548818835732,
+"photos": []
+},
+{
+"seq": "44",
+"name": "조소실B",
+"lat": 35.18400760764067,
+"lng": 128.55517032080832,
+"photos": []
+},
+{
+"seq": "45",
+"name": "예술관",
+"lat": 35.18434197282216,
+"lng": 128.55509984870042,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_예술관1.jpg",
+"/sites/ko/atchmnfl/campusTour/수정됨_예술관2.jpg",
+"/sites/ko/atchmnfl/campusTour/예술.jpg"
+]
+},
+{
+"seq": "46",
+"name": "고시원",
+"lat": 35.18449119977766,
+"lng": 128.55541006633106,
+"photos": []
+},
+{
+"seq": "47",
+"name": "평생교육관",
+"lat": 35.184363928732786,
+"lng": 128.55549546186623,
+"photos": []
+},
+{
+"seq": "48",
+"name": "창조관",
+"lat": 35.18209224201133,
+"lng": 128.5534323395435,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/수정됨_창조관.jpg",
+"/sites/ko/atchmnfl/campusTour/창조관.jpg"
+]
+},
+{
+"seq": "49",
+"name": "한마관",
+"lat": 35.182720982228076,
+"lng": 128.5521928804598,
+"photos": [
+"/sites/ko/atchmnfl/campusTour/한마관.jpg"
+]
+}
+]
