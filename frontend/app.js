@@ -83,6 +83,7 @@ class Turn {
     $("#welcome").hidden = true;
     $("#today").hidden = true; // 학사 일정 버튼은 첫 화면에서만
     $("#new-thread").hidden = false; // 새 대화 버튼은 대화 화면에서만(교수님 2026-09-30 #628)
+    document.querySelectorAll(".follow-ups .fu").forEach((b) => (b.disabled = true)); // 지난 턴 칩 비활성
     this.node = node;
     this.steps = $(".steps", node);
     this.cards = $(".cards", node);
@@ -288,6 +289,7 @@ class Turn {
     }
     this.renderDept(a.dept);
     this.renderCalendar(a.cited || []);
+    this.renderFollowUps(a.follow_ups || []);
     if (a.as_of) box.append(el("p", "asof", `${formatKst(a.as_of)} 기준 정보`));
     if (a.notice) box.append(el("p", "safety", a.notice));
   }
@@ -311,6 +313,23 @@ class Turn {
     for (const month of calendarMonths(events).slice(0, 3)) body.append(monthGrid(month, events));
     wrap.append(toggle, body);
     setOpen(/달력|캘린더|calendar/i.test(this.message));
+    this.answer.append(wrap);
+  }
+
+  renderFollowUps(list) {
+    if (!list.length) return;
+    const wrap = el("div", "follow-ups");
+    wrap.append(el("span", "fu-label", "이어서 물어보기"));
+    for (const q of list) {
+      const b = el("button", "chip fu", q);
+      b.type = "button";
+      b.addEventListener("click", () => {
+        if (state.busy) return;
+        track("follow_up_click", { turn_id: this.turnId, target: q.slice(0, 200) });
+        send(q);
+      });
+      wrap.append(b);
+    }
     this.answer.append(wrap);
   }
 

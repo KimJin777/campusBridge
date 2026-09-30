@@ -31,6 +31,9 @@ class LastTurn(BaseModel):
     answer_summary: str = Field(max_length=300)  # 서버가 답변 앞부분을 잘라 생성(모델 호출 없음)
     cited_ids: list[str] = Field(default_factory=list)
     topic: str | None = None
+    recent_queries: list[str] = Field(
+        default_factory=list
+    )  # 이전 질문들(예상 질문 흐름·중복 제외용)
 
 
 class PendingQuestion(BaseModel):

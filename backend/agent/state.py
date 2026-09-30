@@ -121,6 +121,10 @@ class ComposeOut(BaseModel):
     sentences: list[CitedSentence] = Field(min_length=1)
     checklist: list[CitedSentence] = Field(default_factory=list)
     next_actions: list[CitedSentence] = Field(default_factory=list)
+    follow_ups: list[str] = Field(
+        default_factory=list,
+        description="이어서 물을 만한 질문 2~3개(근거에 답이 있는 것만, 이미 물은 질문 제외)",
+    )
 
     def to_draft(self) -> Draft:
         def conv(xs: list[CitedSentence]) -> list[DraftSentence]:
@@ -130,4 +134,5 @@ class ComposeOut(BaseModel):
             sentences=conv(self.sentences),
             checklist=conv(self.checklist),
             next_actions=conv(self.next_actions),
+            follow_ups=list(self.follow_ups),
         )

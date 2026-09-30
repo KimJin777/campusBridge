@@ -21,6 +21,7 @@ class Draft(BaseModel):
     sentences: list[DraftSentence] = Field(default_factory=list)
     checklist: list[DraftSentence] = Field(default_factory=list)
     next_actions: list[DraftSentence] = Field(default_factory=list)
+    follow_ups: list[str] = Field(default_factory=list)  # 이어서 물어볼 예상 질문(검증 대상 아님)
 
 
 class ReviewFlag(BaseModel):
@@ -106,6 +107,7 @@ class Answer(BaseModel):
     cited: list[str] = Field(default_factory=list)
     as_of: str | None = None
     stale_used: bool = False
+    follow_ups: list[str] = Field(default_factory=list)  # 화면 '이어서 물어보기' 칩
 
 
 FallbackReason = Literal[

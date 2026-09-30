@@ -14,6 +14,7 @@ from typing import Any
 
 from backend.agent import prompts
 from backend.agent.draft_stream import draft_emitter
+from backend.agent.follow_ups import next_recent, pick_follow_ups
 from backend.agent.llm import LLMTimeout, LLMUnavailable, StructuredLLM, StructuredOutputError
 from backend.agent.needs import plan_calls, semester_window, target_day
 from backend.agent.resolve import NEED_PRIORITY, resolve
@@ -346,6 +347,13 @@ class Nodes:
         return {"resolution": r, "review_flags": state.get("review_flags", []) + r.review_flags}
 
     # ── compose · verify ───────────────────────────────────────────────
+    @staticmethod
+    def _asked(state: TurnState) -> list[str]:
+        """이번 스레드에서 물은 질문들(오래된 것부터) + 이번 질문."""
+        lt = state.get("last_turn")
+        prev = next_recent(lt.recent_queries, lt.query_masked) if lt else []
+        return [*prev, state.get("effective_query") or state.get("query") or ""]
+
     def _compose_prompt(self, state: TurnState) -> str:
         r = state.get("resolution") or Resolution()
         ev = [
@@ -361,6 +369,7 @@ class Nodes:
         prof = state.get("profile") or Profile()
         return json.dumps(
             {
+                "이전 질문(대화 흐름, 이미 물음)": self._asked(state)[:-1],
                 "질문": state.get("effective_query"),
                 "학생 조건": prof.model_dump(exclude_none=True),
                 "조건 부족(가정 금지)": state.get("missing_slots", []),
@@ -478,6 +487,12 @@ class Nodes:
             cited=cited,
             as_of=as_of,
             stale_used=bool(stale),
+            follow_ups=pick_follow_ups(
+                draft.follow_ups,
+                asked=self._asked(state),
+                topic=state.get("topic"),
+                query=state.get("effective_query") or "",
+            ),
         )
         _emit("answer", **ans.model_dump(mode="json"))
         return {"answer": ans, "outcome": "answer"}
@@ -505,11 +520,13 @@ class Nodes:
         if outcome == "answer" and state.get("answer"):
             ans = state["answer"]
             summary = " ".join(s.text for s in ans.sentences)[:300]
+            prev = state.get("last_turn")
             update["last_turn"] = LastTurn(
                 query_masked=state.get("effective_query") or state["query"],
                 answer_summary=summary,
                 cited_ids=ans.cited,
                 topic=state.get("topic"),
+                recent_queries=next_recent(prev.recent_queries, prev.query_masked) if prev else [],
             )
         return update
 

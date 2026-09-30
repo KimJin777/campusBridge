@@ -13,6 +13,18 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.12.0",
+        "date": "2026-09-30",
+        "deployed_at": None,
+        "revision": None,
+        "title": "이어서 물어보기(대화 흐름 맞춤 예상 질문)",
+        "items": [
+            "답변 아래 예상 질문 2~3개 — 이번 근거에서만 만들고 앞선 질문 흐름을 반영(예: 휴학 → 복학 → 등록금)",
+            "이미 물은 질문·긴 질문·개인정보 요구 질문은 서버가 거르고, 부족하면 주제별 기본 질문으로 보충",
+            "새 질문을 보내면 이전 답변의 칩은 비활성",
+        ],
+    },
+    {
         "version": "0.11.0",
         "date": "2026-09-30",
         "deployed_at": None,
