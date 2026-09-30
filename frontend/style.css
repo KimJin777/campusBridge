@@ -379,3 +379,11 @@ a.calpage-t:hover { text-decoration: underline; }
 .tip-votes { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .tip-votes .fb[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-soft); }
 .tip-progress { color: var(--muted); font-size: 12px; }
+
+/* 카카오 지도 길안내 */
+.kmap { width: 100%; height: 340px; border-radius: 10px; overflow: hidden; }
+@media (max-width: 480px) { .kmap { height: 280px; } }
+.kmap-pin { display: inline-block; padding: 3px 8px; border-radius: 9999px; color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+.kmap-pin.start { background: #10b981; }
+.kmap-pin.end { background: #ef4444; }
+.kmap-link { display: inline-block; margin-top: 8px; padding: 6px 12px; border-radius: 9999px; background: #fee500; color: #191919; font-size: 13px; font-weight: 700; text-decoration: none; }

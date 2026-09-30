@@ -79,6 +79,8 @@ class Settings:
         default_factory=lambda: frozenset(e.lower() for e in _list("ADMIN_EMAILS"))
     )
     google_oauth_client_id: str = field(default_factory=lambda: _str("GOOGLE_OAUTH_CLIENT_ID"))
+    # 카카오 지도 JavaScript 키(웹 페이지에 공개되는 키, 카카오 콘솔의 등록 도메인에서만 동작)
+    kakao_js_key: str = field(default_factory=lambda: _str("KAKAO_JS_KEY"))
 
     # 외부 수집(03 공통, 01 §0)
     allowed_hosts: frozenset[str] = field(

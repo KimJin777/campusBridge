@@ -90,3 +90,19 @@ def test_school_bus_questions_route_to_neoreun_madang():
     """스쿨버스(통학버스) 타고 내리는 곳 = 너른마당(교수님 2026-09-30)."""
     for q in ("스쿨버스 어디서 타요?", "통학버스 내리는 곳", "셔틀버스 타는 곳 가는 길"):
         assert route(q)["to"] == "너른마당", q
+
+
+def test_route_has_latlng_path_for_kakao_map():
+    """카카오 지도용 위경도: 캠퍼스투어 좌표와 수 m 이내(교수님 2026-09-30)."""
+    import math
+
+    from backend.tools.campus_route import load, px_to_latlng
+
+    p = load()["places"]["정문"]
+    lat, lng = px_to_latlng(p["xy"])
+    meters = math.dist((lat * 111_000, lng * 91_000), (p["lat"] * 111_000, p["lng"] * 91_000))
+    assert meters < 15
+    r = route("너른마당")
+    assert len(r["path"]) == len(r["line"]) and r["to_ll"] == px_to_latlng(
+        load()["places"]["너른마당"]["xy"]
+    )

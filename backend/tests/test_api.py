@@ -140,9 +140,13 @@ def test_suggestions_privacy_and_static_frontend():
     assert page.status_code == 200 and "캠퍼스 브릿지" in page.text
     assert "default-src 'self'" in page.headers["content-security-policy"]
     assert (
-        "style-src 'self' https://fonts.googleapis.com"
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com"
         in page.headers["content-security-policy"]
     )
+    assert "script-src 'self' https://dapi.kakao.com" in page.headers["content-security-policy"]
+    assert (
+        "'unsafe-inline'" not in page.headers["content-security-policy"].split("style-src")[0]
+    )  # 스크립트는 인라인 불허
     assert "font-src https://fonts.gstatic.com" in page.headers["content-security-policy"]
     assert page.headers["cache-control"] == "no-cache"
     assert c.get("/app.js").headers["cache-control"] == "no-cache"

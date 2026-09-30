@@ -92,6 +92,18 @@ def start_choices() -> list[str]:
     return [g for g in GATES if g in places] + sorted(p for p in places if p not in GATES)
 
 
+def px_to_latlng(xy: list[float]) -> list[float]:
+    """기준 지도 픽셀 → [위도, 경도]. 학교 캠퍼스투어 좌표로 맞춘 아핀 변환의 역변환(오차 약 6m)."""
+    (a, b), (c, d), (e, f) = load()["geo"][
+        "lnglat_to_px"
+    ]  # x = a·lng + c·lat + e, y = b·lng + d·lat + f
+    x, y = xy[0] - e, xy[1] - f
+    det = a * d - b * c
+    lng = (d * x - c * y) / det
+    lat = (a * y - b * x) / det
+    return [round(lat, 7), round(lng, 7)]
+
+
 def _project(
     p: tuple[float, float], a: list[int], b: list[int]
 ) -> tuple[float, tuple[float, float]]:
@@ -217,6 +229,10 @@ def route(dest_text: str, start: str | None = None) -> dict[str, Any] | None:
         "distance_m": round(meters),
         "minutes": max(1, math.ceil(meters / WALK_M_PER_MIN)),
         "line": [[round(x, 1), round(y, 1)] for x, y in line],
+        # 카카오 지도용 위경도 경로와 출발·도착 좌표(교수님 2026-09-30 카카오맵 연동)
+        "path": [px_to_latlng(p) for p in line],
+        "from_ll": px_to_latlng(data["places"][start]["xy"]),
+        "to_ll": px_to_latlng(data["places"][dest]["xy"]),
         "tips": tips,
     }
 

@@ -717,9 +717,87 @@ function svgEl(tag, attrs) {
   return n;
 }
 
+// ── 카카오 지도(교수님 2026-09-30): 키가 있으면 실제 지도 위에 경로, 실패하면 자체 약도 ────
+let kakaoReady = null;
+function loadKakao(key) {
+  if (window.kakao?.maps?.LatLng) return Promise.resolve(window.kakao);
+  kakaoReady = kakaoReady || new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&autoload=false`;
+    s.onload = () => (window.kakao?.maps ? window.kakao.maps.load(() => resolve(window.kakao)) : reject(new Error("kakao")));
+    s.onerror = () => reject(new Error("kakao"));
+    document.head.append(s);
+    setTimeout(() => reject(new Error("kakao timeout")), 8000);
+  });
+  kakaoReady.catch(() => (kakaoReady = null));
+  return kakaoReady;
+}
+
+function kakaoPin(text, cls) {
+  const tag = el("span", `kmap-pin ${cls}`, text);
+  return tag;
+}
+
+async function kakaoFigure(r, key) {
+  const kakao = await loadKakao(key);
+  const box = el("div", "kmap");
+  box.setAttribute("role", "img");
+  box.setAttribute("aria-label", `${r.from}에서 ${r.to}까지 도보 경로 지도`);
+  const LL = (p) => new kakao.maps.LatLng(p[0], p[1]);
+  const path = r.path.map(LL);
+  const map = new kakao.maps.Map(box, { center: path[Math.floor(path.length / 2)], level: 3 });
+  new kakao.maps.Polyline({ map, path, strokeWeight: 6, strokeColor: "#2563eb", strokeOpacity: 0.9, strokeStyle: "solid" });
+  for (const [ll, text, cls] of [[r.from_ll, `출발 · ${r.from}`, "start"], [r.to_ll, `도착 · ${r.to}`, "end"]]) {
+    new kakao.maps.CustomOverlay({ map, position: LL(ll), content: kakaoPin(text, cls), yAnchor: 1.3 });
+  }
+  const bounds = new kakao.maps.LatLngBounds();
+  for (const p of path) bounds.extend(p);
+  requestAnimationFrame(() => {
+    map.relayout();
+    map.setBounds(bounds, 30, 30, 30, 30);
+  });
+  return box;
+}
+
+function kakaoLink(r) {
+  const [fl, tl] = [r.from_ll, r.to_ll];
+  if (!fl || !tl) return null;
+  const a = el("a", "kmap-link", "카카오맵에서 길찾기");
+  a.href = `https://map.kakao.com/link/from/${encodeURIComponent(r.from)},${fl[0]},${fl[1]}/to/${encodeURIComponent(r.to)},${tl[0]},${tl[1]}`;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  return a;
+}
+
 async function routeFigure(r) {
   campusMapCache = campusMapCache || (await fetch("/api/campus/map").then((x) => x.json()));
   const m = campusMapCache;
+  if (m.kakao_js_key && r.path?.length) {
+    try {
+      const fig = el("figure", "route-fig");
+      fig.append(await kakaoFigure(r, m.kakao_js_key), el("figcaption", "hint", "교내 도보길 기준 경로 · 경사·계단 구간이 있어 실제 시간은 더 걸릴 수 있습니다."));
+      const link = kakaoLink(r);
+      if (link) fig.append(link);
+      appendPhoto(fig, m, r);
+      return fig;
+    } catch {
+      // 카카오 지도를 못 불러오면 아래 자체 약도로
+    }
+  }
+  return svgFigure(r, m);
+}
+
+function appendPhoto(fig, m, r) {
+  const photo = m.places[r.to]?.photo;
+  if (!photo) return;
+  const img = el("img", "route-photo");
+  img.src = photo;
+  img.alt = `${r.to} 사진`;
+  img.loading = "lazy";
+  fig.append(img, el("figcaption", "hint", m.photo_credit || "사진 출처: 경남대학교 홈페이지"));
+}
+
+function svgFigure(r, m) {
   const all = m.paths.flat();
   const xs = all.map((p) => p[0]);
   const ys = all.map((p) => p[1]);
@@ -740,16 +818,11 @@ async function routeFigure(r) {
   }
   const fig = el("figure", "route-fig");
   fig.append(svg);
-  const cap = el("figcaption", "hint", "교수님이 표시한 교내 도보길 기준 · 경사·계단 구간이 있어 실제 시간은 더 걸릴 수 있습니다.");
+  const cap = el("figcaption", "hint", "교내 도보길 기준 약도 · 경사·계단 구간이 있어 실제 시간은 더 걸릴 수 있습니다.");
   fig.append(cap);
-  const photo = m.places[r.to]?.photo;
-  if (photo) {
-    const img = el("img", "route-photo");
-    img.src = photo;
-    img.alt = `${r.to} 사진`;
-    img.loading = "lazy";
-    fig.append(img, el("figcaption", "hint", m.photo_credit || "사진 출처: 경남대학교 홈페이지"));
-  }
+  const link = kakaoLink(r);
+  if (link) fig.append(link);
+  appendPhoto(fig, m, r);
   return fig;
 }
 

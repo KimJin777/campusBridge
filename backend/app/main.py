@@ -45,10 +45,12 @@ SSE_HEADERS = {
     "X-Accel-Buffering": "no",
 }
 CSP = (
-    "default-src 'self'; script-src 'self'; "
-    "style-src 'self' https://fonts.googleapis.com; "
-    "font-src https://fonts.gstatic.com; img-src 'self' data:; "
-    "connect-src 'self'; frame-ancestors 'none'"
+    "default-src 'self'; script-src 'self' https://dapi.kakao.com https://*.daumcdn.net; "
+    # 카카오 지도 SDK의 인라인 스타일 때문에 스타일만 'unsafe-inline'(스크립트는 불허)
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src https://fonts.gstatic.com; "
+    "img-src 'self' data: https://*.daumcdn.net https://*.kakao.com https://*.kakaocdn.net; "
+    "connect-src 'self' https://dapi.kakao.com https://*.daumcdn.net; frame-ancestors 'none'"
 )
 # 관리자 화면은 Google 로그인(GIS) 스크립트·창과 공통 웹폰트를 허용한다.
 ADMIN_CSP = (
@@ -518,7 +520,7 @@ def create_app(
     async def campus_map_api() -> dict[str, Any]:
         from backend.tools.campus_route import campus_map
 
-        return campus_map()
+        return {**campus_map(), "kakao_js_key": s.kakao_js_key or None}
 
     @app.get("/api/campus/route")
     async def campus_route_api(to: str = "", start: str = "") -> dict[str, Any]:
