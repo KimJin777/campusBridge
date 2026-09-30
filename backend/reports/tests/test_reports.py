@@ -100,7 +100,10 @@ def test_tip_submit_screens_judges_and_masks():
     r = c.post("/api/reports/tip", json=tip_body("너른마당에서 스쿨버스 타요 학번 20231234"))
     assert r.status_code == 200 and r.json()["accepted"] and r.json()["status"] == "verifying"
     row = next(iter(store.rows.values()))
-    assert "20231234" not in row["text_masked"] and row["receipt_hash"]  # 마스킹 후 저장
+    assert (
+        "20231234" not in row["text_masked"] and row["receipt_hash"] is None
+    )  # 마스킹, 이벤트 번호 미발급
+    assert "receipt" not in r.json()  # 지금은 이벤트를 하지 않음(교수님 2026-09-30)
     assert "net" in row and "ip" not in row  # IP 원문은 저장하지 않음
     dup = c.post("/api/reports/tip", json=tip_body("너른마당에서 스쿨버스 타요 학번 20231234"))
     assert not dup.json()["accepted"]  # 같은 본문 중복

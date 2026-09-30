@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import UTC, datetime, timedelta, timezone
 from functools import lru_cache
@@ -121,6 +122,17 @@ async def _limits(store: ReportStore, net: str, kind: str, per_net: int) -> None
         )
 
 
+def _receipt() -> tuple[dict[str, str], str | None]:
+    """이벤트용 제보 번호. 지금은 이벤트를 하지 않으므로 발급·저장하지 않는다(교수님 2026-09-30).
+
+    REPORT_EVENT_RECEIPTS=1로 켜면 번호를 보여 주고 해시만 저장한다(설계 여지).
+    """
+    if os.getenv("REPORT_EVENT_RECEIPTS", "0") != "1":
+        return {}, None
+    shown, rhash = rules.new_receipt()
+    return {"receipt": shown}, rhash
+
+
 def _rejected(reason: str) -> dict[str, Any]:
     return {"accepted": False, "message": f"접수하지 않았습니다: {reason}"}
 
@@ -129,7 +141,7 @@ def _rejected(reason: str) -> dict[str, Any]:
 @router.post("/api/reports/tip")
 async def submit_tip(body: TipSubmit, request: Request, store: Store, llm: LLM) -> dict[str, Any]:
     if _bot(body.elapsed_ms, body.website):
-        return {"accepted": True, "receipt": rules.new_receipt()[0]}  # 자동화에는 티를 내지 않는다
+        return {"accepted": True, **_receipt()[0]}  # 자동화에는 티를 내지 않는다
     net = await _net(store, request)
     await _limits(store, net, "tip", rules.TIP_PER_NET_DAY)
     text = rules.normalize(mask(body.text))
@@ -165,7 +177,7 @@ async def submit_tip(body: TipSubmit, request: Request, store: Store, llm: LLM) 
             }
         )
         return _rejected(judge.reason)
-    shown, rhash = rules.new_receipt()
+    shown, rhash = _receipt()
     public = screen.verdict == "ok" and judge is not None and judge.verdict == "ok"
     doc = {
         **base,
@@ -185,7 +197,7 @@ async def submit_tip(body: TipSubmit, request: Request, store: Store, llm: LLM) 
     await store.create(doc)
     return {
         "accepted": True,
-        "receipt": shown,
+        **shown,
         "status": doc["status"],
         "message": "검증 중인 꿀팁에 올라갔습니다. 학생들의 확인을 받으면 승인됩니다."
         if public
@@ -212,7 +224,7 @@ async def submit_wrong_info(
     body: WrongInfoSubmit, request: Request, store: Store, llm: LLM
 ) -> dict[str, Any]:
     if _bot(body.elapsed_ms, body.website):
-        return {"accepted": True, "receipt": rules.new_receipt()[0]}
+        return {"accepted": True, **_receipt()[0]}
     if not TURN_ID.match(body.turn_id):
         raise AppError("BAD_REQUEST", "제보할 답변을 찾지 못했습니다.")
     turn = await store.turn(body.turn_id)
@@ -256,7 +268,7 @@ async def submit_wrong_info(
     auto = judge is not None and deterministic_mismatch(
         judge, snapshot["answer_text"], evidence_text
     )
-    shown, rhash = rules.new_receipt()
+    shown, rhash = _receipt()
     doc = {
         **base,
         "status": "confirmed" if auto else "pending",
@@ -286,7 +298,7 @@ async def submit_wrong_info(
         )
     return {
         "accepted": True,
-        "receipt": shown,
+        **shown,
         "message": "답변과 근거가 다른 부분을 확인했습니다. 관리자가 고칩니다."
         if auto
         else "관리자가 확인합니다.",
