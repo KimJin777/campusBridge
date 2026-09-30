@@ -215,3 +215,18 @@ async def test_tips_tool_matches_only_approved_and_labels():
     ]
     hits = match_tips("보건의료관 가려면 제2공학관 어디로?", rows, {"제2공학관", "보건의료관"})
     assert [h["id"] for h in hits] == ["a"]
+
+
+def test_time_transition_without_new_votes_and_chat_freshness():
+    """10표가 24시간 전에 모두 모이고 추가 투표가 없어도 매일 재판정에서 승격(GPT5 #717)."""
+    early = _tip(published_at=NOW - timedelta(hours=2))
+    assert "status" not in rules.evaluate_tip(early, NOW)  # 투표 시점엔 24시간 전
+    later = NOW + timedelta(hours=23)
+    changes = rules.reconcile_tips([{"id": "t1", "type": "tip", **early}], later)
+    assert changes["t1"]["status"] == "student_approved"
+    approved = {"status": "student_approved", "approved_at": later}
+    assert rules.chat_eligible(approved, later + timedelta(days=29))
+    assert not rules.chat_eligible(approved, later + timedelta(days=31))  # 낡으면 답변에서 제외
+    refreshed = {**approved, "last_confirm_at": later + timedelta(days=30)}
+    assert rules.chat_eligible(refreshed, later + timedelta(days=45))  # 최근 '맞아요'로 연장
+    assert not rules.chat_eligible({"status": "verifying"}, later)

@@ -323,6 +323,8 @@ def _public_tip(row: dict[str, Any], mine: str | None) -> dict[str, Any]:
         "dispute": dispute,
         "contested": bool(row.get("contested")),
         "safety": bool(row.get("safety")),
+        "stale": row.get("status") in ("approved", "student_approved")
+        and not rules.chat_eligible(row, datetime.now(UTC)),
         "created": created.astimezone(KST).date().isoformat()
         if isinstance(created, datetime)
         else None,

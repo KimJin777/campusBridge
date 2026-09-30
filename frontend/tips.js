@@ -46,6 +46,7 @@ function tipItem(t, rule) {
   top.append(el("span", `tip-badge${t.status === "verifying" ? " warn" : ""}`, t.badge || "검증 중"), el("span", null, t.category));
   if (t.created) top.append(el("span", null, t.created));
   if (t.contested) top.append(el("span", "tip-badge warn", "이견 많음 · 관리자 확인 중"));
+  if (t.stale) top.append(el("span", "tip-badge warn", "재확인 필요 · 아직 맞으면 '맞아요'를 눌러 주세요"));
   if (t.safety && t.status === "verifying") top.append(el("span", "tip-badge warn", "안전 관련 · 관리자 확인 후 승인"));
   li.append(top, el("p", "tip-text", t.text));
   const bar = el("div", "tip-votes");

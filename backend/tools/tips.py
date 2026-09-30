@@ -10,10 +10,12 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 from backend.app.config import Settings
 from backend.domain.evidence import Evidence, ToolResult
+from backend.reports.rules import chat_eligible
 
 APPROVED = ("approved", "student_approved")
 TTL_SECONDS = 300
@@ -77,6 +79,8 @@ async def find_campus_tips(query: str, *, settings: Settings) -> ToolResult:
     if not settings.gcp_project_id:
         return ToolResult.empty("승인된 꿀팁이 없습니다")
     rows = await asyncio.to_thread(_rows, settings)
+    now = datetime.now(UTC)
+    rows = [r for r in rows if chat_eligible(r, now)]  # 낡은 꿀팁은 답변에서 제외(페이지에는 남음)
     hits = match_tips(query, rows, _place_names())
     if not hits:
         return ToolResult.empty("관련 꿀팁이 없습니다")

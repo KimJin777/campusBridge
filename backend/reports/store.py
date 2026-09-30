@@ -51,7 +51,10 @@ def _apply_vote(tip: dict[str, Any], prev: str | None, value: str, net: str) -> 
     counts[field[value]] += 1
     if value in ("confirm", "dispute"):
         nets[net] = nets.get(net, 0) + 1
-    return {**counts, "net_counts": {k: v for k, v in nets.items() if v}}
+    out: dict[str, Any] = {**counts, "net_counts": {k: v for k, v in nets.items() if v}}
+    if value == "confirm":
+        out["last_confirm_at"] = datetime.now(UTC)  # 챗봇 인용 신선도(GPT5 #717-2)
+    return out
 
 
 class MemoryReportStore:

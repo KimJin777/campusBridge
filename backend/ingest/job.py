@@ -312,6 +312,13 @@ def run_ingestion(
             log.exception("event docs indexing failed")
             stats["event_docs_error"] = type(exc).__name__
 
+    if "events" in wanted:  # 매일 1회 꿀팁 시간 전이(24시간 경과 승격 — GPT5 #717-1)
+        try:
+            stats["tips"] = _reconcile_tips(deps)
+        except Exception as exc:  # noqa: BLE001 — 꿀팁 판정 실패가 수집을 막지 않게
+            log.exception("tips reconcile failed")
+            stats["tips_error"] = type(exc).__name__
+
     if "menus" in wanted and deps.menus is not None:
         _run(deps, run_id, phase="menus")
         try:
@@ -322,6 +329,17 @@ def run_ingestion(
 
     _run(deps, run_id, status="success", phase="done", finished_at=_now(), **stats)
     return stats
+
+
+def _reconcile_tips(deps: JobDeps) -> dict[str, int]:
+    from backend.reports.rules import reconcile_tips
+
+    now = _now()
+    rows = [{"id": i, **r} for i, r in deps.docs.find("reports", "type", "tip")]
+    changes = reconcile_tips(rows, now)
+    for tip_id, change in changes.items():
+        deps.docs.merge("reports", tip_id, {**change, "updated_at": now, "reconciled_by": "job"})
+    return {"checked": len(rows), "changed": len(changes)}
 
 
 def _web_pages_enabled() -> bool:

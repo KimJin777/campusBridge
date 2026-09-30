@@ -182,6 +182,33 @@ def evaluate_tip(tip: dict[str, Any], now: datetime) -> dict[str, Any]:
     return {**out, "status": "student_approved", "approved_at": now, "approved_by": "students"}
 
 
+FRESH_DAYS = 30  # 학생 확인 꿀팁: 승인 또는 최근 '맞아요'가 30일 안이어야 챗봇이 인용(GPT5 #717-2)
+ADMIN_FRESH_DAYS = 180
+
+
+def chat_eligible(tip: dict[str, Any], now: datetime) -> bool:
+    """챗봇 인용 자격: 승인 상태 + 신선도. 페이지에는 남기되 낡으면 답변에서만 뺀다."""
+    status = tip.get("status")
+    if status not in ("approved", "student_approved"):
+        return False
+    days = ADMIN_FRESH_DAYS if status == "approved" else FRESH_DAYS
+    marks = [
+        t for t in (tip.get("approved_at"), tip.get("last_confirm_at")) if isinstance(t, datetime)
+    ]
+    return bool(marks) and now - max(marks) <= timedelta(days=days)
+
+
+def reconcile_tips(rows: list[dict[str, Any]], now: datetime) -> dict[str, dict[str, Any]]:
+    """매일 수집 Job에서 호출: 새 투표가 없어도 24시간이 지난 검증 중 꿀팁을 판정한다."""
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if row.get("type") == "tip" and row.get("status") == "verifying":
+            change = evaluate_tip(row, now)
+            if change:
+                out[row["id"]] = change
+    return out
+
+
 def public_badge(status: str) -> str:
     return {
         "approved": "관리자 확인",
