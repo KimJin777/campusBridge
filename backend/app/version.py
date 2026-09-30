@@ -13,9 +13,17 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
-        "version": "0.23.1",
+        "version": "0.23.2",
         "date": "2026-09-30",
         "deployed_at": None,
+        "revision": None,
+        "title": "달력 일반공지·행사세미나 구분 수정",
+        "items": ["달력 보기 옵션에서 일반공지 게시판의 일정이 행사·세미나로 잘못 묶이던 문제 수정"],
+    },
+    {
+        "version": "0.23.1",
+        "date": "2026-09-30",
+        "deployed_at": "2026-09-30T11:40:00Z",
         "revision": None,
         "title": "그림으로 된 공지의 일정도 수집",
         "items": [

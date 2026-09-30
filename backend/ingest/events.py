@@ -232,6 +232,7 @@ def upsert_event(docs: Docs, event: dict[str, Any], now: datetime) -> str:
         "end_date": event["end"].isoformat(),
         "source_type": event["source_type"],
         "source_category": event["source_category"],
+        "source_board": event.get("source_board"),
         "source_url": event["source_url"],
         "extracted_by": event["extracted_by"],
         "date_label": event.get("date_label"),

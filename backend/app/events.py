@@ -26,7 +26,10 @@ def group_of(r: dict[str, Any]) -> str:
     cat = r.get("source_category")
     if cat in ("calendar", "academic", "scholarship"):
         return cat
-    return "general" if r.get("source_board") == "general" else "events"
+    board = r.get("source_board")
+    if board is None:  # 게시판 기록 전 행사: 원문 주소로 구분(일반공지 게시판 1408)
+        board = "general" if "/bbs/ko/1408/" in str(r.get("source_url") or "") else "events"
+    return "general" if board == "general" else "events"
 
 
 def parse_groups(raw: str | None) -> set[str]:

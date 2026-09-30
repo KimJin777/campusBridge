@@ -94,3 +94,8 @@ def test_calendar_groups_split_boards_and_parse_filter():
     assert group_of({"source_category": "event"}) == "events"  # 예전 행사 기록은 행사세미나로
     assert parse_groups("academic,events,xx") == {"academic", "events"}
     assert len(parse_groups("")) == 5 and len(parse_groups("zzz")) == 5
+    old_general = {
+        "source_category": "event",
+        "source_url": "https://www.kyungnam.ac.kr/bbs/ko/1408/1/artclView.do",
+    }
+    assert group_of(old_general) == "general"
