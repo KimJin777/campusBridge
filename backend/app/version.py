@@ -13,6 +13,18 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.16.0",
+        "date": "2026-09-30",
+        "deployed_at": None,
+        "revision": None,
+        "title": "관리자 교내 홈페이지 등록",
+        "items": [
+            "관리자 화면 '홈페이지 등록': 교내 홈페이지 주소를 넣고 미리보기로 확인한 뒤 [등록]하면 바로 수집 대상(별도 승인 없음, 교수님 #685)",
+            "매일 05:00 또는 [지금 수집]으로 학사안내처럼 검색 색인에 반영, 중지·삭제하면 색인에서도 제거, 모든 변경은 감사 로그",
+            "보안: https·kyungnam.ac.kr만, 내부망 IP 차단, 리다이렉트마다 재검사, HTML 5MB 이하, 입력한 한 쪽만(링크 따라가지 않음). WEB_PAGES_ENABLED=0으로 끔",
+        ],
+    },
+    {
         "version": "0.15.0",
         "date": "2026-09-30",
         "deployed_at": None,

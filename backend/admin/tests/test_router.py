@@ -549,3 +549,24 @@ def test_access_request_me_and_super_admin_decisions() -> None:
     )
     denied = client.post("/api/admin/admins/new@example.edu/reject", json=body)
     assert denied.status_code == 403  # 일반 관리자는 승인·거절 불가
+
+
+def test_web_page_register_blocks_outside_school_and_actions_are_audited() -> None:
+    """교내 홈페이지 등록(교수님 #688): 교외·http 주소 거부, 중지·삭제는 사유와 함께 저장."""
+    store = FakeStore()
+    calls = []
+
+    async def save_web_page(page_id, changes, **kwargs):
+        calls.append((page_id, changes, kwargs))
+        return {"id": page_id, **changes}
+
+    store.save_web_page = save_web_page
+    client = _client(store)
+    for url in ("http://www.kyungnam.ac.kr/ko/1/subview.do", "https://example.com/page.html"):
+        r = client.post("/api/admin/web-pages/preview", json={"url": url})
+        assert r.status_code == 400
+    body = {"reason": "학과 개편", "request_id": "req-web-1"}
+    assert client.post("/api/admin/web-pages/abc/purge", json=body).status_code == 400
+    r = client.post("/api/admin/web-pages/abc/stop", json=body)
+    assert r.status_code == 200 and calls[0][1] == {"status": "stopped"}
+    assert calls[0][2]["action"] == "stop" and calls[0][2]["reason"] == "학과 개편"

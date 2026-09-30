@@ -40,6 +40,7 @@ class Blobs(Protocol):
 class Docs(Protocol):
     def get(self, collection: str, doc_id: str) -> dict[str, Any] | None: ...
     def merge(self, collection: str, doc_id: str, data: dict[str, Any]) -> None: ...
+    def find(self, collection: str, field: str, value: Any) -> list[tuple[str, dict[str, Any]]]: ...
 
 
 class Index(Protocol):
@@ -205,7 +206,7 @@ def run_ingestion(
     from backend.ingest.manifest import load_manifest
     from backend.ingest.registry import collect_rules
 
-    wanted = set(source_ids) or {"rules", "academic_guides", "events", "menus"}
+    wanted = set(source_ids) or {"rules", "academic_guides", "web_pages", "events", "menus"}
     stats: dict[str, Any] = {"added": 0, "changed": 0, "rejected": 0, "processed": 0, "total": 0}
     _run(deps, run_id, status="running", phase="registry", started_at=_now())
 
@@ -269,6 +270,24 @@ def run_ingestion(
             if deps.index.import_jsonl(out, object_prefix=f"runs/{run_id}/guides"):
                 raise RuntimeError("IMPORT_FAILED")
 
+    if "web_pages" in wanted and _web_pages_enabled():
+        from backend.ingest.webpage import collect_registered
+
+        _run(deps, run_id, phase="web_pages")
+
+        def import_docs(documents: list[dict[str, object]]) -> bool:
+            out = workdir / "web_pages.jsonl"
+            _write_jsonl(out, documents)
+            return not deps.index.import_jsonl(out, object_prefix=f"runs/{run_id}/web")
+
+        try:
+            stats["web_pages"] = collect_registered(
+                deps.docs, deps.index, now=_now(), import_docs=import_docs
+            )
+        except Exception as exc:  # noqa: BLE001 — 등록 페이지 실패가 다른 수집을 막지 않게
+            log.exception("web page collection failed")
+            stats["web_pages_error"] = type(exc).__name__
+
     if "events" in wanted and deps.events is not None:
         _run(deps, run_id, phase="events")
         try:
@@ -287,6 +306,10 @@ def run_ingestion(
 
     _run(deps, run_id, status="success", phase="done", finished_at=_now(), **stats)
     return stats
+
+
+def _web_pages_enabled() -> bool:
+    return os.getenv("WEB_PAGES_ENABLED", "1").lower() not in ("0", "false", "off")
 
 
 def _run(deps: JobDeps, run_id: str, **fields: Any) -> None:

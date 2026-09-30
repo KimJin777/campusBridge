@@ -161,6 +161,18 @@ class AdminStore(Protocol):
 
     async def request_admin_access(self, email: str, *, name: str, note: str) -> dict[str, Any]: ...
 
+    async def save_web_page(
+        self,
+        page_id: str,
+        changes: dict[str, Any],
+        *,
+        create: bool,
+        action: str,
+        actor: AdminActor,
+        reason: str,
+        request_id: str,
+    ) -> dict[str, Any]: ...
+
     async def decide_admin(
         self,
         email: str,
@@ -796,6 +808,57 @@ class FirestoreAdminStore:
                 ),
             )
             return {"id": document_id, **_safe_value(after)}
+
+        return await txn(self.db.transaction())
+
+    async def save_web_page(
+        self,
+        page_id: str,
+        changes: dict[str, Any],
+        *,
+        create: bool,
+        action: str,
+        actor: AdminActor,
+        reason: str,
+        request_id: str,
+    ) -> dict[str, Any]:
+        """교내 홈페이지 등록·중지·재개·삭제 + 감사 로그(같은 트랜잭션)."""
+        ref = self.db.collection("web_pages").document(page_id)
+
+        @self._fs.async_transactional
+        async def txn(tx) -> dict[str, Any]:
+            snapshot = await ref.get(transaction=tx)
+            current = snapshot.to_dict() if snapshot.exists else None
+            if current and current.get("request_id") == request_id:
+                return {"id": page_id, **_safe_value(current)}  # 재전송 멱등
+            if create and current and current.get("status") != "deleted":
+                raise AppError("BAD_REQUEST", "이미 등록된 주소입니다.")
+            if not create and current is None:
+                raise AppError("BAD_REQUEST", "등록된 페이지를 찾지 못했습니다.")
+            now = datetime.now(UTC)
+            out = {
+                **changes,
+                "updated_at": now,
+                "updated_by": actor.email,
+                "request_id": request_id,
+            }
+            if create:
+                out.update({"created_at": now, "created_by": actor.email, "last_status": "queued"})
+            after = {**(current or {}), **out}
+            tx.set(ref, out, merge=True)
+            tx.set(
+                self.db.collection("admin_audit").document(str(uuid4())),
+                self._audit_payload(
+                    actor=actor,
+                    action=f"web_page.{action}",
+                    target=page_id,
+                    before=current,
+                    after=after,
+                    reason=reason,
+                    request_id=request_id,
+                ),
+            )
+            return {"id": page_id, **_safe_value(after)}
 
         return await txn(self.db.transaction())
 

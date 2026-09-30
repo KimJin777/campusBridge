@@ -185,3 +185,21 @@ class DocumentActionRequest(BaseModel):
         if not value.strip():
             raise ValueError("blank reason")
         return value.strip()
+
+
+class WebPagePreview(BaseModel):
+    """교내 홈페이지 미리보기(교수님 #688)."""
+
+    url: str = Field(min_length=10, max_length=500)
+
+
+class WebPageCreate(WebPagePreview):
+    """미리보기를 본 관리자가 바로 등록한다(별도 승인 없음 — 교수님 #685)."""
+
+    note: str = Field(default="", max_length=200)
+    request_id: str = Field(min_length=8, max_length=100)
+
+
+class WebPageAction(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+    request_id: str = Field(min_length=8, max_length=100)

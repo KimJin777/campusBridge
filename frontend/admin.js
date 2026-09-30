@@ -214,6 +214,7 @@ const TABS = {
   runs: ["수집 실행", viewRuns, "retry"],
   disable: ["긴급 회수", viewDisable, "alert"],
   documents: ["교내 문서", viewDocuments, "book"],
+  webpages: ["홈페이지 등록", viewWebPages, "external"],
   events: ["학사·행사 일정", viewEvents, "calendar"],
   places: ["장소 표", viewPlaces, "pin"],
   phonebook: ["전화번호부", viewPhonebook, "phone"],
@@ -694,6 +695,74 @@ function placeTable(rows, { onEdit = null, refreshTab = "review", includeEvidenc
   tools.append(all, go);
   wrap.append(el("p", "hint", "학교 원문 URL·확인일·위치 또는 부서 대표전화가 있고, 원문과 일치하는 항목만 검수 완료하세요."), tools, t);
   return wrap;
+}
+
+// ── 교내 홈페이지 등록(교수님 #682·#685·#688): 미리보기 → 등록하면 바로 수집 대상 ──
+const WEB_STATUS = { active: "수집 중", stopped: "중지", deleted: "삭제(색인 정리 대기)" };
+
+async function viewWebPages(view) {
+  const { items } = await api("/web-pages");
+  const form = el("form", "inline");
+  form.append(
+    field("교내 홈페이지 주소(https://…kyungnam.ac.kr)", "url", "url", { required: true, placeholder: "https://www.kyungnam.ac.kr/ko/4319/subview.do" }),
+    field("메모(무엇을 위한 페이지인지)", "note", "text", { placeholder: "예: 통학버스 노선 안내" }),
+  );
+  const preview = el("div", "web-preview");
+  let checked = null; // 미리보기를 확인한 주소 — 이 주소일 때만 [등록]
+  const reg = btn("등록", async () => {
+    if (checked !== form.url.value.trim()) return flash("먼저 [미리보기]로 내용을 확인하세요.", true);
+    await api("/web-pages", { method: "POST", body: { url: checked, note: form.note.value, request_id: rid() } });
+    flash("등록했습니다. 다음 수집(매일 05:00) 또는 [지금 수집]으로 학생 답변에 반영됩니다.");
+    openTab("webpages");
+  }, "act primary");
+  reg.disabled = true;
+  form.url.addEventListener("input", () => {
+    reg.disabled = checked !== form.url.value.trim();
+  });
+  const pv = btn("미리보기", async () => {
+    const url = form.url.value.trim();
+    if (!url) return flash("주소를 입력하세요.", true);
+    preview.replaceChildren(el("p", "hint", "페이지를 읽는 중…"));
+    try {
+      const r = await api("/web-pages/preview", { method: "POST", body: { url } });
+      checked = url;
+      reg.disabled = false;
+      const list = el("div");
+      for (const s of r.sections) list.append(el("h4", null, s.heading), el("pre", "preview", s.text));
+      preview.replaceChildren(el("p", "hint", `「${r.title}」 — 본문 ${r.count}개 절을 찾았습니다. 학생 답변에 쓰일 내용이 맞으면 [등록]을 누르세요.`), list);
+    } catch (e) {
+      checked = null;
+      reg.disabled = true;
+      preview.replaceChildren();
+      throw e;
+    }
+  });
+  form.addEventListener("submit", (e) => e.preventDefault());
+  form.append(pv, reg);
+  const act = (row, action, label) => btn(label, async () => {
+    const reason = askReason(`「${row.title || row.url}」 ${label}`);
+    if (!reason) return;
+    await api(`/web-pages/${encodeURIComponent(row.id)}/${action}`, { method: "POST", body: { reason, request_id: rid() } });
+    openTab("webpages");
+  });
+  view.replaceChildren(
+    el("p", "hint", "학생 답변에 쓸 교내 홈페이지(학과·부서·생활관 등)를 주소로 등록합니다. 입력한 한 쪽만 읽고 링크는 따라가지 않습니다. 등록·중지·삭제는 감사 로그에 남습니다."),
+    form,
+    preview,
+    btn("지금 수집", async () => {
+      if (!confirm("등록된 홈페이지를 지금 다시 읽어 반영할까요?")) return;
+      const r = await api("/ingestion-runs", { method: "POST", body: { source_ids: ["web_pages"], idempotency_key: rid() } });
+      flash(`수집 작업: ${r.id}${r.reused ? " (기존 작업 재사용)" : ""} — '수집 실행' 탭에서 진행을 볼 수 있습니다.`);
+    }),
+    table(items, [["title", "제목"], [(r) => sourceLink(r.url), "주소"], ["note", "메모"], [(r) => WEB_STATUS[r.status] || r.status, "상태"],
+      ["sections", "절 수"], [(r) => badge(r.last_status), "마지막 수집"], ["last_error", "실패 원인"], ["last_run_at", "수집 시각"],
+      ["created_by", "등록자"], ["created_at", "등록"]],
+    (row) => [
+      row.status === "active" ? act(row, "stop", "중지") : null,
+      row.status === "stopped" ? act(row, "resume", "재개") : null,
+      row.status !== "deleted" ? act(row, "delete", "삭제") : null,
+    ]),
+  );
 }
 
 async function viewPhonebook(view) {

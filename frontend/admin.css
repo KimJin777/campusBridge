@@ -323,3 +323,6 @@ section.tile ul { margin: 7px 0 0; padding-left: 19px; font-size: 12px; }
   body.admin .brand span { display: block; font-size: 11px; }
   .notice-line { align-items: flex-start; line-height: 1.45; }
 }
+
+.web-preview { margin: 10px 0 14px; }
+.web-preview h4 { margin: 10px 0 4px; font-size: 13px; }

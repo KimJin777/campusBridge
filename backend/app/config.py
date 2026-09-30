@@ -99,6 +99,10 @@ class Settings:
         default_factory=lambda: _str("RSS_EVENTS", "/bbs/ko/1129/rssList.do?row=50")
     )
     collection_mode: str = field(default_factory=lambda: _str("COLLECTION_MODE", "approved"))
+    # 관리자 홈페이지 등록 수집(교수님 #688). robots.txt 결정에 따라 WEB_PAGES_ENABLED=0으로 끈다
+    web_pages_enabled: bool = field(
+        default_factory=lambda: _str("WEB_PAGES_ENABLED", "1").lower() not in ("0", "false", "off")
+    )
 
     # 비용·시간 상한(02 §3, 07 §5)
     max_tool_calls: int = field(default_factory=lambda: _int("MAX_TOOL_CALLS", 4))

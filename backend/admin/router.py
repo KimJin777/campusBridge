@@ -37,6 +37,9 @@ from backend.admin.models import (
     EventPatch,
     IngestionRunRequest,
     SourcePatch,
+    WebPageAction,
+    WebPageCreate,
+    WebPagePreview,
     normalize_admin_email,
 )
 from backend.admin.places import PlaceCreate, PlacePatch
@@ -679,6 +682,101 @@ async def upload_phonebook(
     except Exception as exc:
         raise AppError("INTERNAL", "전화번호부 처리 작업을 시작하지 못했습니다.") from exc
     return {"status": "processing", "file": path, "operation": operation}
+
+
+# ── 교내 홈페이지 등록(교수님 #682·#685·#688) ───────────────────────────
+WEB_ACTIONS = {"stop": "stopped", "resume": "active", "delete": "deleted"}
+
+
+async def _read_page(url: str, settings: Settings) -> tuple[str, str, list[dict[str, object]]]:
+    from backend.ingest.webpage import BlockedUrl, extract_page, fetch_html, normalize_url
+
+    if not settings.web_pages_enabled:
+        raise AppError("BAD_REQUEST", "홈페이지 수집 기능이 꺼져 있습니다(WEB_PAGES_ENABLED).")
+    try:
+        final, html = await fetch_html(normalize_url(url))
+    except BlockedUrl as exc:
+        raise AppError("BAD_REQUEST", str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 — 네트워크·HTTP 오류는 한 문장으로
+        raise AppError(
+            "BAD_REQUEST", "페이지를 가져오지 못했습니다. 주소를 확인해 주세요."
+        ) from exc
+    title, sections = extract_page(html, final)
+    if not sections:
+        raise AppError("BAD_REQUEST", "이 페이지에서 본문을 찾지 못했습니다.")
+    return final, title, sections
+
+
+@router.get("/web-pages")
+async def list_web_pages(actor: Actor, store: Store) -> dict[str, Any]:
+    del actor
+    page = await store.list_page("web_pages", limit=200, cursor=None, order_by="created_at")
+    page["items"] = [
+        r for r in page["items"] if r.get("status") != "deleted" or r.get("vertex_ids")
+    ]
+    return page
+
+
+@router.post("/web-pages/preview")
+async def preview_web_page(
+    body: WebPagePreview, actor: Actor, settings: Annotated[Settings, Depends(get_settings)]
+) -> dict[str, Any]:
+    """등록 전 확인용: 추출된 제목과 절(앞부분). 저장하지 않는다."""
+    del actor
+    final, title, sections = await _read_page(body.url, settings)
+    return {
+        "url": final,
+        "title": title,
+        "count": len(sections),
+        "sections": [
+            {"heading": s["heading"], "text": str(s["body"])[:400]} for s in sections[:10]
+        ],
+    }
+
+
+@router.post("/web-pages", status_code=201)
+async def create_web_page(
+    body: WebPageCreate,
+    actor: Actor,
+    store: Store,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    from backend.ingest.webpage import normalize_url, page_id
+
+    _final, title, sections = await _read_page(body.url, settings)
+    url = normalize_url(body.url)
+    return await store.save_web_page(
+        page_id(url),
+        {
+            "url": url,
+            "title": title,
+            "note": body.note.strip(),
+            "status": "active",
+            "sections": len(sections),
+        },  # vertex_ids는 수집 Job만 관리(재등록 시 기존 색인 보존)
+        create=True,
+        action="create",
+        actor=actor,
+        reason=body.note.strip() or "교내 홈페이지 등록",
+        request_id=body.request_id.strip(),
+    )
+
+
+@router.post("/web-pages/{page_id}/{action}")
+async def web_page_action(
+    page_id: str, action: str, body: WebPageAction, actor: Actor, store: Store
+) -> dict[str, Any]:
+    if action not in WEB_ACTIONS:
+        raise AppError("BAD_REQUEST", "지원하지 않는 작업입니다.")
+    return await store.save_web_page(
+        _valid_id(page_id),
+        {"status": WEB_ACTIONS[action]},
+        create=False,
+        action=action,
+        actor=actor,
+        reason=body.reason.strip(),
+        request_id=body.request_id.strip(),
+    )
 
 
 @router.get("/audit")
