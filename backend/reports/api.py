@@ -369,22 +369,18 @@ def _sign(secret: bytes, tid: str) -> str:
     return hmac.new(secret, f"vote|{tid}".encode(), hashlib.sha256).hexdigest()[:32]
 
 
-async def _vote_token(
-    request: Request, response: Response, store: ReportStore
-) -> tuple[str | None, bool]:
+async def _vote_token(request: Request, response: Response, store: ReportStore) -> tuple[str, bool]:
     """(토큰 id, 이번 요청에서 새로 발급했는가). 서버 서명 토큰만 인정(GPT5 #722-2).
 
     누락·위조면 새로 발급만 한다 — 발급한 그 요청에서는 투표에 쓰지 않는다(GPT5 #728-1).
-    네트워크당 하루 발급 수도 제한한다(토큰 양산 방지). 상한을 넘으면 발급하지 않는다(None).
+    발급 수는 제한하지 않는다(공유 NAT 잠금 방지). 판정은 네트워크 다양성 규칙이 보호한다(GPT5 #733).
     """
     secret = await store.secret()
     raw = request.cookies.get(VOTE_COOKIE) or ""
     tid, _, sig = raw.partition(".")
     if re.fullmatch(r"[A-Za-z0-9_-]{32,60}", tid) and hmac.compare_digest(sig, _sign(secret, tid)):
         return tid, False
-    net = await _net(store, request)
-    if not await store.take_quota(f"tokissue_{net}", rules.TOKEN_ISSUE_PER_NET_DAY, _day()):
-        return None, False
+    # 발급 상한은 두지 않는다 — 공유 NAT 전체를 잠글 수 있음(GPT5 #733-2). 판정은 네트워크 다양성으로 보호
     tid = rules.new_vote_token()
     response.set_cookie(
         VOTE_COOKIE,
@@ -446,8 +442,6 @@ async def vote_tip(
     if not re.fullmatch(r"[A-Za-z0-9]{8,40}", tip_id):
         raise AppError("BAD_REQUEST", "꿀팁을 찾지 못했습니다.")
     tid, issued = await _vote_token(request, response, store)
-    if tid is None:
-        raise AppError("RATE_LIMITED", "오늘은 이 네트워크에서 투표를 더 할 수 없습니다.")
     if issued:  # 새 토큰은 쿠키로만 주고 이 요청은 집계하지 않는다(화면이 한 번 재시도)
         out = JSONResponse(
             {"code": "TOKEN_REQUIRED", "message": "투표 준비가 끝났습니다. 다시 눌러 주세요."},

@@ -30,7 +30,7 @@ TIP_PER_NET_DAY = 3
 REPORT_PER_NET_DAY = 5
 SUBMIT_GLOBAL_DAY = 100
 VOTES_PER_TOKEN_DAY = 30
-VOTES_PER_NET_DAY = 300  # 쿠키를 지워 토큰을 새로 받아도 네트워크 단위 상한(교내 NAT 고려)
+VOTES_PER_NET_DAY = 2000  # 비용 보호용 느슨한 상한(교내 NAT 수천 명 고려). 판정 보호는 네트워크 다양성 규칙이 맡는다
 
 # 자동 승인 기준(교수님 #709) — 운영 중 조정 가능
 MIN_VOTES = 10
@@ -42,7 +42,6 @@ FLAGS_TO_HIDE = 3  # 문제 신고 3건 → 되돌릴 수 있는 임시 가림
 FLAG_NETS_TO_HIDE = (
     3  # 단, 서로 다른 네트워크 3곳 이상일 때만(한 곳의 여러 토큰은 관리자 우선 검토 — GPT5 #728)
 )
-TOKEN_ISSUE_PER_NET_DAY = 60  # 네트워크당 하루 투표 토큰 발급 상한(토큰 양산 방지)
 RECHECK_DAYS = {"student_approved": 30, "approved": 180}  # 관리자 '확인 권장' 목록 주기
 
 URL_RE = re.compile(r"https?://|www\.|\.(com|net|kr|io|me|ly)\b|open\.kakao", re.I)
@@ -173,10 +172,26 @@ def evaluate_tip(tip: dict[str, Any], now: datetime) -> dict[str, Any]:
             return {"status": "hidden", "hidden_from": status, "hidden_reason": "학생 신고 누적"}
         if not tip.get("flag_review"):
             out["flag_review"] = True  # 신고가 한두 네트워크에 몰림 → 가리지 않고 관리자 우선 검토
-    contested = total >= MIN_VOTES and dispute / total > CONTEST_RATIO
+    # 반대 과반이어도 반대표가 여러 네트워크(3곳 이상, 한 곳이 절반 이하)에서 왔을 때만 '이견 많음'.
+    # 한두 네트워크의 반대 몰표는 표시를 붙이지 않고 몰표 의심으로 관리자에게(GPT5 #733-1)
+    dnets = [c for c in (tip.get("dispute_nets") or {}).values() if c]
+    diverse = (
+        len(dnets) >= FLAG_NETS_TO_HIDE and dispute > 0 and max(dnets) / dispute <= MAX_NET_SHARE
+    )
+    majority = total >= MIN_VOTES and dispute / total > CONTEST_RATIO
+    contested = majority and diverse
     if contested != bool(tip.get("contested")):
         out["contested"] = contested
-    if status != "verifying" or contested or tip.get("safety") or int(tip.get("flags", 0)) > 0:
+    if majority and not diverse and not tip.get("burst_risk"):
+        out["burst_risk"] = True
+    if (
+        status != "verifying"
+        or contested
+        or tip.get("safety")
+        or tip.get("burst_risk")
+        or out.get("burst_risk")
+        or int(tip.get("flags", 0)) > 0
+    ):
         # 미해결 신고가 있으면 자동 승인하지 않는다(관리자가 신고를 소진한 뒤에만)
         return out
     published = tip.get("published_at")

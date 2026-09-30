@@ -90,7 +90,8 @@ def test_student_approval_needs_all_conditions():
     assert "status" not in rules.evaluate_tip(_tip(safety=True), NOW)  # 안전 정보는 관리자
     burst = rules.evaluate_tip(_tip(net_counts={"a": 8, "b": 2}), NOW)
     assert burst == {"burst_risk": True}  # 한 네트워크 몰표 → 보류
-    contested = rules.evaluate_tip(_tip(confirm=4, dispute=6), NOW)
+    diverse = {"dispute_nets": {"a": 2, "b": 2, "c": 2}}
+    contested = rules.evaluate_tip(_tip(confirm=4, dispute=6, **diverse), NOW)
     assert contested == {"contested": True}  # 반대 많음은 삭제가 아니라 표시
     three_nets = {"flag_nets": {"a": 1, "b": 1, "c": 1}}
     assert rules.evaluate_tip(_tip(flags=3, **three_nets), NOW)["status"] == "hidden"
@@ -415,16 +416,36 @@ def test_polarity_handles_bulganeung():
     assert deterministic_mismatch(j, "신청이 가능합니다", "휴학생은 신청이 불가능하다")
 
 
-def test_token_issue_limited_per_network():
-    from backend.reports import rules as r
-
+def test_token_issue_not_locked_per_network():
+    """GET만으로 공유 NAT 전체의 토큰 발급·투표를 잠글 수 없다(GPT5 #733-2)."""
     store = MemoryReportStore()
     c = client(store, FakeLLM())
-    for _ in range(r.TOKEN_ISSUE_PER_NET_DAY):
+    for _ in range(80):
         c.cookies.clear()
         assert "cb_vt=" in c.get("/api/tips").headers.get("set-cookie", "")
-    c.cookies.clear()
-    assert "cb_vt=" not in c.get("/api/tips").headers.get("set-cookie", "")  # 네트워크당 발급 상한
+
+
+def test_single_network_dispute_farm_does_not_mark_contested():
+    """한 네트워크의 반대 몰표는 '이견 많음'이 아니라 몰표 의심(GPT5 #733-1)."""
+    farm = _tip(confirm=0, dispute=10, net_counts={"a": 10}, dispute_nets={"a": 10})
+    out = rules.evaluate_tip(farm, NOW)
+    assert not out.get("contested") and out.get("burst_risk") and "status" not in out
+    spread = _tip(
+        confirm=2,
+        dispute=8,
+        dispute_nets={"a": 3, "b": 3, "c": 2},
+        net_counts={"a": 4, "b": 3, "c": 2, "d": 1},
+    )
+    assert rules.evaluate_tip(spread, NOW)["contested"] is True
+
+
+@pytest.mark.asyncio
+async def test_dispute_nets_follow_vote_changes():
+    store = MemoryReportStore()
+    tid = _voted_tip(store)
+    await store.vote(tid, "tok1", "netA", "dispute", None, NOW)
+    r = await store.vote(tid, "tok1", "netB", "confirm", None, NOW)
+    assert r["dispute_nets"] == {} and r["confirm_nets"] == {"netB": 1}
 
 
 def test_polarity_negative_forms():

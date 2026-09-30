@@ -72,19 +72,25 @@ def apply_vote(
             return {}, None
         counts = {k: int(tip.get(k, 0)) for k in ("confirm", "dispute")}
         nets = dict(tip.get("net_counts") or {})
+        # 찬성·반대를 네트워크별로 따로 센다 — 반대 몰표 판정용(GPT5 #733-1)
+        side = {k: dict(tip.get(f"{k}_nets") or {}) for k in ("confirm", "dispute")}
         confirm_at = dict(tip.get("confirm_at") or {})
         if prev in counts:
             counts[prev] = max(0, counts[prev] - 1)
             if prev_net:
                 nets[prev_net] = max(0, nets.get(prev_net, 1) - 1)
+                side[prev][prev_net] = max(0, side[prev].get(prev_net, 1) - 1)
             confirm_at.pop(key, None)
         counts[action] += 1
         nets[net] = nets.get(net, 0) + 1
+        side[action][net] = side[action].get(net, 0) + 1
         if action == "confirm":
             confirm_at[key] = now
         change = {
             **counts,
             "net_counts": {k: v for k, v in nets.items() if v},
+            "confirm_nets": {k: v for k, v in side["confirm"].items() if v},
+            "dispute_nets": {k: v for k, v in side["dispute"].items() if v},
             "confirm_at": confirm_at,
         }
         vote.update({"ballot": action, "ballot_net": net, "ballot_at": now})
