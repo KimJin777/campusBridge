@@ -474,6 +474,7 @@ REPORT_ACTIONS = {
     "reject": "rejected",
 }
 ADMIN_FIELDS = (
+    "seq",
     "type",
     "status",
     "category",

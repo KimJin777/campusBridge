@@ -130,6 +130,7 @@ def mine(vote: dict[str, Any] | None, tip: dict[str, Any]) -> dict[str, Any]:
 
 class MemoryReportStore:
     def __init__(self) -> None:
+        self.seq = 0
         self.rows: dict[str, dict[str, Any]] = {}
         self.votes: dict[str, dict[str, Any]] = {}
         self.quota: dict[str, int] = {}
@@ -166,7 +167,8 @@ class MemoryReportStore:
 
     async def create(self, doc: dict[str, Any]) -> str:
         rid = uuid.uuid4().hex[:20]
-        self.rows[rid] = dict(doc)
+        self.seq += 1
+        self.rows[rid] = {**doc, "seq": self.seq}
         return rid
 
     async def get(self, report_id: str) -> dict[str, Any] | None:
@@ -296,8 +298,18 @@ class FirestoreReportStore:
             return False
 
     async def create(self, doc: dict[str, Any]) -> str:
+        """증가형 제보 번호(seq)를 붙여 만든다(교수님 #776). 번호와 문서를 한 트랜잭션에."""
         ref = self.db.collection("reports").document()
-        await ref.set(doc)
+        counter = self.db.collection("counters").document("reports")
+
+        @self._fs.async_transactional
+        async def txn(tx) -> None:
+            snap = await counter.get(transaction=tx)
+            n = int((snap.to_dict() or {}).get("n", 0)) + 1 if snap.exists else 1
+            tx.set(counter, {"n": n})
+            tx.set(ref, {**doc, "seq": n})
+
+        await txn(self.db.transaction())
         return ref.id
 
     async def get(self, report_id: str) -> dict[str, Any] | None:

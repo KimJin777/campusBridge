@@ -547,3 +547,14 @@ def test_author_cannot_vote_own_tip():
     assert listing["verifying"][0]["own"] is True and "author_token" not in listing["verifying"][0]
     r = c.post(f"/api/tips/{tid}/vote", json={"value": "confirm"})
     assert r.status_code == 400 and store.rows[tid]["confirm"] == 0
+
+
+def test_reports_get_increasing_numbers():
+    """제보마다 1, 2, 3… 번호(교수님 #776), 관리자 목록에 보인다."""
+    store = MemoryReportStore()
+    c = client(store, FakeLLM(tip=None))
+    c.post("/api/reports/tip", json=tip_body("한마관 5층 학생지원팀 옆 휴게실 조용함"))
+    c.post("/api/reports/tip", json=tip_body("중앙도서관 3층 열람실 콘센트 많아요"))
+    assert sorted(r["seq"] for r in store.rows.values()) == [1, 2]
+    items = c.get("/api/admin/reports?type=tip").json()["items"]
+    assert {i["seq"] for i in items} == {1, 2}
