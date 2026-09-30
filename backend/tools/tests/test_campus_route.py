@@ -84,3 +84,9 @@ def test_place_card_text_routes_to_the_named_place_not_buildings_in_description(
     assert resolve_place("너른마당 너른마당: 제1경영관 아래, 제1경영관과 창조관 사이") == "너른마당"
     assert resolve_place("학사관리팀 본관 1층") == "본관"
     assert route("너른마당 어디야")["to"] == "너른마당"
+
+
+def test_school_bus_questions_route_to_neoreun_madang():
+    """스쿨버스(통학버스) 타고 내리는 곳 = 너른마당(교수님 2026-09-30)."""
+    for q in ("스쿨버스 어디서 타요?", "통학버스 내리는 곳", "셔틀버스 타는 곳 가는 길"):
+        assert route(q)["to"] == "너른마당", q

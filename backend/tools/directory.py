@@ -146,7 +146,8 @@ def _match_tier(row: dict[str, str], query: str) -> int | None:
     name = _normalize(_first(row, "name", "place_name"))
     if query == name:
         return 0
-    if query in _aliases(row):
+    aliases = _aliases(row)
+    if query in aliases or any(len(a) >= 4 and a in query for a in aliases):
         return 1
     if query in name or name in query or _distance_at_most_one(query, name):
         return 2
