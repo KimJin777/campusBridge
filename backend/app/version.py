@@ -13,6 +13,17 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.16.1",
+        "date": "2026-09-30",
+        "deployed_at": None,
+        "revision": None,
+        "title": "일정 게시 간소화",
+        "items": [
+            "관리자 일정 [게시]는 사유를 묻지 않고 바로 게시(숨김만 사유 입력)",
+            "관리자가 게시·숨김한 일정은 이후 자동 수집이 날짜·내용·상태를 바꾸지 않음",
+        ],
+    },
+    {
         "version": "0.16.0",
         "date": "2026-09-30",
         "deployed_at": None,

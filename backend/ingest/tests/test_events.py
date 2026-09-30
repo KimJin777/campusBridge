@@ -354,3 +354,36 @@ def test_notice_correction_supersedes_same_url_row():
     second = upsert_event(docs, {**base, "title": "장학 신청(연장)", "end": date(2026, 10, 6)}, NOW)
     assert docs.get("campus_events", first)["status"] == "superseded"
     assert docs.get("campus_events", second)["status"] == "active"
+
+
+def test_admin_reviewed_event_is_not_overwritten_by_recollection():
+    """관리자가 게시한 일정은 재수집이 날짜·상태를 바꾸지 않는다(교수님 2026-09-30)."""
+    from backend.ingest.events import upsert_event
+
+    docs = Docs()
+    ev = {
+        "source_type": "notice",
+        "source_category": "event",
+        "source_url": "https://www.kyungnam.ac.kr/bbs/ko/1408/199826/artclView.do",
+        "extracted_by": "llm",
+        "status": "pending",
+        "title": "합격자 선배 초청 특강",
+        "start": date(2026, 9, 8),
+        "end": date(2026, 9, 8),
+        "date_missing": True,
+    }
+    eid = upsert_event(docs, ev, NOW)
+    docs.merge(
+        "campus_events",
+        eid,
+        {
+            "status": "active",
+            "reviewed_by": "prof@x",
+            "start_date": "2026-09-29",
+            "end_date": "2026-09-29",
+            "date_missing": False,
+        },
+    )
+    upsert_event(docs, ev, NOW)
+    row = docs.get("campus_events", eid)
+    assert (row["status"], row["end_date"], row["date_missing"]) == ("active", "2026-09-29", False)

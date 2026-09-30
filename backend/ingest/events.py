@@ -235,8 +235,12 @@ def upsert_event(docs: Docs, event: dict[str, Any], now: datetime) -> str:
         "date_missing": bool(event.get("date_missing")),
         "updated_at": now,
     }
-    if docs.get("campus_events", eid) is None:
+    current = docs.get("campus_events", eid)
+    if current is None:
         row |= {"status": event["status"], "created_at": now}
+    elif current.get("reviewed_by"):
+        # 관리자가 게시·숨김한 일정은 재수집이 내용·날짜·상태를 바꾸지 않는다(교수님 2026-09-30)
+        row = {"updated_at": now}
     docs.merge("campus_events", eid, row)
     if event["source_type"] != "calendar":
         supersede_same_url(docs, eid, event["source_url"], now)

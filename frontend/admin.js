@@ -343,7 +343,8 @@ async function viewEvents(view) {
       body.start_date = m[1];
       body.end_date = m[2] || m[1];
     }
-    const reason = askReason(`「${row.title}」 ${label}`);
+    // 게시는 사유를 묻지 않는다(교수님 2026-09-30). 숨김만 사유를 받는다
+    const reason = status === "active" ? "게시" : askReason(`「${row.title}」 ${label}`);
     if (!reason) return;
     body.reason = reason;
     await api(`/events/${encodeURIComponent(row.id)}`, { method: "PATCH", body });
