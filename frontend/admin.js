@@ -947,10 +947,45 @@ async function viewUnanswered(view) {
     return wrap;
   };
   const rank = (r) => (r.status === "verified" ? 1 : 0);
+  const rows = [...un.items].sort((a, b) => rank(a) - rank(b) || (b.count || 0) - (a.count || 0));
+  // 선택 재확인 / 전체 재확인(교수님 #777): 한 건씩 차례로 확인(한 건에 약 10초)
+  const picked = new Set();
+  const pick = (r) => {
+    if (r.status === "verified") return "";
+    const cb = el("input");
+    cb.type = "checkbox";
+    cb.setAttribute("aria-label", "재확인할 질문 선택");
+    cb.addEventListener("change", () => (cb.checked ? picked.add(r.id) : picked.delete(r.id)));
+    return cb;
+  };
+  const progress = el("span", "hint");
+  const runMany = async (ids) => {
+    if (!ids.length) return flash("재확인할 질문을 고르세요.", true);
+    let ok = 0;
+    bar.querySelectorAll("button").forEach((x) => (x.disabled = true));
+    for (const [i, id] of ids.entries()) {
+      progress.textContent = ` 확인 중 ${i + 1}/${ids.length}…`;
+      const got = await api(`/unanswered/${encodeURIComponent(id)}/recheck`, { method: "POST" }).catch(() => null);
+      if (got?.status === "verified") ok += 1;
+    }
+    await openTab("unanswered");
+    flash(`${ids.length}건 재확인 — 검증완료 ${ok}건, 아직 답 못 함 ${ids.length - ok}건`, ok === 0);
+  };
+  const bar = el("div", "bulk-bar");
+  bar.append(
+    btn("선택 재확인", () => runMany([...picked])),
+    btn("전체 재확인", () => {
+      const ids = rows.filter((r) => r.status !== "verified").map((r) => r.id);
+      if (ids.length > 5 && !confirm(`${ids.length}건을 차례로 확인합니다(한 건에 약 10초). 진행할까요?`)) return;
+      return runMany(ids);
+    }),
+    progress,
+  );
   view.replaceChildren(
     el("h3", null, "답하지 못한 질문(범위 밖 제외, 빈도순 참고)"),
-    el("p", "hint", "자료를 보강한 뒤 [재확인]을 누르면 지금 답할 수 있는지 다시 확인합니다. 답할 수 있으면 '검증완료'로 바뀌고(마우스를 올리면 답변 요약) 30일 뒤 목록에서 사라집니다."),
-    table([...un.items].sort((a, b) => rank(a) - rank(b) || (b.count || 0) - (a.count || 0)), [["query_masked", "질문(마스킹)"], ["count", "횟수"], ["fallback_reason", "사유"], ["last_at", "최근"], [state, "확인"]]),
+    el("p", "hint", "자료를 보강한 뒤 [재확인]을 누르면 지금 답할 수 있는지 다시 확인합니다. 답할 수 있으면 '검증완료'로 바뀌고(마우스를 올리면 답변 요약) 30일 뒤 목록에서 사라집니다. 여러 건은 골라서 [선택 재확인], 검증 안 된 것 모두는 [전체 재확인]."),
+    bar,
+    table(rows, [[pick, "선택"], ["query_masked", "질문(마스킹)"], ["count", "횟수"], ["fallback_reason", "사유"], ["last_at", "최근"], [state, "확인"]]),
     el("h3", null, "피드백"),
     table(fb.items, [["rating", "평가"], ["comment_masked", "의견"], ["turn_id", "턴"], ["created_at", "시각"]]),
   );
@@ -973,13 +1008,28 @@ async function viewStats(view) {
   const warnText = { ok: "정상", warning: "경고", critical: "위험" }[w.level] || w.level;
   const warn = el("p", `msg${w.level === "ok" ? "" : " err"}`, `최근 2시간 답변 품질: ${warnText} — 범위 안 질문 ${w.turns}건 중 답을 못 한 질문 ${w.actionable}건(${Math.round(w.rate * 100)}%)`);
   const pairs = (o) => Object.entries(o || {}).map(([k, n]) => ({ k, n }));
+  // 답을 못 한 이유를 한국어로, 이유별로 거르기(교수님 #779)
+  const REASON = { out_of_scope: "서비스 범위 밖", no_evidence: "근거 자료 없음", verification_failed: "검증 탈락", deadline: "시간 초과", tool_failure: "도구 오류", unknown: "알 수 없음" };
+  const ko = (k) => `${REASON[k] || k} (${k})`;
+  const recent = s.recent_fallbacks || [];
+  const filter = el("select");
+  filter.setAttribute("aria-label", "사유로 거르기");
+  filter.append(new Option(`전체 (${recent.length})`, ""));
+  for (const k of Object.keys(REASON).filter((k) => recent.some((r) => r.reason === k))) {
+    filter.append(new Option(`${ko(k)} ${recent.filter((r) => r.reason === k).length}건`, k));
+  }
+  const recentBox = el("div");
+  const drawRecent = () => recentBox.replaceChildren(table(recent.filter((r) => !filter.value || r.reason === filter.value), [["created_at", "시각"], [(r) => REASON[r.reason] || r.reason, "사유"], ["query", "질문"]]));
+  filter.addEventListener("change", drawRecent);
+  drawRecent();
   view.replaceChildren(
     warn,
     tiles,
     el("h3", null, "답을 못 한 이유"),
-    table(pairs(s.fallback_reasons), [["k", "사유"], ["n", "건수"]]),
+    table(pairs(s.fallback_reasons), [[(r) => ko(r.k), "사유"], ["n", "건수"]]),
     el("h3", null, "최근 답을 못 한 질문(개인정보 가림)"),
-    table(s.recent_fallbacks || [], [["created_at", "시각"], ["reason", "사유"], ["query", "질문"]]),
+    filter,
+    recentBox,
     el("h3", null, "화면 오류(최근 14일, 종류만)"),
     table(pairs(s.client_errors), [["k", "화면:종류"], ["n", "건수"]]),
     el("h3", null, "일자별"),table(Object.entries(s.daily || {}).map(([d, n]) => ({ d, n: typeof n === "object" ? JSON.stringify(n) : n })), [["d", "날짜"], ["n", "건수"]]));

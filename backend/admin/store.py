@@ -489,7 +489,7 @@ class FirestoreAdminStore:
                 daily[created.date().isoformat()] += 1
                 if created >= now - WARN_WINDOW:
                     recent.append(reason if outcome == "fallback" else outcome)
-                if outcome == "fallback" and reason in ACTIONABLE:
+                if outcome == "fallback":  # 사유별로 거를 수 있게 모든 사유(교수님 #779)
                     fallbacks.append(
                         {
                             "created_at": created.isoformat(),
@@ -518,7 +518,7 @@ class FirestoreAdminStore:
             "daily": dict(sorted(daily.items())),
             "outcomes": dict(outcomes),
             "fallback_reasons": dict(reasons.most_common()),
-            "recent_fallbacks": fallbacks[:20],
+            "recent_fallbacks": fallbacks[:60],
             "client_errors": dict(client_errors.most_common()),
             "warning": quality_warning(recent),
             "latency_ms": {
