@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import date
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -714,6 +715,10 @@ async def _read_page(url: str, settings: Settings) -> tuple[str, str, list[dict[
     except BlockedUrl as exc:
         raise AppError("BAD_REQUEST", str(exc)) from exc
     except Exception as exc:  # noqa: BLE001 — 네트워크·HTTP 오류는 한 문장으로
+        # 원인은 로그로(웹 서버에 수집 연락처 설정이 빠져 모든 미리보기가 실패하던 문제, 2026-10-01)
+        logging.getLogger("campusbridge.admin").warning(
+            "web page preview failed: %s %s", type(exc).__name__, str(exc)[:200]
+        )
         raise AppError(
             "BAD_REQUEST", "페이지를 가져오지 못했습니다. 주소를 확인해 주세요."
         ) from exc
