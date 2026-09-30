@@ -489,10 +489,16 @@ class Turn {
       trap.tabIndex = -1;
       trap.autocomplete = "off";
       trap.setAttribute("aria-hidden", "true");
-      const note = el("p", "hint", "익명으로 관리자에게 전달됩니다. 이름·연락처·학번은 적지 마세요.");
+      const note = el("p", "hint", "이 질문과 답변, 인용 근거가 함께 익명으로 관리자에게 전달됩니다. 이름·연락처·학번은 적지 마세요.");
       const submit = el("button", "primary", "보내기");
       submit.type = "submit";
-      form.append(label, trap, note, submit);
+      const cancel = el("button", "fb", "취소");
+      cancel.type = "button";
+      cancel.addEventListener("click", () => slot.replaceChildren());
+      // 보내기 버튼을 입력칸 위에 둔다 — 하단 질문 입력창에 가려 보이지 않던 문제(교수님 2026-09-30)
+      const bar = el("div", "report-bar");
+      bar.append(el("strong", null, "잘못된 정보 제보"), submit, cancel);
+      form.append(bar, label, trap, note);
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         submit.disabled = true;
@@ -503,10 +509,12 @@ class Turn {
         }).catch(() => null);
         const data = r ? await r.json().catch(() => ({})) : {};
         slot.replaceChildren(receiptBox(r && r.ok ? data : { accepted: false, message: data.message || "보내지 못했습니다. 잠시 후 다시 시도해 주세요." }));
+        slot.firstElementChild?.scrollIntoView({ behavior: "smooth", block: "center" });
         track("report_submit", { turn_id: this.turnId });
       });
       slot.replaceChildren(form);
-      text.focus();
+      form.scrollIntoView({ behavior: "smooth", block: "center" });
+      text.focus({ preventScroll: true });
     });
   }
 

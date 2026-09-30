@@ -417,3 +417,8 @@ a.calpage-t:hover { text-decoration: underline; }
 button.calpage-t { padding: 0; border: 0; background: none; color: var(--text); font: inherit; cursor: pointer; text-align: left; }
 button.calpage-t:hover { color: var(--primary); text-decoration: underline; }
 @media (max-width: 480px) { .cal-bar { font-size: 10px; padding: 0 3px; } }
+
+.report-bar { display: flex; align-items: center; gap: 6px; }
+.report-bar strong { margin-right: auto; font-size: 13px; }
+.report-form { scroll-margin-bottom: 180px; }
+.receipt { scroll-margin-bottom: 180px; }
