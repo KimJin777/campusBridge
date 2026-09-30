@@ -13,6 +13,7 @@ ApiErrorCode = Literal[
     "FORBIDDEN",
     "THREAD_BUSY",
     "RATE_LIMITED",
+    "TOKEN_REQUIRED",
     "INTERNAL",
 ]
 
@@ -23,6 +24,7 @@ HTTP_STATUS: dict[str, int] = {
     "FORBIDDEN": 403,
     "THREAD_BUSY": 409,
     "RATE_LIMITED": 429,
+    "TOKEN_REQUIRED": 428,  # 투표 토큰을 먼저 받아야 함(화면이 한 번 재시도)
     "INTERNAL": 500,
 }
 

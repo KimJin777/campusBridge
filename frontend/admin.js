@@ -792,7 +792,7 @@ async function viewReports(view) {
   const cols = isTip
     ? [[(r) => badge(r.status), "상태"], [(r) => statusMap[r.status] || r.status, "설명"], ["text_masked", "제보 내용(마스킹)"], ["published_text", "다듬은 문장"],
        [(r) => `${r.confirm ?? 0} / ${r.dispute ?? 0} / 신고 ${r.flags ?? 0}`, "맞아요/달라요/신고"],
-       [(r) => [r.safety && "안전", r.contested && "이견 많음", r.burst_risk && "몰표 의심", r.recheck && "확인 권장"].filter(Boolean).join(" · ") || "—", "표시"],
+       [(r) => [r.safety && "안전", r.contested && "이견 많음", r.burst_risk && "몰표 의심", r.flag_review && "신고 확인 필요", r.recheck && "확인 권장"].filter(Boolean).join(" · ") || "—", "표시"],
        ["agent_reason", "에이전트 의견"], ["reason", "반려 사유"], ["created_at", "제보"]]
     : [[(r) => badge(r.status), "상태"], [(r) => statusMap[r.status] || r.status, "설명"], [(r) => WRONG_KIND[r.kind] || "—", "유형"], ["text_masked", "제보 내용"],
        [(r) => r.snapshot?.question_masked || "—", "질문"], [(r) => (r.snapshot?.answer_text || "").slice(0, 160) || "—", "답변(당시)"],

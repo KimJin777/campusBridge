@@ -94,8 +94,14 @@ def apply_vote(
             return {}, None
         reasons = dict(tip.get("flag_reasons") or {})
         reasons[reason or "other"] = reasons.get(reason or "other", 0) + 1
-        change = {"flags": int(tip.get("flags", 0)) + 1, "flag_reasons": reasons}
-        vote.update({"flag": reason or "other", "flag_gen": gen, "flag_at": now})
+        flag_nets = dict(tip.get("flag_nets") or {})
+        flag_nets[net] = flag_nets.get(net, 0) + 1
+        change = {
+            "flags": int(tip.get("flags", 0)) + 1,
+            "flag_reasons": reasons,
+            "flag_nets": flag_nets,
+        }
+        vote.update({"flag": reason or "other", "flag_gen": gen, "flag_at": now, "flag_net": net})
     else:
         return {}, None
     merged = {**tip, **change}

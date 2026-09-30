@@ -66,7 +66,7 @@ VALUE_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(학점|만\s*원|원|일|시간|주
 POSITIVE_RE = re.compile(
     r"할\s*수\s*있|(?<!불)가능(합|하|$)"
 )  # '불가능하다'는 긍정 아님(Gemini #725)
-NEGATIVE_RE = re.compile(r"할\s*수\s*없|불가능|불가")
+NEGATIVE_RE = re.compile(r"할\s*수\s*없|불가능|불가|가능하지\s*않|허용되지\s*않|안\s*된다")
 
 
 def _values(text: str) -> dict[str, set[str]]:
@@ -78,7 +78,7 @@ def _values(text: str) -> dict[str, set[str]]:
 
 def _polarity(text: str) -> str | None:
     neg, pos = bool(NEGATIVE_RE.search(text)), bool(POSITIVE_RE.search(text))
-    return "neg" if neg and not pos else "pos" if pos and not neg else None
+    return "neg" if neg else "pos" if pos else None  # 부정 표현이 있으면 부정(가능하지 않다)
 
 
 def deterministic_mismatch(judge: ReportJudge, answer_text: str, evidence_text: str) -> bool:

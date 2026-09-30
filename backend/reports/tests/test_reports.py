@@ -92,7 +92,10 @@ def test_student_approval_needs_all_conditions():
     assert burst == {"burst_risk": True}  # 한 네트워크 몰표 → 보류
     contested = rules.evaluate_tip(_tip(confirm=4, dispute=6), NOW)
     assert contested == {"contested": True}  # 반대 많음은 삭제가 아니라 표시
-    assert rules.evaluate_tip(_tip(flags=3), NOW)["status"] == "hidden"
+    three_nets = {"flag_nets": {"a": 1, "b": 1, "c": 1}}
+    assert rules.evaluate_tip(_tip(flags=3, **three_nets), NOW)["status"] == "hidden"
+    one_net = rules.evaluate_tip(_tip(flags=3, flag_nets={"a": 3}), NOW)
+    assert one_net.get("flag_review") and "status" not in one_net  # 한 네트워크 신고는 가리지 않음
 
 
 def test_tip_submit_screens_judges_and_masks():
@@ -142,6 +145,7 @@ def test_vote_one_per_token_and_listing():
     c = client(store, FakeLLM(tip=TipJudge(verdict="ok", reason="ok")))
     c.post("/api/reports/tip", json=tip_body("제2공학관 2층 매점 옆 자판기 있어요"))
     tid = next(iter(store.rows))
+    c.get("/api/tips")  # 목록을 보며 투표 토큰을 먼저 받는다
     assert c.post(f"/api/tips/{tid}/vote", json={"value": "confirm"}).json()["confirm"] == 1
     again = c.post(f"/api/tips/{tid}/vote", json={"value": "confirm"}).json()
     assert again["confirm"] == 1  # 같은 토큰은 1표
@@ -256,15 +260,17 @@ def test_forged_vote_cookie_is_replaced():
     c = client(store, FakeLLM(tip=TipJudge(verdict="ok", reason="ok")))
     c.post("/api/reports/tip", json=tip_body("제2공학관 2층 매점 옆 자판기 있어요"))
     tid = next(iter(store.rows))
-    for n in range(3):  # 위조 쿠키로 표를 늘릴 수 없다: 매번 서명 없는 값 → 새 토큰 발급
+    for n in range(3):  # 위조·누락 쿠키: 새 토큰만 발급하고 집계하지 않는다(GPT5 #728)
         c.cookies.clear()
         r = c.post(
             f"/api/tips/{tid}/vote",
-            json={"value": "confirm"},
+            json={"value": "flag", "reason": "abuse"},
             headers={"cookie": f"cb_vt={'A' * 40}{n}"},
         )
-        assert r.status_code == 200 and "cb_vt=" in r.headers.get("set-cookie", "")
+        assert r.status_code == 428 and "cb_vt=" in r.headers.get("set-cookie", "")
     assert "." in r.headers["set-cookie"].split("cb_vt=")[1].split(";")[0]  # id.서명
+    row = store.rows[tid]
+    assert row.get("flags", 0) == 0 and row["status"] == "verifying"
 
 
 def _voted_tip(store, now=NOW):
@@ -289,8 +295,10 @@ async def test_ballot_and_flag_are_independent_and_restore_consumes_flags():
     assert (r["confirm"], r["flags"]) == (1, 1)  # 신고해도 투표는 남는다
     r = await store.vote(tid, "tok1", "netA", "dispute", None, NOW)
     assert (r["confirm"], r["dispute"], r["flags"]) == (0, 1, 1)  # 투표를 바꿔도 신고는 남는다
-    for t in ("tok2", "tok3"):
+    for t in ("tok2", "tok3"):  # 같은 네트워크의 토큰 여러 개로는 가려지지 않는다
         await store.vote(tid, t, "netB", "flag", "abuse", NOW)
+    assert store.rows[tid]["status"] == "verifying" and store.rows[tid]["flag_review"]
+    await store.vote(tid, "tok5", "netC", "flag", "abuse", NOW)  # 서로 다른 네트워크 3곳
     assert store.rows[tid]["status"] == "hidden"
     c = client(store, FakeLLM())
     restored = c.post(f"/api/admin/reports/{tid}/restore", json={"reason": "허위 신고"})
@@ -405,3 +413,23 @@ def test_polarity_handles_bulganeung():
         reason="x",
     )
     assert deterministic_mismatch(j, "신청이 가능합니다", "휴학생은 신청이 불가능하다")
+
+
+def test_token_issue_limited_per_network():
+    from backend.reports import rules as r
+
+    store = MemoryReportStore()
+    c = client(store, FakeLLM())
+    for _ in range(r.TOKEN_ISSUE_PER_NET_DAY):
+        c.cookies.clear()
+        assert "cb_vt=" in c.get("/api/tips").headers.get("set-cookie", "")
+    c.cookies.clear()
+    assert "cb_vt=" not in c.get("/api/tips").headers.get("set-cookie", "")  # 네트워크당 발급 상한
+
+
+def test_polarity_negative_forms():
+    from backend.reports.triage import _polarity
+
+    assert (
+        _polarity("신청이 가능하지 않다") == "neg" and _polarity("휴학이 허용되지 않는다") == "neg"
+    )

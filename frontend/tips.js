@@ -20,13 +20,14 @@ function receiptBox(d) {
   return box;
 }
 
-async function vote(tip, value, reason) {
+async function vote(tip, value, reason, retried = false) {
   const r = await fetch(`/api/tips/${encodeURIComponent(tip.id)}/vote`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
     body: JSON.stringify(reason ? { value, reason } : { value }),
   }).catch(() => null);
+  if (r && r.status === 428 && !retried) return vote(tip, value, reason, true); // 투표 토큰을 막 받음 → 한 번 재시도
   if (!r || !r.ok) {
     const d = r ? await r.json().catch(() => ({})) : {};
     alertText(d.message || "투표하지 못했습니다. 잠시 후 다시 시도해 주세요.");

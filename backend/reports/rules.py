@@ -38,7 +38,11 @@ MIN_CONFIRM_RATIO = 0.8
 MIN_PUBLIC_HOURS = 24
 MAX_NET_SHARE = 0.5  # 한 네트워크가 표의 절반을 넘으면 몰표 위험 → 자동 승인 보류
 CONTEST_RATIO = 0.5  # 반대가 이보다 많으면 '이견 많음'(삭제 아님)
-FLAGS_TO_HIDE = 3  # 문제 신고(서로 다른 투표 토큰) 3건 → 되돌릴 수 있는 임시 가림
+FLAGS_TO_HIDE = 3  # 문제 신고 3건 → 되돌릴 수 있는 임시 가림
+FLAG_NETS_TO_HIDE = (
+    3  # 단, 서로 다른 네트워크 3곳 이상일 때만(한 곳의 여러 토큰은 관리자 우선 검토 — GPT5 #728)
+)
+TOKEN_ISSUE_PER_NET_DAY = 60  # 네트워크당 하루 투표 토큰 발급 상한(토큰 양산 방지)
 RECHECK_DAYS = {"student_approved": 30, "approved": 180}  # 관리자 '확인 권장' 목록 주기
 
 URL_RE = re.compile(r"https?://|www\.|\.(com|net|kr|io|me|ly)\b|open\.kakao", re.I)
@@ -159,16 +163,21 @@ def evaluate_tip(tip: dict[str, Any], now: datetime) -> dict[str, Any]:
     confirm, dispute = int(tip.get("confirm", 0)), int(tip.get("dispute", 0))
     total = confirm + dispute
     out: dict[str, Any] = {}
+    flag_nets = len([n for n, c in (tip.get("flag_nets") or {}).items() if c])
     if int(tip.get("flags", 0)) >= FLAGS_TO_HIDE and status in (
         "verifying",
         "student_approved",
         "approved",
     ):
-        return {"status": "hidden", "hidden_from": status, "hidden_reason": "학생 신고 누적"}
+        if flag_nets >= FLAG_NETS_TO_HIDE:
+            return {"status": "hidden", "hidden_from": status, "hidden_reason": "학생 신고 누적"}
+        if not tip.get("flag_review"):
+            out["flag_review"] = True  # 신고가 한두 네트워크에 몰림 → 가리지 않고 관리자 우선 검토
     contested = total >= MIN_VOTES and dispute / total > CONTEST_RATIO
     if contested != bool(tip.get("contested")):
         out["contested"] = contested
-    if status != "verifying" or contested or tip.get("safety"):
+    if status != "verifying" or contested or tip.get("safety") or int(tip.get("flags", 0)) > 0:
+        # 미해결 신고가 있으면 자동 승인하지 않는다(관리자가 신고를 소진한 뒤에만)
         return out
     published = tip.get("published_at")
     if not isinstance(published, datetime) or now - published < timedelta(hours=MIN_PUBLIC_HOURS):

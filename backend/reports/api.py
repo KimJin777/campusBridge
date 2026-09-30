@@ -25,6 +25,7 @@ from functools import lru_cache
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from backend.admin.auth import AdminActor, require_admin
@@ -368,13 +369,22 @@ def _sign(secret: bytes, tid: str) -> str:
     return hmac.new(secret, f"vote|{tid}".encode(), hashlib.sha256).hexdigest()[:32]
 
 
-async def _vote_token(request: Request, response: Response, store: ReportStore) -> str:
-    """서버가 서명한 투표 토큰(id.서명)만 인정. 위조·형식 오류는 새로 발급(GPT5 #722-2)."""
+async def _vote_token(
+    request: Request, response: Response, store: ReportStore
+) -> tuple[str | None, bool]:
+    """(토큰 id, 이번 요청에서 새로 발급했는가). 서버 서명 토큰만 인정(GPT5 #722-2).
+
+    누락·위조면 새로 발급만 한다 — 발급한 그 요청에서는 투표에 쓰지 않는다(GPT5 #728-1).
+    네트워크당 하루 발급 수도 제한한다(토큰 양산 방지). 상한을 넘으면 발급하지 않는다(None).
+    """
     secret = await store.secret()
     raw = request.cookies.get(VOTE_COOKIE) or ""
     tid, _, sig = raw.partition(".")
     if re.fullmatch(r"[A-Za-z0-9_-]{32,60}", tid) and hmac.compare_digest(sig, _sign(secret, tid)):
-        return tid
+        return tid, False
+    net = await _net(store, request)
+    if not await store.take_quota(f"tokissue_{net}", rules.TOKEN_ISSUE_PER_NET_DAY, _day()):
+        return None, False
     tid = rules.new_vote_token()
     response.set_cookie(
         VOTE_COOKIE,
@@ -385,7 +395,7 @@ async def _vote_token(request: Request, response: Response, store: ReportStore) 
         samesite="lax",
         path="/api/tips",
     )
-    return tid
+    return tid, True
 
 
 def _public_tip(row: dict[str, Any], mine: dict[str, Any] | None) -> dict[str, Any]:
@@ -412,9 +422,10 @@ def _public_tip(row: dict[str, Any], mine: dict[str, Any] | None) -> dict[str, A
 
 @router.get("/api/tips")
 async def list_tips(request: Request, response: Response, store: Store) -> dict[str, Any]:
-    token = rules.token_hash(await _vote_token(request, response, store))
+    tid, _ = await _vote_token(request, response, store)
+    token = rules.token_hash(tid) if tid else ""
     rows = await store.list(type_="tip", statuses=PUBLIC_TIP_STATUSES)
-    votes = await store.my_votes(token, [r["id"] for r in rows])
+    votes = await store.my_votes(token, [r["id"] for r in rows]) if token else {}
     items = [_public_tip(r, mine(votes[r["id"]], r) if r["id"] in votes else None) for r in rows]
     items.sort(key=lambda t: t["created"] or "", reverse=True)
     return {
@@ -431,10 +442,21 @@ async def list_tips(request: Request, response: Response, store: Store) -> dict[
 @router.post("/api/tips/{tip_id}/vote")
 async def vote_tip(
     tip_id: str, body: VoteRequest, request: Request, response: Response, store: Store
-) -> dict[str, Any]:
+) -> Any:
     if not re.fullmatch(r"[A-Za-z0-9]{8,40}", tip_id):
         raise AppError("BAD_REQUEST", "꿀팁을 찾지 못했습니다.")
-    token = rules.token_hash(await _vote_token(request, response, store))
+    tid, issued = await _vote_token(request, response, store)
+    if tid is None:
+        raise AppError("RATE_LIMITED", "오늘은 이 네트워크에서 투표를 더 할 수 없습니다.")
+    if issued:  # 새 토큰은 쿠키로만 주고 이 요청은 집계하지 않는다(화면이 한 번 재시도)
+        out = JSONResponse(
+            {"code": "TOKEN_REQUIRED", "message": "투표 준비가 끝났습니다. 다시 눌러 주세요."},
+            status_code=428,
+        )
+        for cookie in response.headers.getlist("set-cookie"):
+            out.headers.append("set-cookie", cookie)
+        return out
+    token = rules.token_hash(tid)
     tip = await store.get(tip_id)
     if not tip or tip.get("type") != "tip" or tip.get("status") not in PUBLIC_TIP_STATUSES:
         raise AppError("BAD_REQUEST", "투표할 수 없는 꿀팁입니다.")
@@ -485,6 +507,7 @@ ADMIN_FIELDS = (
     "dispute",
     "flags",
     "flag_reasons",
+    "flag_review",
     "kind",
     "answer_claim",
     "evidence_value",
@@ -561,6 +584,8 @@ async def admin_report_action(
                 "flags": 0,
                 "flag_gen": int(row.get("flag_gen", 0)) + 1,
                 "flag_reasons": {},
+                "flag_nets": {},
+                "flag_review": False,
                 "resolved_flags": row.get("flag_reasons") or {},
             }
         )
