@@ -13,6 +13,18 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.17.0",
+        "date": "2026-09-30",
+        "deployed_at": None,
+        "revision": None,
+        "title": "공지·행사 본문 색인(그림 안내문 판독)",
+        "items": [
+            "게시된 공지·교내 행사의 본문을 검색에 넣어 '지원 자격·접수처' 같은 질문에 원문 링크와 함께 답함",
+            "본문이 그림(포스터·캡처)뿐이면 AI가 이미지 속 글자를 옮겨 적어 색인(예: KU 해외봉사 모집 안내)",
+            "숨김·대체되거나 종료 30일이 지난 일정은 색인에서 제거, 기존 게시분은 매일 10건씩 채움",
+        ],
+    },
+    {
         "version": "0.16.1",
         "date": "2026-09-30",
         "deployed_at": None,

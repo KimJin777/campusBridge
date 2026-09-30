@@ -55,6 +55,8 @@ class JobDeps:
     index: Index
     events: Callable[[], dict[str, int]] | None = None  # 일정 캘린더 수집(운영에서만 주입)
     menus: Callable[[], dict[str, int]] | None = None  # 식단 PDF → campus_menus(교수님 #634)
+    # 게시된 공지·행사 본문(그림 안내문은 글자 판독) → 검색 색인(교수님 2026-09-30)
+    event_docs: Callable[[Callable[[list[dict[str, object]]], bool]], dict[str, int]] | None = None
 
 
 # 수집 중복 방지(2026-09-29 스케줄러 중복 실행 사고): 다른 수집이 이 시간 안에 갱신됐으면 건너뛴다
@@ -296,6 +298,20 @@ def run_ingestion(
             log.exception("events collection failed")
             stats["events_error"] = type(exc).__name__
 
+    if "events" in wanted and deps.event_docs is not None:
+        _run(deps, run_id, phase="event_docs")
+
+        def import_event_docs(documents: list[dict[str, object]]) -> bool:
+            out = workdir / "event_docs.jsonl"
+            _write_jsonl(out, documents)
+            return not deps.index.import_jsonl(out, object_prefix=f"runs/{run_id}/notices")
+
+        try:
+            stats["event_docs"] = deps.event_docs(import_event_docs)
+        except Exception as exc:  # noqa: BLE001 — 본문 색인 실패가 다른 수집을 막지 않게
+            log.exception("event docs indexing failed")
+            stats["event_docs_error"] = type(exc).__name__
+
     if "menus" in wanted and deps.menus is not None:
         _run(deps, run_id, phase="menus")
         try:
@@ -498,6 +514,32 @@ def main() -> int:
         return out
 
     deps.events = events
+
+    from backend.ingest.notice_docs import MAX_TEXT_CHARS, index_event_notices, live_transcribe
+
+    def event_docs(import_docs) -> dict[str, int]:
+        from bs4 import BeautifulSoup
+
+        from backend.tools import public_sources as ps
+
+        def fetch_body(url: str) -> str:
+            html = asyncio.run(ps._fetch(url, settings))
+            node = BeautifulSoup(html, "html.parser").select_one(".view-con")
+            return node.get_text("\n", strip=True)[:MAX_TEXT_CHARS] if node else ""
+
+        now = _now()
+        return index_event_notices(
+            deps.docs,
+            deps.index,
+            today=now.astimezone(KST).date(),
+            now=now,
+            fetch_body=fetch_body,
+            fetch_images=live_images(settings),
+            transcribe=live_transcribe(settings),
+            import_docs=import_docs,
+        )
+
+    deps.event_docs = event_docs
 
     from backend.ingest.menus import (
         collect_menus,
