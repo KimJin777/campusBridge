@@ -53,13 +53,20 @@ def _norm(s: str) -> str:
 
 
 def resolve_place(text: str) -> str | None:
-    """문장(장소 이름·위치 문구)에서 지도에 있는 건물 이름을 찾는다. 가장 긴 이름 우선."""
+    """문장(장소 이름·위치 문구)에서 지도에 있는 이름을 찾는다.
+
+    먼저 나온 이름 우선, 같은 자리면 긴 이름 우선(한마관 < 한마미래관).
+    '너른마당: 제1경영관 아래…'처럼 장소 뒤에 위치 설명이 붙어도 설명 속 건물로 가지 않는다.
+    """
     places = load()["places"]
     hay = _norm(text or "")
-    names = sorted((n for n in places if n != load()["start"]), key=len, reverse=True)
-    for name in names:
-        if _norm(name) in hay:
-            return name
+    hits = [
+        (hay.find(_norm(n)), -len(_norm(n)), n)
+        for n in places
+        if n != load()["start"] and _norm(n) in hay
+    ]
+    if hits:
+        return min(hits)[2]
     for alias, name in sorted(ALIASES.items(), key=lambda kv: -len(kv[0])):
         if alias in (text or "") and name in places:
             return name

@@ -77,3 +77,10 @@ def test_elevator_tip_for_upper_buildings():
         assert "엘리베이터" in route(dest)["tips"][0], dest
     assert route("본관")["tips"] == []
     assert route("보건의료관", start="성훈관")["tips"] == []
+
+
+def test_place_card_text_routes_to_the_named_place_not_buildings_in_description():
+    """'너른마당: 제1경영관 아래…' → 너른마당(설명 속 건물로 가지 않음, 교수님 2026-09-30)."""
+    assert resolve_place("너른마당 너른마당: 제1경영관 아래, 제1경영관과 창조관 사이") == "너른마당"
+    assert resolve_place("학사관리팀 본관 1층") == "본관"
+    assert route("너른마당 어디야")["to"] == "너른마당"
