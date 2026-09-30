@@ -84,6 +84,7 @@ class Turn {
     $("#turns").append(node);
     $("#welcome").hidden = true;
     $("#today").hidden = true; // 학사 일정 버튼은 첫 화면에서만
+    $("#tips-link").hidden = true; // 꿀팁 버튼도 일정 버튼처럼 첫 화면에서만(교수님 2026-09-30)
     $("#new-thread").hidden = false; // 새 대화 버튼은 대화 화면에서만(교수님 2026-09-30 #628)
     document.querySelectorAll(".follow-ups .fu").forEach((b) => (b.disabled = true)); // 지난 턴 칩 비활성
     this.node = node;
@@ -654,6 +655,7 @@ function goHome() {
   $("#welcome").hidden = false;
   $("#new-thread").hidden = true;
   $("#today").hidden = !$("#today-list").children.length;
+  $("#tips-link").hidden = false;
   $("#input").focus();
   window.scrollTo({ top: 0, behavior: "smooth" });
   track("new_thread");
