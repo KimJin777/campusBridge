@@ -81,3 +81,43 @@ async def test_building_lists_units_inside_not_itself(tmp_path: Path) -> None:
     assert texts[0] == "한마관"  # "한마관: 한마관" 자기 반복 없음
     assert texts[1] == "한마관에 있는 부서·시설: 학사관리팀(한마관 2층), 학생식당(한마관)"
     assert "비공개실" not in texts[1]
+
+
+def test_place_lookup_failure_is_not_cached_as_empty(monkeypatch):
+    """Firestore 조회 실패를 빈 목록으로 5분간 캐시하지 않는다(교수님 2026-09-30 위치 0건)."""
+    import google.cloud.firestore as fs
+
+    from backend.app.config import Settings
+    from backend.tools import directory
+
+    calls = {"n": 0}
+
+    class Snap:
+        id = "u1"
+
+        def to_dict(self):
+            return {"name": "학사관리팀", "status": "verified", "raw_location": "본관 1층"}
+
+    class Query:
+        def where(self, *a, **k):
+            return self
+
+        def stream(self):
+            return [Snap()]
+
+    class Client:
+        def __init__(self, *a, **k):
+            calls["n"] += 1
+            if calls["n"] <= 2:
+                raise RuntimeError("first connection failed")
+
+        def collection(self, _):
+            return Query()
+
+    monkeypatch.setattr(fs, "Client", Client)
+    monkeypatch.setattr(directory.time, "sleep", lambda s: None)
+    directory._places_cache.update(at=0.0, rows=[])
+    settings = Settings(gcp_project_id="p")
+    assert directory._firestore_place_rows(settings) == []  # 두 번 모두 실패
+    rows = directory._firestore_place_rows(settings)  # 다음 호출에서 바로 다시 조회
+    assert rows and rows[0]["name"] == "학사관리팀"

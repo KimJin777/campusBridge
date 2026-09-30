@@ -18,6 +18,7 @@ const TOOL_LABEL = {
   get_academic_calendar: "학사일정 확인",
   get_menu: "식단 확인",
   find_campus_location: "위치 확인",
+  find_campus_tips: "학생 꿀팁 확인",
 };
 const KIND_LABEL = {
   article: "규정",

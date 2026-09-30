@@ -210,16 +210,22 @@ def _firestore_place_rows(settings: Settings) -> list[dict[str, str]]:
     now = time.monotonic()
     if now - _places_cache["at"] < PLACES_TTL_SECONDS:
         return _places_cache["rows"]
-    try:
-        from google.cloud import firestore
+    from google.cloud import firestore
 
-        client = firestore.Client(project=settings.gcp_project_id, database=settings.firestore_db)
-        docs = client.collection("places").where("status", "==", "verified").stream()
-        rows = [_flatten(d.id, d.to_dict() or {}) for d in docs]
-    except Exception:  # noqa: BLE001 — 장소는 CSV seed로 계속 동작
-        rows = _places_cache["rows"]
-    _places_cache.update(at=now, rows=rows)
-    return rows
+    for attempt in range(2):  # 새 인스턴스의 첫 연결 실패 등 일시 오류는 한 번 더 시도
+        try:
+            client = firestore.Client(
+                project=settings.gcp_project_id, database=settings.firestore_db
+            )
+            docs = client.collection("places").where("status", "==", "verified").stream()
+            rows = [_flatten(d.id, d.to_dict() or {}) for d in docs]
+            _places_cache.update(at=now, rows=rows)
+            return rows
+        except Exception:  # noqa: BLE001
+            if attempt == 0:
+                time.sleep(0.3)
+    # 실패는 캐시하지 않는다(빈 목록이 5분간 굳던 문제). 이전 정상값이 있으면 그것을 쓴다
+    return _places_cache["rows"]
 
 
 def _flatten(place_id: str, data: dict[str, Any]) -> dict[str, str]:
