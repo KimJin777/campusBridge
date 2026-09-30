@@ -224,6 +224,7 @@ const TABS = {
   stats: ["통계", viewStats, "bolt"],
   admins: ["관리자", viewAdmins, "bot"],
   audit: ["감사 로그", viewAudit, "info"],
+  faq: ["자주 묻는 질문", viewFaq, "help"],
   glossary: ["용어 사전", viewGlossary, "book"],
   shortcuts: ["바로가기", viewShortcuts, "external"],
 };
@@ -1176,6 +1177,161 @@ async function viewAdmins(view) {
 async function viewAudit(view) {
   const { items } = await api("/audit");
   view.replaceChildren(table(items, [["created_at", "시각"], ["actor", "누가"], ["action", "무엇을"], ["target", "대상"], ["reason", "왜"], [(r) => badge(r.result), "결과"]]));
+}
+
+// 자주 묻는 질문(교수님 #781): 질문 신규·수정·삭제·복사, 1~12월 목록으로 끌어다 놓기
+async function viewFaq(view) {
+  const cfg = await api("/faq");
+  let dirty = false;
+  const nowMonth = new Date().getMonth() + 1;
+  const byId = () => Object.fromEntries(cfg.questions.map((q) => [q.id, q]));
+  const newId = () => `q${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+  const status = el("span", "hint");
+  const pool = el("div", "faq-pool");
+  const months = el("div", "faq-months");
+  const saveBtn = btn("저장", async () => {
+    const saved = await api("/faq", { method: "PUT", body: { questions: cfg.questions, months: cfg.months } });
+    Object.assign(cfg, saved);
+    dirty = false;
+    draw();
+    flash("저장했습니다. 5분 안에 첫 화면에 반영됩니다.");
+  }, "act primary");
+  const changed = () => {
+    dirty = true;
+    draw();
+  };
+
+  const addForm = el("form", "inline");
+  addForm.append(
+    field("새 질문", "text", "text", { required: true, placeholder: "예: 통학버스 시간표 알려 주세요" }),
+    field("분류", "category", "text", { placeholder: "예: 학교생활" }),
+  );
+  const addBtn = el("button", "act", "추가");
+  addBtn.type = "submit";
+  addForm.append(addBtn);
+  addForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = addForm.text.value.trim();
+    if (!text) return;
+    if (cfg.questions.some((q) => q.text === text)) return flash("같은 질문이 이미 있습니다.", true);
+    cfg.questions.push({ id: newId(), text, category: addForm.category.value.trim() || "기타" });
+    addForm.reset();
+    changed();
+  });
+
+  // 끌어다 놓기: 질문 목록 → 월(넣기), 월 → 월(옮기기), 같은 달 안(순서 바꾸기)
+  const drag = (node, payload) => {
+    node.draggable = true;
+    node.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData("text/plain", JSON.stringify(payload));
+      e.dataTransfer.effectAllowed = "copyMove";
+    });
+  };
+  const dropInto = (m, beforeId) => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    let p;
+    try {
+      p = JSON.parse(e.dataTransfer.getData("text/plain"));
+    } catch {
+      return;
+    }
+    if (!p || !p.id) return;
+    const list = cfg.months[m].filter((x) => x !== p.id);
+    const at = beforeId ? list.indexOf(beforeId) : -1;
+    list.splice(at < 0 ? list.length : at, 0, p.id);
+    if (list.length > 12) return flash("한 달에 12개까지 넣을 수 있습니다.", true);
+    if (p.from && p.from !== m) cfg.months[p.from] = cfg.months[p.from].filter((x) => x !== p.id);
+    cfg.months[m] = list;
+    changed();
+  };
+
+  function draw() {
+    const q = byId();
+    status.textContent = dirty ? " 저장하지 않은 변경이 있습니다." : "";
+    pool.replaceChildren(el("h3", null, `질문 목록 (${cfg.questions.length})`), addForm);
+    const ul = el("ul", "faq-q");
+    for (const item of cfg.questions) {
+      const li = el("li", "faq-item");
+      drag(li, { id: item.id, from: null });
+      const used = Object.entries(cfg.months).filter(([, ids]) => ids.includes(item.id)).map(([m]) => `${m}월`);
+      li.append(el("span", "faq-cat", item.category), el("span", "faq-text", item.text), el("span", "hint", used.length ? used.join(" ") : "미배치"));
+      const pick = el("select");
+      pick.setAttribute("aria-label", "월에 넣기");
+      pick.append(new Option("월에 넣기", ""));
+      for (let m = 1; m <= 12; m += 1) pick.append(new Option(`${m}월`, String(m)));
+      pick.addEventListener("change", () => {
+        const m = pick.value;
+        if (!m || cfg.months[m].includes(item.id)) return;
+        if (cfg.months[m].length >= 12) return flash("한 달에 12개까지 넣을 수 있습니다.", true);
+        cfg.months[m].push(item.id);
+        changed();
+      });
+      li.append(
+        pick,
+        btn("수정", () => {
+          const text = prompt("질문", item.text);
+          if (text == null || !text.trim()) return;
+          const cat = prompt("분류", item.category);
+          item.text = text.trim();
+          item.category = ((cat == null ? item.category : cat) || "기타").trim();
+          changed();
+        }),
+        btn("복사", () => {
+          const i = cfg.questions.indexOf(item);
+          cfg.questions.splice(i + 1, 0, { id: newId(), text: `${item.text} (복사)`, category: item.category });
+          changed();
+        }),
+        btn("삭제", () => {
+          if (!confirm(`'${item.text}' 질문을 지울까요? 모든 달에서 빠집니다.`)) return;
+          cfg.questions = cfg.questions.filter((x) => x !== item);
+          for (const m of Object.keys(cfg.months)) cfg.months[m] = cfg.months[m].filter((x) => x !== item.id);
+          changed();
+        }),
+      );
+      ul.append(li);
+    }
+    pool.append(ul);
+    months.replaceChildren();
+    for (let m = 1; m <= 12; m += 1) {
+      const key = String(m);
+      const box = el("section", `faq-month${m === nowMonth ? " now" : ""}`);
+      box.addEventListener("dragover", (e) => e.preventDefault());
+      box.addEventListener("drop", dropInto(key, null));
+      box.append(el("h4", null, `${m}월${m === nowMonth ? " (이번 달)" : ""} · ${cfg.months[key].length}개`));
+      const ol = el("ol");
+      for (const [i, id] of cfg.months[key].entries()) {
+        if (!q[id]) continue;
+        const li = el("li", `faq-chip${i < 6 ? "" : " extra"}`);
+        drag(li, { id, from: key });
+        li.addEventListener("dragover", (e) => e.preventDefault());
+        li.addEventListener("drop", dropInto(key, id));
+        const x = el("button", "faq-x", "×");
+        x.type = "button";
+        x.setAttribute("aria-label", `${m}월에서 빼기`);
+        x.addEventListener("click", () => {
+          cfg.months[key] = cfg.months[key].filter((v) => v !== id);
+          changed();
+        });
+        li.append(el("span", null, q[id].text), x);
+        ol.append(li);
+      }
+      if (!cfg.months[key].length) ol.append(el("li", "hint", "여기로 끌어다 놓으세요"));
+      box.append(ol);
+      months.append(box);
+    }
+  }
+  draw();
+  const bar = el("div", "bulk-bar");
+  bar.append(saveBtn, status);
+  const editor = el("div", "faq-editor");
+  editor.append(pool, months);
+  view.replaceChildren(
+    el("div", "section-head", "자주 묻는 질문"),
+    el("p", "hint", "첫 화면에는 이번 달 목록의 위에서 6개가 칩으로 나오고(7번째부터는 흐리게 표시), [전체 보기]에는 모든 질문이 분류별로 나옵니다. 질문을 오른쪽 달로 끌어다 놓으면 그 달에 들어가고(휴대폰은 '월에 넣기'), 달끼리 끌면 옮겨지며, 같은 달 안에서 끌면 순서가 바뀝니다. [저장]을 눌러야 반영됩니다."),
+    bar,
+    editor,
+  );
 }
 
 // 용어 사전(교수님 #767): 경남대 고유 용어를 등록하면 질문 분석·답변 작성에 뜻이 참고로 들어간다

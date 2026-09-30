@@ -41,3 +41,28 @@ def test_faq_follows_month():
     assert any("계절학기" in q for q in jun["items"])
     assert all(ALWAYS in m["items"] and len(m["items"]) <= 6 for m in (feb, jun, oct_))
     assert {g["label"] for g in oct_["groups"]} >= {"수강신청", "계절학기", "학교생활"}
+
+
+
+def test_faq_config_validate_and_view():
+    """관리자 편집 목록 검사(교수님 #781): 겹침·없는 번호 정리, 월 목록 순서대로 칩."""
+    import pytest
+
+    from backend.app.faq import default_config, validate_config, view
+
+    cfg = default_config()
+    assert all(len(cfg["months"][str(m)]) <= 6 for m in range(1, 13))
+    edited = {
+        "questions": [
+            {"id": "a", "text": "통학버스 시간표", "category": "학교생활"},
+            {"id": "b", "text": "수강신청 기간", "category": "수강신청"},
+        ],
+        "months": {"10": ["b", "a", "b", "zz"]},
+    }
+    ok = validate_config(edited)
+    assert ok["months"]["10"] == ["b", "a"] and ok["months"]["1"] == []
+    v = view(ok, 10)
+    assert v["items"] == ["수강신청 기간", "통학버스 시간표"] and v["groups"][0]["hot"]
+    dup = {"questions": [{"id": "a", "text": "x"}, {"id": "b", "text": "x"}], "months": {}}
+    with pytest.raises(ValueError):
+        validate_config(dup)

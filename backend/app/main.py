@@ -654,7 +654,7 @@ def create_app(
         """자주 묻는 질문: 이달 추천 칩 + 전체 분류(교수님 #768·#769)."""
         from backend.app.faq import this_month
 
-        return this_month()
+        return await this_month(s)
 
     @app.get("/api/campus/map")
     async def campus_map_api() -> dict[str, Any]:

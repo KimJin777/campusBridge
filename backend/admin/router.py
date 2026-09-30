@@ -880,3 +880,29 @@ async def delete_glossary_term(
     )
     invalidate()
     return row
+
+
+@router.get("/faq")
+async def get_faq(actor: Actor, store: Store) -> dict[str, Any]:
+    """자주 묻는 질문 목록(질문 풀 + 1~12월 목록). 저장 전이면 기본값(교수님 #781)."""
+    del actor
+    from backend.app.faq import default_config, validate_config
+
+    saved = await store.get_faq()
+    try:
+        return validate_config(saved) if saved else default_config()
+    except ValueError:
+        return default_config()
+
+
+@router.put("/faq")
+async def put_faq(body: dict[str, Any], actor: Actor, store: Store) -> dict[str, Any]:
+    from backend.app.faq import invalidate, validate_config
+
+    try:
+        cfg = validate_config(body)
+    except ValueError as exc:
+        raise AppError("BAD_REQUEST", str(exc)) from exc
+    await store.save_faq(cfg, actor=actor)
+    invalidate()
+    return cfg

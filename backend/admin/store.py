@@ -181,6 +181,10 @@ class AdminStore(Protocol):
         self, term_id: str, changes: dict[str, Any], *, action: str, actor: AdminActor, reason: str
     ) -> dict[str, Any]: ...
 
+    async def get_faq(self) -> dict[str, Any] | None: ...
+
+    async def save_faq(self, cfg: dict[str, Any], *, actor: AdminActor) -> None: ...
+
     async def save_web_page(
         self,
         page_id: str,
@@ -860,6 +864,32 @@ class FirestoreAdminStore:
             return {"id": document_id, **_safe_value(after)}
 
         return await txn(self.db.transaction())
+
+    async def get_faq(self) -> dict[str, Any] | None:
+        snap = await self.db.collection("site_config").document("faq").get()
+        return snap.to_dict() if snap.exists else None
+
+    async def save_faq(self, cfg: dict[str, Any], *, actor: AdminActor) -> None:
+        """자주 묻는 질문 목록 저장 + 감사 로그(교수님 #781)."""
+        now = datetime.now(UTC)
+        batch = self.db.batch()
+        batch.set(
+            self.db.collection("site_config").document("faq"),
+            {**cfg, "updated_at": now, "updated_by": actor.email},
+        )
+        batch.set(
+            self.db.collection("admin_audit").document(str(uuid4())),
+            self._audit_payload(
+                actor=actor,
+                action="faq.save",
+                target="site_config/faq",
+                before=None,
+                after={"questions": len(cfg["questions"])},
+                reason="자주 묻는 질문 편집",
+                request_id=f"faq-{now.timestamp():.0f}",
+            ),
+        )
+        await batch.commit()
 
     async def save_glossary_term(
         self, term_id: str, changes: dict[str, Any], *, action: str, actor: AdminActor, reason: str
