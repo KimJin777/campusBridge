@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>학교 일정 — 캠퍼스 브릿지</title>
+  <meta name="description" content="경남대 학사일정·장학·교내 행사를 달력으로 봅니다.">
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="calendar.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a href="/" class="brand-wrap" aria-label="캠퍼스 브릿지 첫 화면으로">
+      <img src="logo.svg" alt="" class="logo" width="32" height="32">
+      <h1 class="brand">캠퍼스 브릿지</h1>
+    </a>
+  </header>
+  <main class="chat calpage">
+    <div class="calpage-nav">
+      <button type="button" id="prev" class="cal-toggle" aria-label="이전 달">◀</button>
+      <h2 id="month-title" class="calpage-title"></h2>
+      <button type="button" id="next" class="cal-toggle" aria-label="다음 달">▶</button>
+      <button type="button" id="this-month" class="cal-toggle">이번 달</button>
+    </div>
+    <div id="month" aria-live="polite"></div>
+    <p class="hint">학교 학사일정·공지·교내 행사에서 모은 일정입니다. 정확한 내용은 원문 링크를 확인하세요. [+ 캘린더]는 휴대폰·Outlook(.ics), [구글]은 구글 캘린더에 담습니다.</p>
+  </main>
+</body>
+</html>

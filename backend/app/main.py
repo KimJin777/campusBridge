@@ -28,7 +28,7 @@ from backend.agent.prompts import PROMPT_VERSION
 from backend.api.schemas import SCHEMA_VERSION, ChatRequest, FeedbackRequest, TrackRequest
 from backend.app.clients import deadline_after
 from backend.app.config import Settings, get_settings
-from backend.app.events import today_events
+from backend.app.events import month_events, today_events
 from backend.domain.errors import RETRY_MESSAGE, AppError
 from backend.domain.evidence import EvidenceCard
 from backend.store.base import Acquire, Completion, TurnStore
@@ -529,6 +529,15 @@ def create_app(
     @app.get("/api/events/today")
     async def events_today() -> dict[str, Any]:
         return {"items": await today_events(s)}
+
+    @app.get("/api/events/month")
+    async def events_month(ym: str = "") -> dict[str, Any]:
+        """학교 일정 전체보기(월 달력). ym=YYYY-MM"""
+        return {"items": await month_events(s, ym[:7])}
+
+    @app.get("/calendar", include_in_schema=False)
+    async def calendar_page() -> RedirectResponse:
+        return RedirectResponse("/calendar.html")
 
     @app.get("/admin", include_in_schema=False)
     async def admin_page() -> RedirectResponse:

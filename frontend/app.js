@@ -732,13 +732,14 @@ function dayListLocal(start, end) {
   return out;
 }
 
-// 오늘·이번 주 학사 일정(진행 중 + 7일 안 마감). 없거나 실패하면 카드를 숨긴다
+// 이번 1주일 학교 일정 + [전체보기](월 달력 페이지). 조회 실패면 버튼을 숨긴다
 // 헤더 오른쪽 작은 '학사 일정' 버튼(첫 화면에서만). 올리거나 누르면 목록, 항목을 누르면 원문
 async function loadToday() {
   try {
     const { items } = await fetch("/api/events/today").then((r) => r.json());
-    if (!items?.length || !$("#welcome") || $("#welcome").hidden) return;
+    if (!items || !$("#welcome") || $("#welcome").hidden) return;
     const list = $("#today-list");
+    if (!items.length) list.append(el("li", "today-row", "이번 주 일정이 없습니다."));
     for (const e of items) {
       const li = el("li");
       const row = el(safeSchoolUrl(e.url) ? "a" : "span", "today-row");
@@ -755,6 +756,11 @@ async function loadToday() {
       li.append(row, calendarButtons({ title: e.title, start: e.start_date || e.end_date, end: e.end_date, url: e.url }, el));
       list.append(li);
     }
+    const all = el("a", "today-all", "전체보기 →");
+    all.href = "/calendar.html";
+    const allLi = el("li");
+    allLi.append(all);
+    list.append(allLi);
     $("#today-count").textContent = String(items.length);
     const box = $("#today");
     const btn = $(".today-btn", box);

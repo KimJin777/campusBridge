@@ -332,3 +332,16 @@ a.brand-wrap { color: inherit; text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+/* 학교 일정 전체보기(calendar.html) */
+.calpage-nav { display: flex; align-items: center; gap: 8px; margin: 8px 0 12px; }
+.calpage-title { margin: 0 6px; font: 700 20px/1.3 "Plus Jakarta Sans", Inter, sans-serif; }
+#this-month { margin-left: auto; }
+.calpage .cal-cell { min-height: 78px; }
+.calpage-list { gap: 6px; }
+.calpage-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.calpage-list .tag { padding: 0 5px; border-radius: 4px; background: var(--primary-soft); color: var(--secondary); font-size: 10px; font-style: normal; }
+.calpage-list .tag.ev { background: color-mix(in srgb, var(--emerald) 16%, transparent); color: var(--emerald); }
+.calpage-t { color: var(--text); text-decoration: none; }
+a.calpage-t:hover { text-decoration: underline; }
+.today-all { display: block; padding: 7px 9px; border-top: 1px solid var(--line); color: var(--primary); font-size: 13px; font-weight: 600; text-align: right; text-decoration: none; }
+.today-all:hover { background: var(--primary-soft); border-radius: 8px; }
