@@ -13,6 +13,17 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.14.1",
+        "date": "2026-09-30",
+        "deployed_at": None,
+        "revision": None,
+        "title": "담당 부서 카드 길찾기",
+        "items": [
+            "답변의 담당 부서 카드(예: 학사관리팀 · 본관 1층)에 '정문에서 본관까지 걸어서 약 N분' 길찾기 버튼",
+            "같은 답변에서 같은 건물 길안내는 한 번만 표시",
+        ],
+    },
+    {
         "version": "0.14.0",
         "date": "2026-09-30",
         "deployed_at": None,

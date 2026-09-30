@@ -238,6 +238,10 @@ class Turn {
       box.append(call);
     }
     if (d.snapshot_at) box.append(el("div", "asof", `부서 정보 확인일 ${d.snapshot_at}`));
+    if (d.location_text) {
+      // 부서 위치(예: 본관 1층)로 길찾기 — 교수님 2026-09-30
+      this.routeWidget(`${d.name} ${d.location_text}`).then((w) => w && box.append(w));
+    }
     return box;
   }
 
@@ -319,13 +323,25 @@ class Turn {
   }
 
   // 정문 출발 도보 길안내: 장소 근거가 있거나 '어디·가는 길'을 물으면 지도에 경로를 그린다
+  // 정문 출발 도보 길안내: 장소 근거가 있거나 '어디·가는 길'을 물으면 지도에 경로를 그린다
   async renderRoute() {
     const asksWay = /어디|위치|가는\s*길|가려면|찾아가|길\s*안내|몇\s*분/.test(this.message);
     const target = this.placeText || (asksWay ? this.message : "");
-    if (!target) return;
+    const wrap = await this.routeWidget(target);
+    if (!wrap) return;
+    const fu = $(".follow-ups", this.answer);
+    this.answer.insertBefore(wrap, fu || null);
+  }
+
+  // 목적지 문구(장소 이름·"본관 1층" 등) → [정문에서 ○○까지 걸어서 약 N분] 버튼 + 펼치면 약도·사진.
+  // 같은 턴에서 같은 건물은 한 번만(답변과 부서 카드가 같은 건물을 가리키는 경우).
+  async routeWidget(target) {
+    if (!target) return null;
     try {
       const r = await fetch(`/api/campus/route?to=${encodeURIComponent(target.slice(0, 200))}`).then((x) => x.json());
-      if (!r.found) return;
+      this.routesShown = this.routesShown || new Set();
+      if (!r.found || this.routesShown.has(r.to)) return null;
+      this.routesShown.add(r.to);
       const wrap = el("section", "route-wrap");
       const toggle = el("button", "route-toggle");
       toggle.type = "button";
@@ -343,9 +359,10 @@ class Turn {
         }
       });
       wrap.append(toggle, body);
-      const fu = $(".follow-ups", this.answer);
-      this.answer.insertBefore(wrap, fu || null);
-    } catch {}
+      return wrap;
+    } catch {
+      return null;
+    }
   }
 
   renderFollowUps(list) {
