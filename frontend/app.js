@@ -756,6 +756,7 @@ async function kakaoFigure(r, key) {
   const path = r.path.map(LL);
   const map = new kakao.maps.Map(box, { center: path[Math.floor(path.length / 2)], level: 3 });
   new kakao.maps.Polyline({ map, path, strokeWeight: 6, strokeColor: "#2563eb", strokeOpacity: 0.9, strokeStyle: "solid" });
+  map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT); // 확대·축소(+ −)
   for (const [ll, text, cls] of [[r.from_ll, `출발 · ${r.from}`, "start"], [r.to_ll, `도착 · ${r.to}`, "end"]]) {
     new kakao.maps.CustomOverlay({ map, position: LL(ll), content: kakaoPin(text, cls), yAnchor: 1.3 });
   }
@@ -806,6 +807,62 @@ function appendPhoto(fig, m, r) {
   fig.append(img, el("figcaption", "hint", m.photo_credit || "사진 출처: 경남대학교 홈페이지"));
 }
 
+// 자체 약도 확대·축소(교수님 2026-09-30): 처음엔 경로 중심으로 확대, [+][−][전체], 끌어서 이동
+function zoomControls(svg, full, line) {
+  const [fx, fy, fw, fh] = full;
+  const lx = line.map((p) => p[0]);
+  const ly = line.map((p) => p[1]);
+  const pad = 60;
+  const fit = Math.max((Math.max(...lx) - Math.min(...lx) + pad * 2) / fw, (Math.max(...ly) - Math.min(...ly) + pad * 2) / fh);
+  let scale = Math.min(4, Math.max(1, 1 / fit)); // 1 = 캠퍼스 전체
+  let cx = (Math.min(...lx) + Math.max(...lx)) / 2;
+  let cy = (Math.min(...ly) + Math.max(...ly)) / 2;
+  const apply = () => {
+    const w = fw / scale;
+    const h = fh / scale;
+    cx = Math.min(Math.max(cx, fx + w / 2), fx + fw - w / 2);
+    cy = Math.min(Math.max(cy, fy + h / 2), fy + fh - h / 2);
+    svg.setAttribute("viewBox", `${cx - w / 2} ${cy - h / 2} ${w} ${h}`);
+  };
+  const box = el("div", "zoom-ctl");
+  const b = (label, aria, fn) => {
+    const x = el("button", null, label);
+    x.type = "button";
+    x.setAttribute("aria-label", aria);
+    x.addEventListener("click", () => {
+      fn();
+      apply();
+    });
+    return x;
+  };
+  box.append(
+    b("+", "확대", () => (scale = Math.min(8, scale * 1.5))),
+    b("−", "축소", () => (scale = Math.max(1, scale / 1.5))),
+    b("전체", "캠퍼스 전체 보기", () => {
+      scale = 1;
+      cx = fx + fw / 2;
+      cy = fy + fh / 2;
+    }),
+  );
+  let drag = null; // 끌어서 이동(마우스·터치)
+  svg.addEventListener("pointerdown", (e) => {
+    drag = { x: e.clientX, y: e.clientY, cx, cy };
+    svg.setPointerCapture(e.pointerId);
+  });
+  svg.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const k = fw / scale / (svg.clientWidth || 1);
+    cx = drag.cx - (e.clientX - drag.x) * k;
+    cy = drag.cy - (e.clientY - drag.y) * k;
+    apply();
+  });
+  const stop = () => (drag = null);
+  svg.addEventListener("pointerup", stop);
+  svg.addEventListener("pointercancel", stop);
+  apply();
+  return box;
+}
+
 function svgFigure(r, m) {
   const all = m.paths.flat();
   const xs = all.map((p) => p[0]);
@@ -826,8 +883,10 @@ function svgFigure(r, m) {
     svg.append(t);
   }
   const fig = el("figure", "route-fig");
-  fig.append(svg);
-  const cap = el("figcaption", "hint", "교내 도보길 기준 약도 · 경사·계단 구간이 있어 실제 시간은 더 걸릴 수 있습니다.");
+  const stage = el("div", "route-stage");
+  stage.append(svg, zoomControls(svg, [x0, y0, w, h], r.line));
+  fig.append(stage);
+  const cap = el("figcaption", "hint", "교내 도보길 기준 약도 · [+][−]로 확대·축소, 끌어서 이동 · 경사·계단 구간이 있어 실제 시간은 더 걸릴 수 있습니다.");
   fig.append(cap);
   const link = kakaoLink(r);
   if (link) fig.append(link);

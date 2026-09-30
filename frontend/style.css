@@ -422,3 +422,12 @@ button.calpage-t:hover { color: var(--primary); text-decoration: underline; }
 .report-bar strong { margin-right: auto; font-size: 13px; }
 .report-form { scroll-margin-bottom: 180px; }
 .receipt { scroll-margin-bottom: 180px; }
+
+/* 자체 약도 확대·축소 */
+.route-stage { position: relative; }
+.route-stage .route-svg { touch-action: none; cursor: grab; }
+.route-stage .route-svg:active { cursor: grabbing; }
+.zoom-ctl { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; }
+.zoom-ctl button { min-width: 34px; height: 30px; padding: 0 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 16px; font-weight: 700; line-height: 1; box-shadow: 0 1px 3px rgba(0,0,0,.12); cursor: pointer; }
+.zoom-ctl button:last-child { font-size: 11px; }
+.zoom-ctl button:hover { border-color: var(--primary); }
