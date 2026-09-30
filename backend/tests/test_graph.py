@@ -332,3 +332,15 @@ def test_compose_timeout_is_deadline_fallback_not_error():
     llm = FakeLLM(classify=leave_classify(), fail={"compose": LLMTimeout("slow")})
     out = run(deps(llm), state())
     assert out["outcome"] == "fallback" and out["fallback_reason"] == "deadline"
+
+
+def test_location_fallback_says_location_not_rules():
+    """위치를 물었는데 '규정·공지에서 못 찾음'이라고 하지 않는다(교수님 #778)."""
+    from backend.agent.nodes import Nodes
+    from backend.domain.answer import FALLBACK_MESSAGE, LOCATION_FALLBACK_MESSAGE
+
+    n = Nodes(deps(FakeLLM()))
+    loc = n.fallback({"evidence_needs": ["location"], "evidence": [], "intent": "location"})
+    assert loc["fallback"].message == LOCATION_FALLBACK_MESSAGE
+    rule = n.fallback({"evidence_needs": ["eligibility_or_limit"], "evidence": []})
+    assert rule["fallback"].message == FALLBACK_MESSAGE

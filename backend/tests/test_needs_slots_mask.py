@@ -32,9 +32,11 @@ def test_single_search_call_and_original_query():
     }
 
 
-def test_menu_and_location_without_search():
+def test_menu_and_location_search_guides_too():
     assert names(plan_calls(["menu"], search_query="학식")) == ["get_menu"]
+    # 장소표에 없는 곳은 학사안내·등록 홈페이지에서도 찾는다(교수님 #778)
     assert names(plan_calls(["location"], search_query="학사지원팀 위치")) == [
+        "search_academic_knowledge",
         "find_campus_location",
         "find_campus_tips",  # 승인된 학생 꿀팁은 위치 질문에서만(#715)
     ]

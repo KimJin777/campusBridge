@@ -452,6 +452,20 @@ def _ingestion_run_view(item: dict[str, Any]) -> dict[str, Any]:
         "started_at",
         "finished_at",
         "error_code",
+        # 무엇을 수집했는지(교수님 #775·#778): 누가·왜 실행했고 단계별 결과가 어땠는지
+        "trigger",
+        "actor",
+        "created_at",
+        "web_pages",
+        "events",
+        "event_docs",
+        "tips",
+        "menus",
+        "web_pages_error",
+        "events_error",
+        "event_docs_error",
+        "tips_error",
+        "menus_error",
     }
     return {key: value for key, value in item.items() if key in allowed}
 

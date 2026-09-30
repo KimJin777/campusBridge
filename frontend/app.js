@@ -8,7 +8,7 @@ initTelemetry("chat");
 
 const SCHEMA_VERSION = 1;
 const THREAD_KEY = "campusbridge.thread_id";
-const ALLOWED_LINK = /^https:\/\/([a-z0-9-]+\.)*kyungnam\.ac\.kr(\/|$)/i;
+const ALLOWED_LINK = /^https:\/\/([a-z0-9-]+\.)*(kyungnam\.ac\.kr|kusemicamp\.com)(\/|$)/i; // 교내 + 소속 기관(#778)
 const STEP_LABEL = {
   classify: "질문 의도 분석",
   plan: "필요한 근거 정리",

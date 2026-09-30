@@ -48,8 +48,11 @@ def normalize_url(url: str) -> str:
     host = (p.hostname or "").lower()
     if p.scheme != "https":
         raise BlockedUrl("https 주소만 등록할 수 있습니다.")
-    if not (host == SCHOOL_DOMAIN or host.endswith("." + SCHOOL_DOMAIN)):
-        raise BlockedUrl("경남대학교(kyungnam.ac.kr) 교내 홈페이지만 등록할 수 있습니다.")
+    from backend.tools.common import AFFILIATED_DOMAINS, is_school_host
+
+    if not is_school_host(host):
+        allowed = ", ".join((SCHOOL_DOMAIN, *AFFILIATED_DOMAINS))
+        raise BlockedUrl(f"경남대학교 교내·소속 기관 홈페이지({allowed})만 등록할 수 있습니다.")
     if p.username or p.password or p.port not in (None, 443):
         raise BlockedUrl("주소 형식이 올바르지 않습니다.")
     return urlunparse(("https", host, p.path or "/", "", p.query, ""))

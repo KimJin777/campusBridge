@@ -23,6 +23,7 @@ from backend.agent.state import ActOut, ClassifyOut, ComposeOut, ToolCall, TurnS
 from backend.agent.verify import SUPPRESSED_TEMPLATE, verify
 from backend.app.clients import remaining
 from backend.domain.answer import (
+    LOCATION_FALLBACK_MESSAGE,
     Answer,
     AnswerNotice,
     Dept,
@@ -520,6 +521,8 @@ class Nodes:
         fb = Fallback(
             reason=reason, dept=self._dept(state, top) if reason != "out_of_scope" else None
         )
+        if reason != "out_of_scope" and "location" in (state.get("evidence_needs") or []):
+            fb.message = LOCATION_FALLBACK_MESSAGE
         _emit("fallback", **fb.model_dump(mode="json"))
         return {"fallback": fb, "fallback_reason": reason, "outcome": "fallback"}
 

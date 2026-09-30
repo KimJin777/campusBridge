@@ -422,11 +422,36 @@ async function viewSources(view) {
   );
 }
 
+// 수집 실행이 무엇이었고 무엇을 모았는지 사람이 읽게(교수님 #775·#778)
+const RUN_SOURCE = { rules: "학칙·규정", guides: "학사안내", web_pages: "등록 홈페이지", events: "학사일정·공지 일정", menus: "식단", places: "장소·부서" };
+const RUN_PART = { web_pages: "홈페이지", events: "일정", event_docs: "공지 본문", tips: "꿀팁", menus: "식단" };
+const RUN_WORD = { pages: "쪽", indexed: "색인", sections: "절", failed: "실패", calendar: "학사일정", notice_auto: "공지(자동)", notice_llm: "공지(AI)", notice_poster: "그림 공지", event_auto: "행사", event_pending: "행사 검수", read: "읽음", poster: "그림", removed: "삭제", superseded: "정정", skipped: "건너뜀" };
+function runTitle(r) {
+  const what = (r.source_ids || []).length ? r.source_ids.map((s) => RUN_SOURCE[s] || s).join(", ") : "전체";
+  if (r.trigger === "schedule" || String(r.id).startsWith("schedule-")) return `매일 자동 수집(${what})`;
+  return `관리자 수집: ${what}${r.actor ? ` · ${r.actor}` : ""}`;
+}
+function runSummary(r) {
+  const parts = [];
+  for (const [k, label] of Object.entries(RUN_PART)) {
+    if (r[`${k}_error`]) parts.push(`${label} 실패(${r[`${k}_error`]})`);
+    const v = r[k];
+    if (v == null) continue;
+    if (typeof v === "number") parts.push(`${label} ${v}`);
+    else if (typeof v === "object") {
+      const nums = Object.entries(v).filter(([, n]) => typeof n === "number" && n > 0).map(([w, n]) => `${RUN_WORD[w] || w} ${n}`);
+      if (nums.length) parts.push(`${label}: ${nums.join(", ")}`);
+    }
+  }
+  return parts.join(" · ") || "—";
+}
+
 async function viewRuns(view) {
   const { items } = await api("/ingestion-runs");
   view.replaceChildren(
     btn("새로고침", () => openTab("runs")),
-    table(items, [["id", "실행"], [(r) => badge(r.status), "상태"], ["phase", "단계"],
+    el("p", "hint", "무엇을 누가 실행했는지와 단계별로 모은 건수를 보여 줍니다. 실행 번호(run-…)는 감사 로그와 대조할 때만 씁니다."),
+    table(items, [[runTitle, "수집"], [runSummary, "수집 결과"], ["id", "실행 번호"], [(r) => badge(r.status), "상태"], ["phase", "단계"],
       [(r) => `${r.processed ?? 0}/${r.total ?? "?"}`, "진행"], ["added", "추가"], ["changed", "변경"],
       ["rejected", "거부"], ["error_code", "실패 원인"], ["started_at", "시작"], ["finished_at", "종료"]]),
   );
@@ -706,7 +731,7 @@ async function viewWebPages(view) {
   const { items } = await api("/web-pages");
   const form = el("form", "inline");
   form.append(
-    field("교내 홈페이지 주소(https://…kyungnam.ac.kr)", "url", "url", { required: true, placeholder: "https://www.kyungnam.ac.kr/ko/4319/subview.do" }),
+    field("교내·소속 기관 홈페이지 주소(kyungnam.ac.kr, kusemicamp.com)", "url", "url", { required: true, placeholder: "https://www.kyungnam.ac.kr/ko/4319/subview.do" }),
     field("메모(무엇을 위한 페이지인지)", "note", "text", { placeholder: "예: 통학버스 노선 안내" }),
   );
   const preview = el("div", "web-preview");
@@ -735,8 +760,9 @@ async function viewWebPages(view) {
     } catch (e) {
       checked = null;
       reg.disabled = true;
-      preview.replaceChildren();
-      throw e;
+      // 실패 이유를 미리보기 자리에 바로 보인다(교수님 #775: 눌러도 아무 반응이 없어 보임)
+      preview.replaceChildren(el("p", "msg err", `미리보기 실패: ${e.message}`));
+      if (e.message === "unauthorized") throw e;
     }
   });
   form.addEventListener("submit", (e) => e.preventDefault());

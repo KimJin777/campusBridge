@@ -27,17 +27,19 @@ def ensure_allowed_url(url: str, allowed_hosts: frozenset[str]) -> str:
 
 
 SCHOOL_DOMAIN = "kyungnam.ac.kr"
+# 학교 도메인이 아닌 경남대 소속 기관 사이트(교수님 #778: 반도체부트캠프사업단)
+AFFILIATED_DOMAINS = ("kusemicamp.com",)
+
+
+def is_school_host(host: str) -> bool:
+    host = (host or "").lower().rstrip(".")
+    return any(host == d or host.endswith("." + d) for d in (SCHOOL_DOMAIN, *AFFILIATED_DOMAINS))
 
 
 def is_school_url(url: str) -> bool:
-    """https + kyungnam.ac.kr 또는 그 하위 도메인(교수님 2026-09-29: 하위 사이트 수집 허용)."""
+    """https + kyungnam.ac.kr(하위 포함) 또는 소속 기관 도메인(교수님 2026-09-29·#778)."""
     parsed = urlparse(url)
-    host = (parsed.hostname or "").lower().rstrip(".")
-    return (
-        parsed.scheme == "https"
-        and parsed.username is None
-        and (host == SCHOOL_DOMAIN or host.endswith("." + SCHOOL_DOMAIN))
-    )
+    return parsed.scheme == "https" and parsed.username is None and is_school_host(parsed.hostname)
 
 
 def truncate(value: str | None, limit: int) -> str:

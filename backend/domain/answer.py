@@ -116,6 +116,8 @@ FallbackReason = Literal[
 Outcome = Literal["answer", "fallback", "ask", "error"]
 
 FALLBACK_MESSAGE = "확인된 규정·공지에서 답을 찾지 못했습니다."
+# 위치를 물었는데 '규정·공지'라고 답하던 문제(교수님 #778)
+LOCATION_FALLBACK_MESSAGE = "확인된 캠퍼스 장소·부서 정보와 학교 안내에서 위치를 찾지 못했습니다."
 
 
 class Fallback(BaseModel):

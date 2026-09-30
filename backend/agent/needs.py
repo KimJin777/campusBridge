@@ -10,6 +10,8 @@ NEED_KINDS: dict[str, list[str]] = {
     "eligibility_or_limit": ["rule"],
     "current_deadline": ["rule"],
     "procedure_and_contact": ["guide", "rule"],
+    # 장소표에 없는 곳(신설 사업단 등)은 학사안내·등록 홈페이지에서 찾는다(교수님 #778)
+    "location": ["guide"],
 }
 
 BOARD_KEYWORDS = (("scholarship", ("장학",)), ("general", ("일반공지", "행사", "채용")))
