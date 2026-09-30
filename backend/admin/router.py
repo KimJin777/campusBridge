@@ -720,7 +720,8 @@ async def _read_page(url: str, settings: Settings) -> tuple[str, str, list[dict[
             "web page preview failed: %s %s", type(exc).__name__, str(exc)[:200]
         )
         raise AppError(
-            "BAD_REQUEST", "페이지를 가져오지 못했습니다. 주소를 확인하고, 계속되면 오류 로그를 확인하세요."
+            "BAD_REQUEST",
+            "페이지를 가져오지 못했습니다. 주소를 확인하고, 계속되면 오류 로그를 확인하세요.",
         ) from exc
     title, sections = extract_page(html, final)
     if not sections:
