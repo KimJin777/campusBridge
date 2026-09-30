@@ -1,6 +1,6 @@
 // 학교 일정 전체보기(월 달력). 우리가 가진 campus_events 중 검수 완료(active)만 보인다.
 // 모든 외부 텍스트는 textContent로만 넣는다(innerHTML 금지).
-import { calendarButtons } from "./ics.js";
+import { calendarButtons, downloadIcsMany } from "./ics.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -40,48 +40,96 @@ function days(start, end) {
 
 const md = (iso) => `${iso.slice(5, 7)}.${iso.slice(8, 10)}`;
 
+function showDetail(e) {
+  const box = $("#detail");
+  const when = e.start === e.end ? e.start : `${e.start} ~ ${e.end}`;
+  const head = el("div", "cal-detail-head");
+  head.append(el("i", `tag${e.category === "event" ? " ev" : ""}`, TAG[e.category] || "학사"), el("strong", null, e.title));
+  const close = el("button", "cal-add-btn", "닫기");
+  close.type = "button";
+  close.addEventListener("click", () => (box.hidden = true));
+  head.append(close);
+  const body = el("dl", "cal-detail-body");
+  const row = (k, v) => v && body.append(el("dt", null, k), el("dd", null, v));
+  row("기간", when);
+  row("구분", e.label);
+  box.replaceChildren(head, body);
+  if (SCHOOL.test(e.url || "")) {
+    const a = el("a", "calpage-t", "학교 원문 보기");
+    a.href = e.url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    box.append(a);
+  }
+  box.append(calendarButtons({ title: e.title, start: e.start, end: e.end, url: e.url }, el));
+  box.hidden = false;
+  box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+// 주 단위로 그린다: 기간 일정은 시작~끝을 화살표 막대로 잇고 제목을 막대 위에(교수님 2026-09-30)
+function weekRow(weekDays, items, ym, today) {
+  const lanes = [];
+  const segs = [];
+  const firstIso = weekDays.find(Boolean);
+  const lastIso = [...weekDays].reverse().find(Boolean);
+  for (const e of items) {
+    if (e.end < firstIso || e.start > lastIso) continue;
+    const s = e.start < firstIso ? firstIso : e.start;
+    const t = e.end > lastIso ? lastIso : e.end;
+    const c0 = weekDays.indexOf(s);
+    const c1 = weekDays.indexOf(t);
+    if (c0 < 0 || c1 < 0) continue;
+    let lane = lanes.findIndex((busy) => busy.every((b) => b[1] < c0 || b[0] > c1));
+    if (lane < 0) lane = lanes.push([]) - 1;
+    lanes[lane].push([c0, c1]);
+    segs.push({ e, c0, c1, lane, head: s === e.start, tail: t === e.end });
+  }
+  const row = el("div", "cal-week");
+  row.style.gridTemplateRows = `auto repeat(${Math.max(lanes.length, 1)}, 22px) 6px`;
+  weekDays.forEach((iso, i) => {
+    const dow = i;
+    const cell = el("div", `cal-cell${iso ? "" : " empty"}${dow === 0 ? " sun" : dow === 6 ? " sat" : ""}${iso === today ? " today" : ""}`);
+    cell.style.gridColumn = `${i + 1}`;
+    cell.style.gridRow = `1 / span ${Math.max(lanes.length, 1) + 2}`;
+    if (iso) cell.append(el("span", "cal-num", String(Number(iso.slice(8)))));
+    row.append(cell);
+  });
+  for (const g of segs) {
+    const range = g.e.start !== g.e.end;
+    const bar = el("button", `cal-bar${range ? " range" : " single"}${g.head ? " head" : ""}${g.tail ? " tail" : ""}${g.e.category === "event" ? " ev" : ""}`);
+    bar.type = "button";
+    bar.style.gridColumn = `${g.c0 + 1} / ${g.c1 + 2}`;
+    bar.style.gridRow = `${g.lane + 2}`;
+    bar.title = `${g.e.title} (${g.e.start === g.e.end ? g.e.start : `${g.e.start} ~ ${g.e.end}`})`;
+    bar.append(el("span", "cal-bar-t", g.e.title));
+    bar.addEventListener("click", () => showDetail(g.e));
+    row.append(bar);
+  }
+  return row;
+}
+
 function render(ym, items) {
   const [y, m] = ym.split("-").map(Number);
   $("#month-title").textContent = `${y}년 ${m}월`;
   document.title = `${y}년 ${m}월 학교 일정 — 캠퍼스 브릿지`;
-  const byDay = new Map();
-  for (const e of items) {
-    for (const day of days(e.start, e.end)) {
-      if (!day.startsWith(ym)) continue;
-      if (!byDay.has(day)) byDay.set(day, []);
-      byDay.get(day).push(e.title);
-    }
-  }
+  $("#detail").hidden = true;
   const box = el("div", "cal-month");
-  const grid = el("div", "cal-grid");
-  grid.setAttribute("role", "grid");
-  for (const [i, w] of ["일", "월", "화", "수", "목", "금", "토"].entries()) grid.append(el("div", `cal-dow${i === 0 ? " sun" : i === 6 ? " sat" : ""}`, w));
+  const dows = el("div", "cal-grid");
+  for (const [i, w] of ["일", "월", "화", "수", "목", "금", "토"].entries()) dows.append(el("div", `cal-dow${i === 0 ? " sun" : i === 6 ? " sat" : ""}`, w));
+  box.append(dows);
   const first = new Date(y, m - 1, 1).getDay();
   const count = new Date(y, m, 0).getDate();
-  for (let i = 0; i < first; i += 1) grid.append(el("div", "cal-cell empty"));
+  const cells = [...Array(first).fill(null), ...Array.from({ length: count }, (_, i) => `${ym}-${pad(i + 1)}`)];
+  while (cells.length % 7) cells.push(null);
   const today = isoOf(new Date());
-  for (let d = 1; d <= count; d += 1) {
-    const iso = `${ym}-${pad(d)}`;
-    const dow = (first + d - 1) % 7;
-    const titles = byDay.get(iso) || [];
-    const cell = el("div", `cal-cell${titles.length ? " has" : ""}${dow === 0 ? " sun" : dow === 6 ? " sat" : ""}${iso === today ? " today" : ""}`);
-    cell.append(el("span", "cal-num", String(d)));
-    for (const t of titles.slice(0, 3)) cell.append(el("span", "cal-ev", t));
-    if (titles.length > 3) cell.append(el("span", "cal-ev", `+${titles.length - 3}`));
-    if (titles.length) cell.title = titles.join("\n");
-    grid.append(cell);
-  }
-  box.append(grid);
+  for (let w = 0; w < cells.length; w += 7) box.append(weekRow(cells.slice(w, w + 7), items, ym, today));
   const list = el("ul", "cal-list calpage-list");
   for (const e of items) {
     const li = el("li");
     const when = e.start === e.end ? md(e.start) : `${md(e.start)} ~ ${md(e.end)}`;
-    const title = el(SCHOOL.test(e.url || "") ? "a" : "span", "calpage-t", e.title);
-    if (title.tagName === "A") {
-      title.href = e.url;
-      title.target = "_blank";
-      title.rel = "noopener noreferrer";
-    }
+    const title = el("button", "calpage-t link", e.title);
+    title.type = "button";
+    title.addEventListener("click", () => showDetail(e));
     li.append(
       el("span", "cal-when", when),
       el("i", `tag${e.category === "event" ? " ev" : ""}`, TAG[e.category] || "학사"),
@@ -93,6 +141,9 @@ function render(ym, items) {
   if (!items.length) list.append(el("li", "hint", "이 달에 등록된 일정이 없습니다."));
   box.append(list);
   $("#month").replaceChildren(box);
+  const allBtn = $("#all-ics");
+  allBtn.disabled = !items.length;
+  allBtn.onclick = () => downloadIcsMany(items.map((e) => ({ title: e.title, start: e.start, end: e.end, url: e.url })), `${y}년 ${m}월 학교 일정`);
 }
 
 async function load(ym) {
@@ -111,4 +162,5 @@ let current = /^\d{4}-\d{2}$/.test(new URLSearchParams(location.search).get("ym"
 $("#prev").addEventListener("click", () => load((current = shift(current, -1))));
 $("#next").addEventListener("click", () => load((current = shift(current, 1))));
 $("#this-month").addEventListener("click", () => load((current = thisMonth())));
+$("#all-google").href = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(`webcal://${location.host}/api/events/calendar.ics`)}`;
 load(current);

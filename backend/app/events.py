@@ -121,6 +121,55 @@ async def month_events(settings: Settings, ym: str) -> list[dict[str, Any]]:
     return items
 
 
+def ics_escape(text: str) -> str:
+    """RFC 5545 텍스트 이스케이프."""
+    out = str(text or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+    return out.replace("\r", "").replace("\n", "\\n")
+
+
+def build_ics(items: list[dict[str, Any]], now: datetime) -> str:
+    """학교 일정 구독용 iCalendar(종일 일정). 구글·애플·아웃룩 캘린더가 주기적으로 다시 읽는다."""
+    stamp = now.strftime("%Y%m%dT%H%M%SZ")
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//CampusBridge//KO",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "X-WR-CALNAME:경남대 학교 일정(캠퍼스 브릿지)",
+        "X-WR-TIMEZONE:Asia/Seoul",
+        "REFRESH-INTERVAL;VALUE=DURATION:PT12H",
+    ]
+    for e in items:
+        start = date.fromisoformat(e["start"])
+        end = date.fromisoformat(e["end"]) + timedelta(days=1)  # 종일 일정의 끝은 다음 날(배타)
+        desc = f"{e.get('label') or ''} 학교 원문: {e.get('url') or ''}".strip()
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:{e.get('id') or start.isoformat()}@campusbridge",
+            f"DTSTAMP:{stamp}",
+            f"DTSTART;VALUE=DATE:{start:%Y%m%d}",
+            f"DTEND;VALUE=DATE:{end:%Y%m%d}",
+            f"SUMMARY:{ics_escape(e.get('title') or '일정')}",
+            f"DESCRIPTION:{ics_escape(desc)}",
+            *([f"URL:{e['url']}"] if e.get("url") else []),
+            "END:VEVENT",
+        ]
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(lines) + "\r\n"
+
+
+async def feed_events(settings: Settings) -> list[dict[str, Any]]:
+    """구독 피드: 지난 30일 ~ 앞으로 1년의 게시된 일정."""
+    today = datetime.now(KST).date()
+    months = {(today + timedelta(days=d)).strftime("%Y-%m") for d in range(-30, 366, 28)}
+    seen: dict[str, dict[str, Any]] = {}
+    for ym in sorted(months):
+        for e in await month_events(settings, ym):
+            seen[e.get("id") or f"{e['title']}{e['start']}"] = e
+    return sorted(seen.values(), key=lambda e: (e["start"], e["title"]))
+
+
 async def today_events(settings: Settings) -> list[dict[str, Any]]:
     global _client
     today = datetime.now(KST).date()

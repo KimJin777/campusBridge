@@ -60,3 +60,27 @@ def test_pick_month_overlapping_active_sorted_by_start():
         ("마감만", "2026-10-09"),
         ("10월 행사", "2026-10-15"),
     ]
+
+
+def test_ics_feed_escapes_and_uses_exclusive_end():
+    """학교 일정 구독 피드(구글 캘린더 구독용, 교수님 2026-09-30)."""
+    from datetime import UTC, datetime
+
+    from backend.app.events import build_ics
+
+    body = build_ics(
+        [
+            {
+                "id": "e1",
+                "title": "중간고사, 기간;",
+                "start": "2026-10-20",
+                "end": "2026-10-26",
+                "url": "https://www.kyungnam.ac.kr/x",
+                "label": "기간",
+            }
+        ],
+        datetime(2026, 9, 30, tzinfo=UTC),
+    )
+    assert body.startswith("BEGIN:VCALENDAR\r\n") and body.endswith("END:VCALENDAR\r\n")
+    assert "DTSTART;VALUE=DATE:20261020" in body and "DTEND;VALUE=DATE:20261027" in body
+    assert "SUMMARY:중간고사\, 기간\;" in body

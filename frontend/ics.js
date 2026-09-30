@@ -46,6 +46,32 @@ export function icsText({ title, start, end, url }) {
   ].filter(Boolean).join("\r\n");
 }
 
+// 여러 일정을 한 .ics로(월 달력 '전체 담기'). 각 일정의 VEVENT만 이어 붙인다
+export function icsTextMany(events) {
+  const body = events.map((ev) => {
+    const lines = icsText(ev).split("\r\n");
+    return lines.slice(lines.indexOf("BEGIN:VEVENT"), lines.lastIndexOf("END:VEVENT") + 1).join("\r\n");
+  });
+  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//CampusBridge//KO", "CALSCALE:GREGORIAN", ...body, "END:VCALENDAR"].join("\r\n");
+}
+
+export function downloadIcsMany(events, name) {
+  saveIcs(icsTextMany(events), name);
+}
+
+function saveIcs(text, name) {
+  const blob = new Blob([text], { type: "text/calendar;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${name.replace(/[\\/:*?"<>|]/g, " ").slice(0, 40)}.ics`;
+  document.body.append(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  }, 1000);
+}
+
 export function downloadIcs(ev) {
   const blob = new Blob([icsText(ev)], { type: "text/calendar;charset=utf-8" });
   const a = document.createElement("a");

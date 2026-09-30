@@ -387,3 +387,33 @@ a.calpage-t:hover { text-decoration: underline; }
 .kmap-pin.start { background: #10b981; }
 .kmap-pin.end { background: #ef4444; }
 .kmap-link { display: inline-block; margin-top: 8px; padding: 6px 12px; border-radius: 9999px; background: #fee500; color: #191919; font-size: 13px; font-weight: 700; text-decoration: none; }
+
+.top-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; margin-left: auto; }
+
+/* 월 달력: 주 단위 막대(기간 일정은 시작~끝 화살표) */
+.calpage-all { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; }
+.calpage-all .cal-add-btn { font-size: 12px; padding: 4px 10px; }
+.cal-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); column-gap: 3px; margin-top: 3px; }
+.cal-week .cal-cell { min-height: 0; }
+.calpage .cal-week .cal-cell { min-height: 0; }
+.cal-bar { position: relative; z-index: 1; display: flex; align-items: center; min-width: 0; height: 20px; margin: 1px 2px; padding: 0 6px; border: 0; border-radius: 4px; background: var(--primary); color: #fff; font-size: 11px; font-weight: 600; text-align: left; cursor: pointer; }
+.cal-bar.ev { background: var(--emerald); }
+.cal-bar.single { background: color-mix(in srgb, var(--primary) 16%, var(--surface)); color: var(--secondary); }
+.cal-bar.single.ev { background: color-mix(in srgb, var(--emerald) 18%, var(--surface)); color: var(--emerald); }
+.cal-bar.range.tail { margin-right: 12px; border-radius: 4px 0 0 4px; }
+.cal-bar.range.tail::after { content: ""; position: absolute; right: -10px; top: 0; border-top: 10px solid transparent; border-bottom: 10px solid transparent; border-left: 10px solid var(--primary); }
+.cal-bar.range.ev.tail::after { border-left-color: var(--emerald); }
+.cal-bar.range:not(.head) { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
+.cal-bar.range:not(.tail) { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
+.cal-bar-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-bar:hover { filter: brightness(1.08); }
+.cal-detail { margin: 12px 0; padding: 12px; border: 1px solid var(--primary); border-radius: 12px; background: var(--surface); }
+.cal-detail-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 15px; }
+.cal-detail-head .cal-add-btn { margin-left: auto; }
+.cal-detail-head .tag { padding: 0 5px; border-radius: 4px; background: var(--primary-soft); color: var(--secondary); font-size: 11px; font-style: normal; }
+.cal-detail-body { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0 0 8px; font-size: 13px; }
+.cal-detail-body dt { color: var(--muted); }
+.cal-detail-body dd { margin: 0; }
+button.calpage-t { padding: 0; border: 0; background: none; color: var(--text); font: inherit; cursor: pointer; text-align: left; }
+button.calpage-t:hover { color: var(--primary); text-decoration: underline; }
+@media (max-width: 480px) { .cal-bar { font-size: 10px; padding: 0 3px; } }

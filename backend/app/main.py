@@ -543,6 +543,21 @@ def create_app(
         """학교 일정 전체보기(월 달력). ym=YYYY-MM"""
         return {"items": await month_events(s, ym[:7])}
 
+    @app.get("/api/events/calendar.ics", include_in_schema=False)
+    async def events_ics() -> Response:
+        """학교 일정 구독(구글 캘린더 'URL로 추가'·애플 캘린더 구독). 게시된 일정만."""
+        from backend.app.events import build_ics, feed_events
+
+        body = build_ics(await feed_events(s), datetime.now(UTC))
+        return Response(
+            body,
+            media_type="text/calendar; charset=utf-8",
+            headers={
+                "Cache-Control": "public, max-age=3600",
+                "Content-Disposition": 'inline; filename="campusbridge-schedule.ics"',
+            },
+        )
+
     @app.get("/calendar", include_in_schema=False)
     async def calendar_page() -> RedirectResponse:
         return RedirectResponse("/calendar.html")
