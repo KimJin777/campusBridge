@@ -530,6 +530,7 @@ def main() -> int:
         live_event_check,
         live_images,
         live_llm,
+        live_notice_poster,
         live_poster_check,
         live_sources,
     )
@@ -550,6 +551,7 @@ def main() -> int:
             check_event=live_event_check(settings),
             fetch_images=live_images(settings),
             check_poster=live_poster_check(settings),
+            extract_poster=live_notice_poster(settings),
         )
         deps.docs.merge(
             "source_configs",

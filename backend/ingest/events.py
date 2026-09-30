@@ -30,7 +30,7 @@ EVENT_BOARDS = ("general", "events")
 MAX_EVENT_LLM_PER_RUN = 100
 SCAN_MAX_ATTEMPTS = 3  # LLM 판독이 일시 실패(None)하면 다음 수집에서 다시 시도(GPT5 #667-1)
 EVENT_LOOKBACK_DAYS = 60
-NOTICE_LOOKBACK_DAYS = 120  # 이보다 오래된 학사·장학 공지는 본문을 읽지 않는다
+NOTICE_LOOKBACK_DAYS = 90  # 이보다 오래된 학사·장학 공지는 본문을 읽지 않는다
 NOTICE_BODY_CHARS = 2500
 POSTER_BODY_CHARS = 80  # 본문 글자가 이보다 적으면 포스터 이미지로 판단
 MAX_POSTER_IMAGES = 2
@@ -262,6 +262,7 @@ def collect_events(
     check_event: Callable[[str], EventCheck | None] | None = None,
     fetch_images: Callable[[str], list[bytes]] | None = None,
     check_poster: Callable[[str, list[bytes]], EventCheck | None] | None = None,
+    extract_poster: Callable[[str, list[bytes]], ExtractedEvent | None] | None = None,
 ) -> dict[str, int]:
     """일정 수집 본체(네트워크는 주입 — 테스트 가능). 반환: 건수 통계."""
     stats = {
@@ -326,8 +327,8 @@ def collect_events(
             ):
                 stats["skipped"] += 1
                 continue
-            # v2: 본문까지 읽고 자동 게시(교수님 2026-09-30) — 기존 판정 기록과 따로 한 번 더 훑는다
-            scan_id = hashlib.sha256(f"notice2|{url}".encode()).hexdigest()[:20]
+            # v3: 본문·그림 공고까지 읽고 자동 게시(교수님 2026-09-30) — 전체를 한 번 더 훑는다
+            scan_id = hashlib.sha256(f"notice3|{url}".encode()).hexdigest()[:20]
             if _scan_done(docs, scan_id):  # 같은 공지를 매일 다시 묻지 않는다
                 stats["skipped"] += 1
                 continue
@@ -338,12 +339,25 @@ def collect_events(
                 except Exception:  # noqa: BLE001 — 본문 없이 제목·요약으로
                     body = ""
             full = f"{text} {body}"
-            if not HINT_RE.search(full):
+            got = None
+            images: list[bytes] = []
+            if len(body) < POSTER_BODY_CHARS and fetch_images is not None and extract_poster:
+                try:
+                    images = fetch_images(url)
+                except Exception:  # noqa: BLE001
+                    images = []
+            if images:
+                # 장학 공지 대부분이 본문 없는 그림 공고다(2026-09-30 실측 36건 중 29건)
+                llm_left -= 1
+                got = extract_poster(full[:500], images)
+                stats["notice_poster"] = stats.get("notice_poster", 0) + 1
+            elif not HINT_RE.search(full):
                 _mark_scan(docs, scan_id, url, now, True)
                 stats["skipped"] += 1
                 continue
-            llm_left -= 1
-            got = llm_extract(full[:3000])
+            else:
+                llm_left -= 1
+                got = llm_extract(full[:3000])
             _mark_scan(docs, scan_id, url, now, got is not None)
             end = _iso(got.end_date) if got else None
             if not got or not got.is_academic_or_scholarship or end is None or end < today:
@@ -602,8 +616,15 @@ def _mime(data: bytes) -> str:
     return "image/webp" if data[8:12] == b"WEBP" else "image/jpeg"
 
 
-def live_poster_check(settings: Any) -> Callable[[str, list[bytes]], EventCheck | None]:
-    """포스터 이미지를 Gemini가 직접 읽어 행사 여부·날짜를 판정(결과는 검수 대기)."""
+def live_notice_poster(settings: Any) -> Callable[[str, list[bytes]], ExtractedEvent | None]:
+    """그림 공고(학사·장학)의 이미지를 읽어 신청 기간·마감을 뽑는다."""
+    return live_poster_check(settings, ExtractedEvent, EXTRACT_PROMPT)  # type: ignore[return-value]
+
+
+def live_poster_check(
+    settings: Any, schema: type[BaseModel] = EventCheck, prompt: str = EVENT_PROMPT
+) -> Callable[[str, list[bytes]], Any]:
+    """포스터 이미지를 Gemini가 직접 읽어 판정·날짜 추출(스키마·지시문은 호출처가 고른다)."""
     import base64
 
     from langchain_core.messages import HumanMessage, SystemMessage
@@ -618,9 +639,9 @@ def live_poster_check(settings: Any) -> Callable[[str, list[bytes]], EventCheck 
         max_output_tokens=1024,
         max_retries=1,
         thinking_level="low",
-    ).with_structured_output(EventCheck)
+    ).with_structured_output(schema)
 
-    def run(text: str, images: list[bytes]) -> EventCheck | None:
+    def run(text: str, images: list[bytes]) -> Any:
         parts: list[Any] = [
             {
                 "type": "text",
@@ -639,7 +660,7 @@ def live_poster_check(settings: Any) -> Callable[[str, list[bytes]], EventCheck 
         try:
             return asyncio.run(
                 asyncio.wait_for(
-                    chat.ainvoke([SystemMessage(EVENT_PROMPT), HumanMessage(content=parts)]),
+                    chat.ainvoke([SystemMessage(prompt), HumanMessage(content=parts)]),
                     timeout=90,
                 )
             )

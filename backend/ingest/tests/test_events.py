@@ -445,3 +445,43 @@ def test_notice_body_read_once_and_old_or_expired_skipped():
     assert row["status"] == "active" and row["end_date"] == "2026-10-20"
     collect_events(docs, **kw)
     assert len(asked) == 2  # 같은 공지는 다시 묻지 않음
+
+
+def test_image_only_notice_is_read_from_poster():
+    """본문 없는 그림 공고(장학 대부분)는 이미지를 읽어 마감을 뽑아 자동 게시."""
+    docs = Docs()
+    notices = {
+        "scholarship": [
+            {
+                "title": "[교외장학] OO재단 장학생 선발",
+                "summary": "",
+                "url": "https://www.kyungnam.ac.kr/s/1",
+                "published": REF,
+            }
+        ]
+    }
+    seen = []
+
+    def poster(text, images):
+        seen.append((text, len(images)))
+        return ExtractedEvent(
+            title="OO재단 장학생 선발",
+            start_date="2026-09-28",
+            end_date="2026-10-10",
+            is_academic_or_scholarship=True,
+        )
+
+    stats = collect_events(
+        docs,
+        today=REF,
+        now=NOW,
+        fetch_calendar=lambda: [],
+        fetch_notices=lambda b: notices.get(b, []),
+        llm_extract=lambda t: None,
+        fetch_body=lambda u: "",
+        fetch_images=lambda u: [b"img"],
+        extract_poster=poster,
+    )
+    assert stats["notice_llm"] == 1 and stats["notice_poster"] == 1 and seen[0][1] == 1
+    (row,) = [e for e in events(docs) if e.get("source_category") == "scholarship"]
+    assert row["status"] == "active" and row["end_date"] == "2026-10-10"

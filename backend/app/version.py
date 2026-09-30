@@ -13,9 +13,19 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
-        "version": "0.23.0",
+        "version": "0.23.1",
         "date": "2026-09-30",
         "deployed_at": None,
+        "revision": None,
+        "title": "그림으로 된 공지의 일정도 수집",
+        "items": [
+            "본문 없이 그림(포스터)만 있는 학사·장학 공지도 AI가 이미지를 읽어 신청 기간·마감을 달력에 올림(장학 공지 대부분이 그림 공고)",
+        ],
+    },
+    {
+        "version": "0.23.0",
+        "date": "2026-09-30",
+        "deployed_at": "2026-09-30T11:08:00Z",
         "revision": None,
         "title": "공지 일정 자동 수집 확대·달력 보기 옵션",
         "items": [
