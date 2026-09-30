@@ -89,16 +89,16 @@ class Settings:
         )
     )
     rss_academic: str = field(
-        default_factory=lambda: _str("RSS_ACADEMIC", "/bbs/ko/1398/rssList.do?row=50")
+        default_factory=lambda: _str("RSS_ACADEMIC", "/bbs/ko/1398/rssList.do?row=100")
     )
     rss_scholarship: str = field(
-        default_factory=lambda: _str("RSS_SCHOLARSHIP", "/bbs/ko/1407/rssList.do?row=50")
+        default_factory=lambda: _str("RSS_SCHOLARSHIP", "/bbs/ko/1407/rssList.do?row=100")
     )
     rss_general: str = field(
-        default_factory=lambda: _str("RSS_GENERAL", "/bbs/ko/1408/rssList.do?row=50")
+        default_factory=lambda: _str("RSS_GENERAL", "/bbs/ko/1408/rssList.do?row=100")
     )
     rss_events: str = field(  # 행사/세미나 게시판(교내 행사 일정 — 교수님 2026-09-29)
-        default_factory=lambda: _str("RSS_EVENTS", "/bbs/ko/1129/rssList.do?row=50")
+        default_factory=lambda: _str("RSS_EVENTS", "/bbs/ko/1129/rssList.do?row=100")
     )
     collection_mode: str = field(default_factory=lambda: _str("COLLECTION_MODE", "approved"))
     # 관리자 홈페이지 등록 수집(교수님 #688). robots.txt 결정에 따라 WEB_PAGES_ENABLED=0으로 끈다

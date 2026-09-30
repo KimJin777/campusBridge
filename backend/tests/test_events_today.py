@@ -84,3 +84,13 @@ def test_ics_feed_escapes_and_uses_exclusive_end():
     assert body.startswith("BEGIN:VCALENDAR\r\n") and body.endswith("END:VCALENDAR\r\n")
     assert "DTSTART;VALUE=DATE:20261020" in body and "DTEND;VALUE=DATE:20261027" in body
     assert "SUMMARY:중간고사\, 기간\;" in body
+
+
+def test_calendar_groups_split_boards_and_parse_filter():
+    from backend.app.events import group_of, parse_groups
+
+    assert group_of({"source_category": "scholarship"}) == "scholarship"
+    assert group_of({"source_category": "event", "source_board": "general"}) == "general"
+    assert group_of({"source_category": "event"}) == "events"  # 예전 행사 기록은 행사세미나로
+    assert parse_groups("academic,events,xx") == {"academic", "events"}
+    assert len(parse_groups("")) == 5 and len(parse_groups("zzz")) == 5

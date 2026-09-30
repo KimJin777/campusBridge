@@ -576,11 +576,15 @@ def create_app(
         return {"items": await month_events(s, ym[:7])}
 
     @app.get("/api/events/calendar.ics", include_in_schema=False)
-    async def events_ics() -> Response:
-        """학교 일정 구독(구글 캘린더 'URL로 추가'·애플 캘린더 구독). 게시된 일정만."""
-        from backend.app.events import build_ics, feed_events
+    async def events_ics(g: str = "") -> Response:
+        """학교 일정 구독(구글 캘린더 'URL로 추가'·애플 캘린더 구독). 게시된 일정만.
 
-        body = build_ics(await feed_events(s), datetime.now(UTC))
+        g=academic,events 처럼 달력에서 켠 분류만 담는다(교수님 2026-09-30)."""
+        from backend.app.events import build_ics, feed_events, parse_groups
+
+        groups = parse_groups(g[:100])
+        items = [e for e in await feed_events(s) if e.get("group") in groups]
+        body = build_ics(items, datetime.now(UTC))
         return Response(
             body,
             media_type="text/calendar; charset=utf-8",

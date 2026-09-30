@@ -26,14 +26,15 @@
       <button type="button" id="next" class="cal-toggle" aria-label="다음 달">▶</button>
       <button type="button" id="this-month" class="cal-toggle">이번 달</button>
     </div>
+    <div class="calpage-groups" id="groups" role="group" aria-label="보기 옵션"></div>
     <div class="calpage-all">
-      <span class="hint">전체 일정 담기</span>
-      <button type="button" id="all-ics" class="cal-add-btn">이 달 전체 + 캘린더</button>
+      <span class="hint">켜 둔 일정만 담기</span>
+      <button type="button" id="all-ics" class="cal-add-btn">이 달 일정 + 캘린더</button>
       <a id="all-google" class="cal-add-btn" target="_blank" rel="noopener noreferrer">구글 캘린더에 학교 일정 구독</a>
     </div>
     <div id="month" aria-live="polite"></div>
     <section id="detail" class="cal-detail" hidden aria-live="polite"></section>
-    <p class="hint">학교 학사일정·공지·교내 행사에서 모은 일정입니다. 기간이 있는 일정은 화살표로 이어 표시하며, 제목을 누르면 자세히 볼 수 있습니다. [+ 캘린더]는 휴대폰·Outlook(.ics) 파일, [구글]은 구글 캘린더에 담습니다. '구독'은 새 일정도 자동으로 들어옵니다.</p>
+    <p class="hint">학교 학사일정·공지·교내 행사에서 모은 일정입니다. 기간이 있는 일정은 화살표로 이어 표시하며, 제목을 누르면 자세히 볼 수 있습니다. 위의 분류 버튼을 눌러 보고 싶은 일정만 켜고 끌 수 있으며, [+ 캘린더]·[구글]에는 켜 둔 분류만 담깁니다. [+ 캘린더]는 휴대폰·Outlook(.ics) 파일, [구글]은 구글 캘린더에 담습니다. '구독'은 새 일정도 자동으로 들어옵니다.</p>
   </main>
 </body>
 </html>

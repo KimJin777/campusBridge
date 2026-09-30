@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 import datetime as dt
 from datetime import date
 
@@ -103,15 +104,17 @@ def test_collect_auto_pending_and_keeps_admin_status():
         )
 
     stats = run(docs, notices, llm)
-    assert {k: stats[k] for k in ("calendar", "notice_auto", "notice_pending", "skipped")} == {
+    assert {k: stats[k] for k in ("calendar", "notice_auto", "notice_llm", "skipped")} == {
         "calendar": 1,
         "notice_auto": 1,
-        "notice_pending": 1,
+        "notice_llm": 1,
         "skipped": 1,
     }
     by_title = {e["title"]: e for e in events(docs)}
     assert by_title["국가장학금 2차 신청 안내"]["status"] == "active"
-    assert by_title["교내장학 서류 제출"]["status"] == "pending"
+    assert (
+        by_title["교내장학 서류 제출"]["status"] == "active"
+    )  # 마감이 남은 AI 추출도 자동 게시(교수님 2026-09-30)
     assert by_title["수강신청 정정"]["extracted_by"] == "calendar"
 
     # 관리자가 끈 일정은 재수집이 되살리지 않고, 같은 공지는 LLM에 다시 묻지 않는다
@@ -190,13 +193,15 @@ def test_campus_events_filter_label_and_scan_once():
         check_event=check,
         fetch_body=lambda u: "",
     )
-    assert (stats["event_auto"], stats["event_pending"], stats["event_rejected"]) == (1, 1, 1)
+    assert (stats["event_auto"], stats["event_pending"], stats["event_rejected"]) == (2, 0, 1)
     by = {e["title"]: e for e in events(docs) if e.get("source_category") == "event"}
     assert (
         by["해외봉사 모집"]["status"] == "active"
         and by["해외봉사 모집"]["date_label"] == "신청 마감"
     )
-    assert by["합격자 선배 초청 특강"]["status"] == "pending"  # 날짜를 LLM만 줌 → 검수
+    assert (
+        by["합격자 선배 초청 특강"]["status"] == "active"
+    )  # LLM 날짜도 자동 게시(교수님 2026-09-30)
     assert len(calls) == 3  # 60일 지난 공지는 판정하지 않음
     collect_events(
         docs,
@@ -285,7 +290,7 @@ def test_campus_events_poster_and_date_missing_and_past_kept():
     )
     rows = {e["source_url"][-20:]: e for e in events(docs) if e.get("source_category") == "event"}
     by_title = {e["title"]: e for e in rows.values()}
-    assert by_title["KU 해외봉사 모집"]["status"] == "pending"  # 포스터(AI) 날짜 → 검수
+    assert by_title["KU 해외봉사 모집"]["status"] == "active"  # 포스터(AI) 날짜도 자동 게시
     assert by_title["KU 해외봉사 모집"]["end_date"] == "2026-10-10"
     assert by_title["선배 행사"]["date_missing"] is True  # 날짜 못 찾음 → 관리자가 입력
     assert by_title["지난 행사"]["end_date"] == "2026-09-05"  # 지난 행사도 기록
@@ -387,3 +392,56 @@ def test_admin_reviewed_event_is_not_overwritten_by_recollection():
     upsert_event(docs, ev, NOW)
     row = docs.get("campus_events", eid)
     assert (row["status"], row["end_date"], row["date_missing"]) == ("active", "2026-09-29", False)
+
+
+def test_notice_body_read_once_and_old_or_expired_skipped():
+    """본문에서만 마감이 보이는 공지도 자동 게시, 120일 넘은 공지·마감 지난 공지는 제외."""
+    docs = Docs()
+    old = REF - dt.timedelta(days=200)
+    notices = {
+        "academic": [
+            {
+                "title": "졸업논문 제출 안내",
+                "summary": "",
+                "url": "https://www.kyungnam.ac.kr/a/1",
+                "published": REF,
+            },
+            {
+                "title": "오래된 안내",
+                "summary": "",
+                "url": "https://www.kyungnam.ac.kr/a/2",
+                "published": old,
+            },
+            {
+                "title": "지난 제출",
+                "summary": "",
+                "url": "https://www.kyungnam.ac.kr/a/3",
+                "published": REF,
+            },
+        ]
+    }
+    bodies = {
+        "https://www.kyungnam.ac.kr/a/1": "제출 기한: 10월 20일까지",
+        "https://www.kyungnam.ac.kr/a/3": "제출 마감 9월 1일",
+    }
+    asked = []
+
+    def llm(text):
+        asked.append(text)
+        end = "2026-10-20" if "10월 20일" in text else "2026-09-01"
+        return ExtractedEvent(title="t", end_date=end, is_academic_or_scholarship=True)
+
+    kw = dict(
+        today=REF,
+        now=NOW,
+        fetch_calendar=lambda: [],
+        fetch_notices=lambda b: notices.get(b, []),
+        llm_extract=llm,
+        fetch_body=lambda u: bodies.get(u, ""),
+    )
+    stats = collect_events(docs, **kw)
+    assert stats["notice_llm"] == 1 and len(asked) == 2  # 오래된 공지는 본문도 읽지 않음
+    (row,) = [e for e in events(docs) if e.get("source_category") == "academic"]
+    assert row["status"] == "active" and row["end_date"] == "2026-10-20"
+    collect_events(docs, **kw)
+    assert len(asked) == 2  # 같은 공지는 다시 묻지 않음

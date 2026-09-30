@@ -431,3 +431,10 @@ button.calpage-t:hover { color: var(--primary); text-decoration: underline; }
 .zoom-ctl button { min-width: 34px; height: 30px; padding: 0 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 16px; font-weight: 700; line-height: 1; box-shadow: 0 1px 3px rgba(0,0,0,.12); cursor: pointer; }
 .zoom-ctl button:last-child { font-size: 11px; }
 .zoom-ctl button:hover { border-color: var(--primary); }
+
+/* 달력 보기 옵션(교수님 2026-09-30): 분류 켜기·끄기 */
+.calpage-groups { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.cal-group { border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.cal-group[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: #fff; }
+.cal-group[aria-pressed="false"] { text-decoration: line-through; }
+.cal-add-btn.off { opacity: .45; pointer-events: none; }

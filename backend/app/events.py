@@ -18,6 +18,23 @@ TTL_SECONDS = 600
 LIMIT = 12
 SOON_DAYS = 7
 
+# 달력 보기 옵션(교수님 2026-09-30): 학사일정·학사공지·장학공지·일반공지·행사세미나
+GROUPS = ("calendar", "academic", "scholarship", "general", "events")
+
+
+def group_of(r: dict[str, Any]) -> str:
+    cat = r.get("source_category")
+    if cat in ("calendar", "academic", "scholarship"):
+        return cat
+    return "general" if r.get("source_board") == "general" else "events"
+
+
+def parse_groups(raw: str | None) -> set[str]:
+    """'academic,events' → 그 분류만. 비었거나 모르는 값뿐이면 전체."""
+    got = {g for g in (raw or "").split(",") if g in GROUPS}
+    return got or set(GROUPS)
+
+
 _cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 _month_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 _client: Any = None
@@ -48,6 +65,7 @@ def pick_events(rows: list[dict[str, Any]], today: date) -> list[dict[str, Any]]
                 "end_date": end.isoformat(),
                 "badge": badge,
                 "category": r.get("source_category"),
+                "group": group_of(r),
                 "label": r.get("date_label"),
                 "url": r.get("source_url"),
             }
@@ -76,6 +94,7 @@ def pick_month(rows: list[dict[str, Any]], first: date, last: date) -> list[dict
                 "start": start.isoformat(),
                 "end": end.isoformat(),
                 "category": r.get("source_category"),
+                "group": group_of(r),
                 "label": r.get("date_label"),
                 "url": r.get("source_url"),
             }

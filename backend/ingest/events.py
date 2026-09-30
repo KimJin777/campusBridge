@@ -1,11 +1,12 @@
 """학사 일정 캘린더(campus_events) 수집 — #596 합의(교수님 승인 2026-09-29).
 
 - 공식 학사일정(monthSchdul.do): 그대로 자동 게시(active).
-- 학사·장학 공지 RSS: 제목·요약에서 기간/마감을 정규식으로 뽑으면 자동 게시(active),
-  정규식이 못 뽑았지만 일정 단서가 있으면 flash-lite 구조화 추출 → 검수 대기(pending).
+- 학사·장학 공지 RSS: 제목·요약에서 기간/마감을 정규식으로 뽑으면 자동 게시(active).
+  못 뽑으면 본문까지 읽어 flash-lite가 추출하고, 마감이 남았으면 자동 게시(교수님 2026-09-30:
+  "만료되지 않은 공지는 모두 수집·자동 게시, 달력에도 노출"). 관리자는 숨김으로 회수한다.
 - 교내 행사(교수님 2026-09-29): 일반공지·행사/세미나 게시판에서 재학생 대상 행사·프로그램만.
-  LLM이 대상 여부를 판정하고(광고·채용·외부 모집·기부 제외), 정규식으로 날짜가 잡히면 자동 게시,
-  LLM만 날짜를 준 경우는 검수 대기. 새 공지만 1회 판정(event_scans).
+  LLM이 대상 여부를 판정하고(광고·채용·외부 모집·기부 제외), 날짜가 잡히면 자동 게시
+  (교수님 2026-09-30), 날짜를 못 찾은 행사만 검수 대기. 새 공지만 1회 판정(event_scans).
 - 관리자가 바꾼 status(disabled/active)는 재수집이 덮어쓰지 않는다.
 """
 
@@ -23,12 +24,14 @@ from pydantic import BaseModel, Field
 
 KST = timezone(timedelta(hours=9), "KST")
 MAX_SPAN_DAYS = 60
-MAX_LLM_PER_RUN = 15
+MAX_LLM_PER_RUN = 120  # 첫 재수집(v2 판정)에 게시판 전체를 훑도록 넉넉히
 BOARDS = ("academic", "scholarship")
 EVENT_BOARDS = ("general", "events")
-MAX_EVENT_LLM_PER_RUN = 40
+MAX_EVENT_LLM_PER_RUN = 100
 SCAN_MAX_ATTEMPTS = 3  # LLM 판독이 일시 실패(None)하면 다음 수집에서 다시 시도(GPT5 #667-1)
 EVENT_LOOKBACK_DAYS = 60
+NOTICE_LOOKBACK_DAYS = 120  # 이보다 오래된 학사·장학 공지는 본문을 읽지 않는다
+NOTICE_BODY_CHARS = 2500
 POSTER_BODY_CHARS = 80  # 본문 글자가 이보다 적으면 포스터 이미지로 판단
 MAX_POSTER_IMAGES = 2
 MAX_POSTER_BYTES = 4_000_000
@@ -264,7 +267,7 @@ def collect_events(
     stats = {
         "calendar": 0,
         "notice_auto": 0,
-        "notice_pending": 0,
+        "notice_llm": 0,
         "skipped": 0,
         "event_auto": 0,
         "event_pending": 0,
@@ -315,15 +318,32 @@ def collect_events(
                 )
                 stats["notice_auto"] += 1
                 continue
-            if period or not HINT_RE.search(text) or llm_extract is None or llm_left <= 0:
+            if (
+                period
+                or llm_extract is None
+                or llm_left <= 0
+                or published < today - timedelta(days=NOTICE_LOOKBACK_DAYS)
+            ):
                 stats["skipped"] += 1
                 continue
-            scan_id = hashlib.sha256(url.encode()).hexdigest()[:20]
+            # v2: 본문까지 읽고 자동 게시(교수님 2026-09-30) — 기존 판정 기록과 따로 한 번 더 훑는다
+            scan_id = hashlib.sha256(f"notice2|{url}".encode()).hexdigest()[:20]
             if _scan_done(docs, scan_id):  # 같은 공지를 매일 다시 묻지 않는다
                 stats["skipped"] += 1
                 continue
+            body = ""
+            if fetch_body is not None:
+                try:
+                    body = fetch_body(url)[:NOTICE_BODY_CHARS]
+                except Exception:  # noqa: BLE001 — 본문 없이 제목·요약으로
+                    body = ""
+            full = f"{text} {body}"
+            if not HINT_RE.search(full):
+                _mark_scan(docs, scan_id, url, now, True)
+                stats["skipped"] += 1
+                continue
             llm_left -= 1
-            got = llm_extract(text[:1000])
+            got = llm_extract(full[:3000])
             _mark_scan(docs, scan_id, url, now, got is not None)
             end = _iso(got.end_date) if got else None
             if not got or not got.is_academic_or_scholarship or end is None or end < today:
@@ -340,11 +360,11 @@ def collect_events(
                     "start": start or published,
                     "end": end,
                     "extracted_by": "llm",
-                    "status": "pending",
+                    "status": "active",
                 },
                 now,
             )
-            stats["notice_pending"] += 1
+            stats["notice_llm"] += 1
 
     if check_event is not None:
         _collect_campus_events(
@@ -386,9 +406,8 @@ def _collect_campus_events(
             published: date = n.get("published") or today
             if published < today - timedelta(days=EVENT_LOOKBACK_DAYS):
                 continue
-            scan_id = hashlib.sha256(f"event2|{url}".encode()).hexdigest()[
-                :20
-            ]  # v2: 포스터·날짜 확인
+            # v3: 날짜가 잡히면 자동 게시(교수님 2026-09-30) — 전체를 한 번 다시 훑는다
+            scan_id = hashlib.sha256(f"event3|{url}".encode()).hexdigest()[:20]
             if _scan_done(docs, scan_id) or left <= 0:
                 continue
             left -= 1
@@ -428,7 +447,7 @@ def _collect_campus_events(
                 start = _iso(got.start_date)
                 if start and not (start <= end <= start + timedelta(days=MAX_SPAN_DAYS)):
                     start = None
-                start, by, status = start or published, "llm", "pending"
+                start, by, status = start or published, "llm", "active"
             else:
                 # 날짜를 못 찾은 학생 행사 → 관리자가 원문을 보고 날짜를 넣어 게시(A)
                 start, end, by, status, missing = published, published, "llm", "pending", True
@@ -440,6 +459,7 @@ def _collect_campus_events(
                     "end": end,
                     "source_type": "notice",
                     "source_category": "event",
+                    "source_board": board,  # 일반공지·행사세미나 구분(달력 보기 옵션)
                     "source_url": url,
                     "extracted_by": by,
                     "status": status,

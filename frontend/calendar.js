@@ -14,7 +14,24 @@ const el = (tag, cls, text) => {
 };
 const pad = (n) => String(n).padStart(2, "0");
 const isoOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const TAG = { event: "행사", scholarship: "장학" };
+// 보기 옵션(교수님 2026-09-30): 분류를 켜고 끄면 달력·목록·[+ 캘린더]·[구글]에 켠 것만
+const GROUPS = [
+  ["calendar", "학사일정"],
+  ["academic", "학사공지"],
+  ["scholarship", "장학공지"],
+  ["general", "일반공지"],
+  ["events", "행사·세미나"],
+];
+const TAG = { calendar: "학사", academic: "학사공지", scholarship: "장학", general: "공지", events: "행사" };
+const GROUP_KEY = "campusbridge.calendar.groups";
+const groupOf = (e) => e.group || (e.category === "event" ? "events" : e.category) || "calendar";
+const isEv = (e) => ["general", "events"].includes(groupOf(e));
+let shown = new Set(GROUPS.map(([g]) => g));
+try {
+  const saved = JSON.parse(localStorage.getItem(GROUP_KEY) || "null");
+  if (Array.isArray(saved)) shown = new Set(saved.filter((g) => GROUPS.some(([k]) => k === g)));
+} catch {}
+let monthItems = [];
 const SCHOOL = /^https:\/\/([a-z0-9-]+\.)*kyungnam\.ac\.kr(\/|$)/i;
 
 function thisMonth() {
@@ -47,7 +64,7 @@ function showDetail(e) {
   const box = $("#detail");
   const when = e.start === e.end ? e.start : `${e.start} ~ ${e.end}`;
   const head = el("div", "cal-detail-head");
-  head.append(el("i", `tag${e.category === "event" ? " ev" : ""}`, TAG[e.category] || "학사"), el("strong", null, e.title));
+  head.append(el("i", `tag${isEv(e) ? " ev" : ""}`, TAG[groupOf(e)] || "학사"), el("strong", null, e.title));
   const close = el("button", "cal-add-btn", "닫기");
   close.type = "button";
   close.addEventListener("click", () => (box.hidden = true));
@@ -99,7 +116,7 @@ function weekRow(weekDays, items, ym, today) {
   });
   for (const g of segs) {
     const range = g.e.start !== g.e.end;
-    const bar = el("button", `cal-bar${range ? " range" : " single"}${g.head ? " head" : ""}${g.tail ? " tail" : ""}${g.e.category === "event" ? " ev" : ""}`);
+    const bar = el("button", `cal-bar${range ? " range" : " single"}${g.head ? " head" : ""}${g.tail ? " tail" : ""}${isEv(g.e) ? " ev" : ""}`);
     bar.type = "button";
     bar.style.gridColumn = `${g.c0 + 1} / ${g.c1 + 2}`;
     bar.style.gridRow = `${g.lane + 2}`;
@@ -135,18 +152,48 @@ function render(ym, items) {
     title.addEventListener("click", () => showDetail(e));
     li.append(
       el("span", "cal-when", when),
-      el("i", `tag${e.category === "event" ? " ev" : ""}`, TAG[e.category] || "학사"),
+      el("i", `tag${isEv(e) ? " ev" : ""}`, TAG[groupOf(e)] || "학사"),
       title,
       calendarButtons({ title: e.title, start: e.start, end: e.end, url: e.url }, el),
     );
     list.append(li);
   }
-  if (!items.length) list.append(el("li", "hint", "이 달에 등록된 일정이 없습니다."));
+  if (!items.length) list.append(el("li", "hint", shown.size ? "이 달에 등록된 일정이 없습니다." : "보기 옵션에서 분류를 하나 이상 켜 주세요."));
   box.append(list);
   $("#month").replaceChildren(box);
   const allBtn = $("#all-ics");
   allBtn.disabled = !items.length;
   allBtn.onclick = () => downloadIcsMany(items.map((e) => ({ title: e.title, start: e.start, end: e.end, url: e.url })), `${y}년 ${m}월 학교 일정`);
+}
+
+function renderGroups() {
+  const box = $("#groups");
+  box.replaceChildren();
+  for (const [g, label] of GROUPS) {
+    const n = monthItems.filter((e) => groupOf(e) === g).length;
+    const b = el("button", `cal-group g-${g}`, `${label} ${n}`);
+    b.type = "button";
+    b.setAttribute("aria-pressed", String(shown.has(g)));
+    b.addEventListener("click", () => {
+      if (shown.has(g)) shown.delete(g);
+      else shown.add(g);
+      try {
+        localStorage.setItem(GROUP_KEY, JSON.stringify([...shown]));
+      } catch {}
+      show();
+    });
+    box.append(b);
+  }
+  const qs = shown.size && shown.size < GROUPS.length ? `?g=${[...shown].join(",")}` : "";
+  $("#all-google").href = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(`webcal://${location.host}/api/events/calendar.ics${qs}`)}`;
+  const g = $("#all-google");
+  g.setAttribute("aria-disabled", String(!shown.size));
+  g.classList.toggle("off", !shown.size);
+}
+
+function show() {
+  renderGroups();
+  render(current, monthItems.filter((e) => shown.has(groupOf(e))));
 }
 
 async function load(ym) {
@@ -157,16 +204,16 @@ async function load(ym) {
     const res = await fetch(`/api/events/month?ym=${ym}`);
     if (!res.ok) throw new Error(String(res.status));
     const { items } = await res.json();
-    render(ym, items || []);
+    monthItems = items || [];
   } catch {
     reportError("calendar_fetch");
-    render(ym, []);
+    monthItems = [];
   }
+  show();
 }
 
 let current = /^\d{4}-\d{2}$/.test(new URLSearchParams(location.search).get("ym") || "") ? new URLSearchParams(location.search).get("ym") : thisMonth();
 $("#prev").addEventListener("click", () => load((current = shift(current, -1))));
 $("#next").addEventListener("click", () => load((current = shift(current, 1))));
 $("#this-month").addEventListener("click", () => load((current = thisMonth())));
-$("#all-google").href = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(`webcal://${location.host}/api/events/calendar.ics`)}`;
 load(current);
