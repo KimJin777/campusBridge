@@ -757,8 +757,7 @@ async function init() {
       return b;
     };
     for (const text of sug.items || []) $("#chips").append(chip(text));
-    // 이달 많이 묻는 질문 + 전체 보기(교수님 #769)
-    if (sug.month) $("#chips-title").textContent = `${sug.month}월에 많이 묻는 질문`;
+    // 많이 묻는 질문 + [+]로 전체 보기(교수님 #769·#788)
     const all = $("#faq-all");
     for (const g of sug.groups || []) {
       const sec = el("section", "faq-group");
@@ -775,7 +774,8 @@ async function init() {
       const open = all.hidden;
       all.hidden = !open;
       toggle.setAttribute("aria-expanded", String(open));
-      toggle.textContent = open ? "접기" : "전체 보기";
+      toggle.textContent = open ? "−" : "+";
+      toggle.setAttribute("aria-label", open ? "전체 질문 접기" : "전체 질문 보기");
     });
   } catch {}
   loadToday();

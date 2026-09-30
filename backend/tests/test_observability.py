@@ -136,3 +136,14 @@ def test_track_global_cap_blocks_new_networks_without_quota_writes(monkeypatch):
     assert len(s.events) - before == 2
     per_net = [k for k in rs.quota if "_track_" in k and not k.endswith("track_all")]
     assert len(per_net) == 2  # 거부된 두 네트워크는 상한 문서가 생기지 않음
+
+
+def test_client_error_global_cap_blocks_new_networks_without_quota_writes(monkeypatch):
+    """화면 오류도 전체 상한이 차면 새 네트워크 상한 문서가 생기지 않는다(GPT5 #789)."""
+    monkeypatch.setattr(telemetry, "GLOBAL_DAY", 2)
+    store = MemoryReportStore()
+    c = client(store)
+    for ip in ("8.2.2.1", "8.2.2.2", "8.2.2.3", "8.2.2.4"):
+        assert c.post("/api/client-error", json=body(), headers={"x-forwarded-for": ip}).status_code == 204
+    assert len(store.client_errors) == 2
+    assert len([k for k in store.quota if "_cerr_" in k and not k.endswith("cerr_all")]) == 2
