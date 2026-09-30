@@ -27,6 +27,7 @@ MAX_LLM_PER_RUN = 15
 BOARDS = ("academic", "scholarship")
 EVENT_BOARDS = ("general", "events")
 MAX_EVENT_LLM_PER_RUN = 40
+SCAN_MAX_ATTEMPTS = 3  # LLM 판독이 일시 실패(None)하면 다음 수집에서 다시 시도(GPT5 #667-1)
 EVENT_LOOKBACK_DAYS = 60
 POSTER_BODY_CHARS = 80  # 본문 글자가 이보다 적으면 포스터 이미지로 판단
 MAX_POSTER_IMAGES = 2
@@ -94,6 +95,25 @@ def extract_period(text: str, reference: date) -> Period | None:
         end = _date(m, "a", reference)
         return Period(None, end) if end else None
     return None
+
+
+def _scan_done(docs: Docs, scan_id: str) -> bool:
+    """판독을 끝낸 공지인가. 일시 실패는 SCAN_MAX_ATTEMPTS회까지 다시 판독한다."""
+    row = docs.get("event_scans", scan_id)
+    if row is None:
+        return False
+    return row.get("status") != "retry" or int(row.get("attempts", 0)) >= SCAN_MAX_ATTEMPTS
+
+
+def _mark_scan(docs: Docs, scan_id: str, url: str, now: datetime, ok: bool, **extra: Any) -> None:
+    """판독 결과가 있으면 완료, None(예외·타임아웃)이면 재시도 대상으로 남긴다."""
+    row: dict[str, Any] = {"url": url, "scanned_at": now, **extra}
+    if ok:
+        row["status"] = "done"
+    else:
+        prev = docs.get("event_scans", scan_id) or {}
+        row |= {"status": "retry", "attempts": int(prev.get("attempts", 0)) + 1}
+    docs.merge("event_scans", scan_id, row)
 
 
 def event_id(source_type: str, source_url: str, title: str, end: date) -> str:
@@ -240,12 +260,12 @@ def collect_events(
                 stats["skipped"] += 1
                 continue
             scan_id = hashlib.sha256(url.encode()).hexdigest()[:20]
-            if docs.get("event_scans", scan_id) is not None:  # 같은 공지를 매일 다시 묻지 않는다
+            if _scan_done(docs, scan_id):  # 같은 공지를 매일 다시 묻지 않는다
                 stats["skipped"] += 1
                 continue
             llm_left -= 1
             got = llm_extract(text[:1000])
-            docs.merge("event_scans", scan_id, {"url": url, "scanned_at": now})
+            _mark_scan(docs, scan_id, url, now, got is not None)
             end = _iso(got.end_date) if got else None
             if not got or not got.is_academic_or_scholarship or end is None or end < today:
                 stats["skipped"] += 1
@@ -310,7 +330,7 @@ def _collect_campus_events(
             scan_id = hashlib.sha256(f"event2|{url}".encode()).hexdigest()[
                 :20
             ]  # v2: 포스터·날짜 확인
-            if docs.get("event_scans", scan_id) is not None or left <= 0:
+            if _scan_done(docs, scan_id) or left <= 0:
                 continue
             left -= 1
             body = ""
@@ -336,7 +356,7 @@ def _collect_campus_events(
                         stats["event_poster"] = stats.get("event_poster", 0) + 1
             if got is None:
                 got = check_event(text)
-            docs.merge("event_scans", scan_id, {"url": url, "scanned_at": now, "kind": "event"})
+            _mark_scan(docs, scan_id, url, now, got is not None, kind="event")
             if not got or not got.is_student_event:
                 stats["event_rejected"] += 1
                 continue

@@ -13,6 +13,17 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.14.2",
+        "date": "2026-09-30",
+        "deployed_at": None,
+        "revision": None,
+        "title": "코드리뷰 보완(GPT5 #667)",
+        "items": [
+            "행사·공지 판독이 일시 실패하면 다음 수집에서 다시 판독(최대 3회) — 한 번의 장애로 행사가 영구 누락되지 않게",
+            "길찾기 거리·선이 건물·정문 좌표까지 이어지도록 연결 구간 포함(예: 한마관 약 48m 누락 보정)",
+        ],
+    },
+    {
         "version": "0.14.1",
         "date": "2026-09-30",
         "deployed_at": None,

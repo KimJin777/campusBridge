@@ -10,6 +10,21 @@ def test_route_from_main_gate_follows_graph():
     assert ends[0] != ends[1]
 
 
+def test_route_line_and_distance_reach_building_coordinates():
+    """경로 끝점이 건물 좌표와 같고, 연결 구간이 거리에 포함된다(GPT5 #667-4)."""
+    import math
+
+    from backend.tools.campus_route import load
+
+    places = load()["places"]
+    r = route("한마관")
+    assert r["line"][0] == [round(v, 1) for v in places["정문"]["xy"]]
+    assert r["line"][-1] == [round(v, 1) for v in places["한마관"]["xy"]]
+    drawn = sum(math.dist(r["line"][i], r["line"][i + 1]) for i in range(len(r["line"]) - 1))
+    # 간선 길이(len_m)는 원본 골격 기준이라 그린 꺾은선과 1~2% 차이가 난다
+    assert abs(drawn * load()["meters_per_px"] - r["distance_m"]) <= r["distance_m"] * 0.02
+
+
 def test_resolve_from_unit_location_and_aliases():
     assert resolve_place("학사관리팀: 본관 1층") == "본관"
     assert resolve_place("장학복지팀: 한마관 5층") == "한마관"  # 한마관 ⊂ 한마미래관 오인 없이

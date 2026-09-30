@@ -206,6 +206,33 @@ def test_campus_events_filter_label_and_scan_once():
     assert len(calls) == 3  # 같은 공지를 다시 묻지 않음
 
 
+def test_event_scan_retries_transient_llm_failure():
+    """LLM 일시 실패(None)는 영구 스킵이 아니라 SCAN_MAX_ATTEMPTS회까지 재판독(GPT5 #667-1)."""
+    from backend.ingest.events import SCAN_MAX_ATTEMPTS
+
+    docs = Docs()
+    notices = {"general": [{"title": "특강 안내", "summary": "", "url": "u1", "published": REF}]}
+    calls = []
+
+    def fail(text):
+        calls.append(text)
+        return None
+
+    def once():
+        return collect_events(
+            docs,
+            today=REF,
+            now=NOW,
+            fetch_calendar=lambda: [],
+            fetch_notices=lambda b: notices.get(b, []),
+            check_event=fail,
+        )
+
+    for _ in range(SCAN_MAX_ATTEMPTS + 2):
+        once()
+    assert len(calls) == SCAN_MAX_ATTEMPTS  # 실패마다 다시 시도, 한도 뒤에는 중단
+
+
 def test_campus_events_poster_and_date_missing_and_past_kept():
     from backend.ingest.events import EventCheck
 

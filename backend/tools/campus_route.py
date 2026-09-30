@@ -153,7 +153,10 @@ def route(dest_text: str, start: str | None = None) -> dict[str, Any] | None:
         u, how = prev[cur]
         hops.append((u, cur, how))
         cur = u
-    line: list[list[float]] = []
+    # 건물·정문 좌표 ↔ 길 위 투영점 연결 구간도 선과 거리에 넣는다(GPT5 #667-4)
+    s_xy, d_xy = data["places"][start]["xy"], data["places"][dest]["xy"]
+    s_q, d_q = s_head[-1], d_head[-1]
+    line: list[list[float]] = [list(s_xy)]
     for u, _v, how in reversed(hops):
         if how[0] == "edge":
             seg = _oriented(how[1], u)
@@ -166,8 +169,9 @@ def route(dest_text: str, start: str | None = None) -> dict[str, Any] | None:
             # 가상점(tag) ↔ 간선 끝 노드 구간
             part = head[::-1] if how[0] == "head" else tail
             seg = part if u == tag else part[::-1]
-        line.extend(seg if not line else seg[1:])
-    meters = dist["D"] * scale
+        line.extend(seg if len(line) > 1 else [s_q, *seg[1:]])
+    line.append(list(d_xy))
+    meters = (math.dist(s_xy, s_q) + dist["D"] + math.dist(d_q, d_xy)) * scale
     return {
         "from": start,
         "to": dest,
