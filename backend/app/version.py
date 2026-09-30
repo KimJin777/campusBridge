@@ -13,9 +13,21 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
-        "version": "0.26.0",
+        "version": "0.26.1",
         "date": "2026-10-01",
         "deployed_at": None,
+        "revision": None,
+        "title": "제보함 에이전트 판정 강화(실운영 테스트 반영)",
+        "items": [
+            "'찾지 못했습니다'처럼 실제로는 답을 못 한 답변, 제보된 엉뚱한 답을 다시 낸 답변은 재확인 통과로 보지 않음",
+            "비교할 웹 원문이 없는 '원문이 낡음' 제보(장소표만 인용 등)는 자료 부족으로 보고 미응답 목록에 연결",
+            "장소 초안에서 인용문에 없는 전화번호만 빼고 위치는 살림",
+        ],
+    },
+    {
+        "version": "0.26.0",
+        "date": "2026-10-01",
+        "deployed_at": "2026-09-30T23:25:00Z",
         "revision": None,
         "title": "제보함 에이전트 조치(분석 → 승인 1회 → 재확인 2/2)",
         "items": [
@@ -28,7 +40,7 @@ CHANGELOG: list[dict[str, Any]] = [
     {
         "version": "0.25.0",
         "date": "2026-10-01",
-        "deployed_at": None,
+        "deployed_at": "2026-09-30T23:25:00Z",
         "revision": None,
         "title": "관리자 화면 개선·자주 묻는 질문 편집·위치 질문 보강",
         "items": [

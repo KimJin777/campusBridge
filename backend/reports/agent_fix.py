@@ -66,11 +66,16 @@ async def analyze(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
     elif kind == "recollect":
         pages = await resolve.compare_sources(snap, d.fetch_text)
         sources = sorted({p["source"] for p in pages if p["status"] == "changed" and p["source"]})
-        fix.update(
-            status="proposed" if sources else "no_change",
-            pages=pages,
-            source_ids=sources,
-        )
+        if not any(p["status"] in ("same", "changed") for p in pages):
+            # 비교할 웹 원문이 없음(예: 장소표만 인용) → 자료 부족으로 보고 미응답에 연결
+            await d.reports.add_unanswered(snap.get("question_masked") or "")
+            fix.update(type="unanswered", status="linked", pages=pages, note="no_source")
+        else:
+            fix.update(
+                status="proposed" if sources else "no_change",
+                pages=pages,
+                source_ids=sources,
+            )
     else:  # ③ 미응답 목록에 연결 — 자료 보강 뒤 재확인
         await d.reports.add_unanswered(snap.get("question_masked") or "")
         fix.update(status="linked")
@@ -127,8 +132,11 @@ async def verify(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
             )
     elif kind != "unanswered" or status not in ("linked", "recheck_failed"):
         raise AppError("BAD_REQUEST", "확인할 조치가 없습니다.")
-    question = (row.get("snapshot") or {}).get("question_masked") or ""
-    result = await resolve.verify_fix(question, d.run_turn, d.paraphrase, must)
+    snap = row.get("snapshot") or {}
+    question = snap.get("question_masked") or ""
+    result = await resolve.verify_fix(
+        question, d.run_turn, d.paraphrase, must, snap.get("answer_text") or ""
+    )
     now = datetime.now(UTC)
     fix.update(status="verified" if result["passed"] else "recheck_failed", check=result)
     change: dict[str, Any] = {"agent_fix": fix}

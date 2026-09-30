@@ -159,6 +159,8 @@ async def draft_place(
         for e in list(evidence.values())[:6]
     )
     out = await extract(f"[질문한 장소·부서]\n{name}\n\n[근거]\n{blocks}")
+    if out.phone and re.sub(r"\D", "", out.phone) not in re.sub(r"\D", "", out.quote):
+        out = out.model_copy(update={"phone": None})  # 인용문에 없는 전화는 빼고 위치만 살린다
     problem = check_draft(out, evidence, report_text)
     if problem:
         return {"ok": False, "reason": problem, "name": name}
@@ -188,7 +190,20 @@ def answer_text(final: dict[str, Any]) -> str:
     return " ".join(s.text for s in getattr(ans, "sentences", []) or [])
 
 
-def run_ok(final: dict[str, Any], must_contain: str | None) -> tuple[bool, str]:
+# 답은 했지만 실제로는 '못 찾았다'는 답(실운영 테스트에서 통과로 잘못 본 사례, 2026-10-01)
+NOT_FOUND = re.compile(
+    r"찾지\s*못|확인(할|되)\s*수\s*없|확인되지\s*않|정보가\s*없|내용이\s*없|안내되어\s*있지\s*않|알\s*수\s*없|나와\s*있지\s*않"
+)
+
+
+def same_as_reported(new: str, reported: str) -> bool:
+    """제보된(틀렸다는) 답과 사실상 같은 답인가 — 같은 문장을 다시 내면 해결이 아니다."""
+    if len(_norm(reported)) < 10:
+        return False
+    return quote_present(new, reported) or quote_present(reported, new)
+
+
+def run_ok(final: dict[str, Any], must_contain: str | None, reported: str = "") -> tuple[bool, str]:
     if final.get("outcome") != "answer" or not final.get("answer"):
         return False, str(final.get("fallback_reason") or final.get("outcome") or "no_answer")
     ans = final["answer"]
@@ -196,6 +211,10 @@ def run_ok(final: dict[str, Any], must_contain: str | None) -> tuple[bool, str]:
         return False, "인용 없음"
     if any(n.code == "source_conflict" for n in getattr(ans, "notices", []) or []):
         return False, "원문 충돌"
+    if NOT_FOUND.search(answer_text(final)):
+        return False, "답변이 '찾지 못함'"
+    if reported and same_as_reported(answer_text(final), reported):
+        return False, "제보된 답과 같음"
     if must_contain and _norm(must_contain) not in _norm(answer_text(final)):
         return False, "승인한 위치가 답변에 없음"
     return True, "ok"
@@ -206,6 +225,7 @@ async def verify_fix(
     run_turn: Callable[[str], Awaitable[dict[str, Any]]],
     paraphrase: Callable[[str], Awaitable[str | None]],
     must_contain: str | None = None,
+    reported: str = "",
 ) -> dict[str, Any]:
     """원 질문 + 바꿔 말한 질문 2개를 새로 실행해 모두 통과해야 passed(GPT5 #792)."""
     other = None
@@ -218,7 +238,7 @@ async def verify_fix(
     runs = []
     for q in (question, other):
         final = await run_turn(q)
-        ok, why = run_ok(final, must_contain)
+        ok, why = run_ok(final, must_contain, reported)
         runs.append({"query": q, "ok": ok, "reason": why, "answer": answer_text(final)[:200]})
     return {"passed": all(r["ok"] for r in runs), "runs": runs, "checked_at": datetime.now(UTC)}
 
