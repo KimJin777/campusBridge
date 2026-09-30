@@ -93,6 +93,7 @@ class Turn {
     this.cards = $(".cards", node);
     this.answer = $(".answer", node);
     this.cardMap = new Map();
+    this.cardInfo = new Map(); // 근거 id → {kind, revision_date, as_of} (원문 기준 표시용)
     this.message = message;
     this.calendarEvents = new Map(); // 근거 id → {title, start, end}
     this.turnId = null;
@@ -131,6 +132,7 @@ class Turn {
   addCards(items) {
     for (const c of items || []) {
       if (this.cardMap.has(c.id)) continue;
+      this.cardInfo.set(c.id, { kind: c.kind, revision_date: c.revision_date, as_of: c.as_of });
       if (c.kind === "calendar" && /^\d{4}-\d{2}-\d{2}$/.test(c.start_date || "")) {
         this.calendarEvents.set(c.id, { title: c.title, start: c.start_date, end: c.end_date || c.start_date, url: c.url });
       }
@@ -301,8 +303,41 @@ class Turn {
     this.renderCalendar(a.cited || []);
     this.renderRoute();
     this.renderFollowUps(a.follow_ups || []);
-    if (a.as_of) box.append(el("p", "asof", `${formatKst(a.as_of)} 기준 정보`));
-    if (a.notice) box.append(el("p", "safety", a.notice));
+    box.append(this.sourceNote(a));
+  }
+
+  // 원문 기준 안내(교수님 2026-09-30): 학교 원문도 틀리거나 빠진 곳이 있을 수 있으므로
+  // 무엇을 언제 기준으로 답했는지와 최종 확인처(담당 부서·전화)를 분명히 보여 준다
+  sourceNote(a) {
+    const note = el("div", "source-note");
+    const cited = (a.cited || []).map((id) => this.cardInfo.get(id)).filter(Boolean);
+    const kinds = new Set(cited.map((c) => c.kind));
+    const what = [
+      kinds.has("article") && "학칙·규정",
+      (kinds.has("guide") || kinds.has("notice")) && "학교 홈페이지 안내·공지",
+      kinds.has("calendar") && "학사일정",
+      kinds.has("menu") && "식단표",
+      (kinds.has("place") || kinds.has("department")) && "장소·부서 정보",
+      kinds.has("tip") && "학생 제보 꿀팁(비공식)",
+    ].filter(Boolean);
+    const revised = cited.map((c) => c.revision_date).filter(Boolean).sort().pop();
+    const parts = [];
+    if (what.length) parts.push(`${what.join("·")} 원문 기준`);
+    if (revised) parts.push(`규정 최근 개정 ${revised}`);
+    if (a.as_of) parts.push(`${formatKst(a.as_of)} 확인`);
+    if (parts.length) note.append(el("p", "asof", parts.join(" · ")));
+    const d = a.dept;
+    const phone = d && typeof d.phone === "string" ? d.phone.trim() : "";
+    note.append(
+      el(
+        "p",
+        "safety",
+        d?.name
+          ? `학교 원문에도 빠지거나 바뀐 내용이 있을 수 있습니다. 중요한 일정·기준은 ${d.name}${phone ? `(${phone})` : ""}에 최종 확인하세요.`
+          : `학교 원문에도 빠지거나 바뀐 내용이 있을 수 있습니다. 중요한 일정·기준은 원문 링크나 담당 부서에서 최종 확인하세요.`,
+      ),
+    );
+    return note;
   }
 
   // 학사일정 근거를 월 달력으로 — "달력/캘린더"를 물으면 펼친 채로, 아니면 버튼으로 연다

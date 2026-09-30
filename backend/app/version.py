@@ -13,6 +13,17 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.21.2",
+        "date": "2026-09-30",
+        "deployed_at": None,
+        "revision": None,
+        "title": "원문 기준·최종 확인 안내 강화",
+        "items": [
+            "답변 아래에 어떤 원문(학칙·규정/홈페이지 공지/학사일정/식단 등)을 언제 기준으로 답했는지와 규정 최근 개정일 표시",
+            "\"학교 원문에도 빠지거나 바뀐 내용이 있을 수 있습니다\" 안내와 함께 담당 부서·전화로 최종 확인을 권함(담당 부서가 있으면 이름·번호를 직접 표시)",
+        ],
+    },
+    {
         "version": "0.21.1",
         "date": "2026-09-30",
         "deployed_at": None,
