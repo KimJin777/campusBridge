@@ -45,6 +45,7 @@ class ReportStore(Protocol):
     async def mark_turn(self, turn_id: str, report_id: str) -> None: ...
     async def add_eval_candidate(self, report_id: str, doc: dict[str, Any]) -> None: ...
     async def audit(self, doc: dict[str, Any]) -> None: ...
+    async def add_client_error(self, doc: dict[str, Any]) -> None: ...
 
 
 def apply_vote(
@@ -133,6 +134,7 @@ class MemoryReportStore:
         self.turns: dict[str, dict[str, Any]] = {}
         self.eval: dict[str, dict[str, Any]] = {}
         self.audits: list[dict[str, Any]] = []
+        self.client_errors: list[dict[str, Any]] = []
         self._secret = b"test-secret"
 
     async def secret(self) -> bytes:
@@ -197,6 +199,9 @@ class MemoryReportStore:
 
     async def audit(self, doc):
         self.audits.append(doc)
+
+    async def add_client_error(self, doc):
+        self.client_errors.append(doc)
 
 
 class FirestoreReportStore:
@@ -321,3 +326,6 @@ class FirestoreReportStore:
 
     async def audit(self, doc):
         await self.db.collection("admin_audit").document(str(uuid.uuid4())).set(doc)
+
+    async def add_client_error(self, doc):
+        await self.db.collection("client_errors").add(doc)

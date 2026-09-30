@@ -49,7 +49,18 @@ class FeedbackRequest(BaseModel):
 class TrackRequest(BaseModel):
     thread_id: str
     turn_id: str | None = Field(default=None, max_length=100)
-    event: Literal["card_click", "source_click", "chip_click", "new_thread"]
+    # 화면(app.js·tips.js)이 보내는 이벤트 이름과 반드시 같아야 한다 — test_track_contract가 검사
+    event: Literal[
+        "card_click",
+        "source_click",
+        "chip_click",
+        "new_thread",
+        "follow_up_click",
+        "route_open",
+        "route_start",
+        "report_submit",
+    ]
+    result: Literal["ok", "fail"] | None = None  # report_submit 성공·실패
     target: str | None = Field(default=None, max_length=200)
     card_state: Literal["candidate", "cited"] | None = None
 

@@ -1,6 +1,10 @@
 // 대학생활 꿀팁(교수님 #697~#715): 익명 제보, 검증 중 목록의 학생 확인 투표, 승인된 꿀팁.
 // 모든 서버 텍스트는 textContent로만 넣는다(innerHTML 금지).
 
+import { initTelemetry } from "./telemetry.js";
+
+initTelemetry("tips");
+
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);

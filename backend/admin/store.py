@@ -23,6 +23,22 @@ def _safe_value(value: Any) -> Any:
     return value
 
 
+# 답변 품질 경고(운영 관측 #747 — GPT5 #746 기준). 범위 밖 질문은 분자·분모 모두에서 뺀다.
+ACTIONABLE = frozenset({"no_evidence", "verification_failed", "deadline"})
+WARN_WINDOW = timedelta(hours=2)
+
+
+def quality_warning(results: list[str]) -> dict[str, Any]:
+    """최근 2시간 결과 목록 → 경고 등급. 원소는 outcome, fallback이면 그 사유."""
+    scoped = [r for r in results if r != "out_of_scope"]
+    bad = sum(r in ACTIONABLE for r in scoped)
+    rate = bad / len(scoped) if scoped else 0.0
+    level = "ok"
+    if len(scoped) >= 20 and bad >= 4 and rate >= 0.20:
+        level = "critical" if rate >= 0.35 else "warning"
+    return {"level": level, "turns": len(scoped), "actionable": bad, "rate": round(rate, 3)}
+
+
 class AdminStore(Protocol):
     async def get_document(self, collection: str, document_id: str) -> dict[str, Any] | None: ...
 
@@ -451,26 +467,56 @@ class FirestoreAdminStore:
         return document_ids
 
     async def stats(self, days: int) -> dict[str, Any]:
-        since = datetime.now(UTC) - timedelta(days=days)
+        now = datetime.now(UTC)
+        since = now - timedelta(days=days)
         query = self.db.collection("turns").where("created_at", ">=", since)
         outcomes: Counter[str] = Counter()
+        reasons: Counter[str] = Counter()
         daily: Counter[str] = Counter()
         elapsed: list[int] = []
+        recent: list[str] = []
+        fallbacks: list[dict[str, Any]] = []
         async for snapshot in query.stream():
             row = snapshot.to_dict() or {}
             created = row.get("created_at")
+            outcome = str(row.get("outcome") or "unknown")
+            reason = str(row.get("fallback_reason") or "")
             if isinstance(created, datetime):
                 daily[created.date().isoformat()] += 1
-            outcomes[str(row.get("outcome") or "unknown")] += 1
+                if created >= now - WARN_WINDOW:
+                    recent.append(reason if outcome == "fallback" else outcome)
+                if outcome == "fallback" and reason in ACTIONABLE:
+                    fallbacks.append(
+                        {
+                            "created_at": created.isoformat(),
+                            "reason": reason,
+                            "query": str(row.get("query_masked") or "")[:200],
+                        }
+                    )
+            outcomes[outcome] += 1
+            if outcome == "fallback":
+                reasons[reason or "unknown"] += 1
             if isinstance(row.get("elapsed_ms"), int):
                 elapsed.append(row["elapsed_ms"])
         elapsed.sort()
+        fallbacks.sort(key=lambda r: r["created_at"], reverse=True)
+        client_errors: Counter[str] = Counter()
+        err_query = self.db.collection("client_errors").where(
+            "created_at", ">=", now - timedelta(days=min(days, 14))
+        )
+        async for snapshot in err_query.stream():
+            row = snapshot.to_dict() or {}
+            client_errors[f"{row.get('page', '?')}:{row.get('kind', '?')}"] += 1
         return {
             "since": since.isoformat(),
             "days": days,
             "total": sum(outcomes.values()),
             "daily": dict(sorted(daily.items())),
             "outcomes": dict(outcomes),
+            "fallback_reasons": dict(reasons.most_common()),
+            "recent_fallbacks": fallbacks[:20],
+            "client_errors": dict(client_errors.most_common()),
+            "warning": quality_warning(recent),
             "latency_ms": {
                 "average": round(sum(elapsed) / len(elapsed), 1) if elapsed else None,
                 "p95": elapsed[max(0, int(len(elapsed) * 0.95) - 1)] if elapsed else None,

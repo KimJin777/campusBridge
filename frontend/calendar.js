@@ -1,6 +1,9 @@
 // 학교 일정 전체보기(월 달력). 우리가 가진 campus_events 중 검수 완료(active)만 보인다.
 // 모든 외부 텍스트는 textContent로만 넣는다(innerHTML 금지).
 import { calendarButtons, downloadIcsMany } from "./ics.js";
+import { initTelemetry, reportError } from "./telemetry.js";
+
+initTelemetry("calendar");
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -151,9 +154,12 @@ async function load(ym) {
   url.searchParams.set("ym", ym);
   history.replaceState(null, "", url);
   try {
-    const { items } = await fetch(`/api/events/month?ym=${ym}`).then((r) => r.json());
+    const res = await fetch(`/api/events/month?ym=${ym}`);
+    if (!res.ok) throw new Error(String(res.status));
+    const { items } = await res.json();
     render(ym, items || []);
   } catch {
+    reportError("calendar_fetch");
     render(ym, []);
   }
 }

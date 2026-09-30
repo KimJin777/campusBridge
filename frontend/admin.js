@@ -925,7 +925,21 @@ async function viewStats(view) {
   for (const [k, v] of Object.entries(s.outcomes || {})) add(`결과: ${k}`, v);
   add("평균 응답(ms)", s.latency_ms?.average);
   add("p95 응답(ms)", s.latency_ms?.p95);
-  view.replaceChildren(tiles, el("h3", null, "일자별"), table(Object.entries(s.daily || {}).map(([d, n]) => ({ d, n: typeof n === "object" ? JSON.stringify(n) : n })), [["d", "날짜"], ["n", "건수"]]));
+  // 운영 관측(#747): 최근 2시간 답변 품질 경고 — 위험 등급은 메일로도 온다
+  const w = s.warning || { level: "ok", turns: 0, actionable: 0, rate: 0 };
+  const warnText = { ok: "정상", warning: "경고", critical: "위험" }[w.level] || w.level;
+  const warn = el("p", `msg${w.level === "ok" ? "" : " err"}`, `최근 2시간 답변 품질: ${warnText} — 범위 안 질문 ${w.turns}건 중 답을 못 한 질문 ${w.actionable}건(${Math.round(w.rate * 100)}%)`);
+  const pairs = (o) => Object.entries(o || {}).map(([k, n]) => ({ k, n }));
+  view.replaceChildren(
+    warn,
+    tiles,
+    el("h3", null, "답을 못 한 이유"),
+    table(pairs(s.fallback_reasons), [["k", "사유"], ["n", "건수"]]),
+    el("h3", null, "최근 답을 못 한 질문(개인정보 가림)"),
+    table(s.recent_fallbacks || [], [["created_at", "시각"], ["reason", "사유"], ["query", "질문"]]),
+    el("h3", null, "화면 오류(최근 14일, 종류만)"),
+    table(pairs(s.client_errors), [["k", "화면:종류"], ["n", "건수"]]),
+    el("h3", null, "일자별"),table(Object.entries(s.daily || {}).map(([d, n]) => ({ d, n: typeof n === "object" ? JSON.stringify(n) : n })), [["d", "날짜"], ["n", "건수"]]));
 }
 
 async function viewAdmins(view) {

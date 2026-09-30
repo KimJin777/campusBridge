@@ -2,6 +2,9 @@
 import { calendarButtons } from "./ics.js";
 import { createSSEParser } from "./sse.js";
 import { hydrateIcons, icon, chipIcon } from "./icons.js";
+import { initTelemetry, reportError, setVersion } from "./telemetry.js";
+
+initTelemetry("chat");
 
 const SCHEMA_VERSION = 1;
 const THREAD_KEY = "campusbridge.thread_id";
@@ -546,7 +549,7 @@ class Turn {
         const data = r ? await r.json().catch(() => ({})) : {};
         slot.replaceChildren(receiptBox(r && r.ok ? data : { accepted: false, message: data.message || "보내지 못했습니다. 잠시 후 다시 시도해 주세요." }));
         slot.firstElementChild?.scrollIntoView({ behavior: "smooth", block: "center" });
-        track("report_submit", { turn_id: this.turnId });
+        track("report_submit", { turn_id: this.turnId, result: r && r.ok ? "ok" : "fail" });
       });
       slot.replaceChildren(form);
       form.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -640,8 +643,12 @@ async function send(message, requestId = uuid(), turn = null) {
         if (handle(turn, event, data, retry)) gotDone = true;
       }
     }
-    if (!gotDone) turn.renderError("연결이 끊겼습니다.", retry);
+    if (!gotDone) {
+      reportError("sse_disconnect");
+      turn.renderError("연결이 끊겼습니다.", retry);
+    }
   } catch {
+    reportError("sse_disconnect");
     turn.renderError("연결이 끊겼습니다.", retry);
   } finally {
     setBusy(false);
@@ -737,6 +744,7 @@ async function init() {
       fetch("/api/suggestions").then((r) => r.json()),
     ]);
     $("#version-foot").textContent = ` · v${status.version}`;
+    setVersion(status.version);
     for (const text of sug.items || []) {
       const b = el("button", "chip", text);
       b.type = "button";
@@ -827,6 +835,7 @@ async function routeFigure(r) {
       return fig;
     } catch {
       // 카카오 지도를 못 불러오면 아래 자체 약도로
+      reportError("map_load");
     }
   }
   return svgFigure(r, m);

@@ -161,10 +161,28 @@ class RateLimiter:
 
 
 def client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    """실제 접속 IP(오른쪽부터 구글 프록시 제외 — XFF 첫 값 위조로 제한 우회 방지, GPT5 #746)."""
+    from backend.app.netutil import request_ip
+
+    return request_ip(request)
+
+
+def log_turn(outcome: str, reason: str | None, elapsed_ms: int, version: str) -> None:
+    """운영 경보용 구조화 로그 한 줄(질문·ID 없음). Cloud Logging이 jsonPayload로 읽는다."""
+    print(
+        json.dumps(
+            {
+                "severity": "INFO",
+                "message": "turn_completed",
+                "event": "turn_completed",
+                "outcome": outcome,
+                "fallback_reason": reason or "",
+                "elapsed_ms": elapsed_ms,
+                "app_version": version,
+            }
+        ),
+        flush=True,
+    )
 
 
 # ── 턴 실행 ───────────────────────────────────────────────────────────────
@@ -306,6 +324,12 @@ class TurnRunner:
                             req.thread_id, req.request_id, self.completion(item, q, elapsed)
                         )
                         done_ok, outcome = True, item["outcome"]
+                        log_turn(
+                            outcome,
+                            item.get("fallback_reason") if outcome == "fallback" else None,
+                            elapsed,
+                            self.settings.app_version,
+                        )
                     except Exception:  # noqa: BLE001 — 저장 실패는 재시도 가능한 오류로
                         log.exception("completion failed turn_id=%s", turn_id)
                         yield sse("error", {"code": "INTERNAL", "message": RETRY_MESSAGE})
@@ -313,6 +337,12 @@ class TurnRunner:
                     code = item if kind == "error" else (item.get("error_code") or "INTERNAL")
                     code = (
                         code if code in ("LLM_UNAVAILABLE", "TIMEOUT", "INTERNAL") else "INTERNAL"
+                    )
+                    log_turn(
+                        "error",
+                        code.lower(),
+                        int((time.monotonic() - started) * 1000),
+                        self.settings.app_version,
                     )
                     yield sse("error", {"code": code, "message": RETRY_MESSAGE})
                 elapsed = int((time.monotonic() - started) * 1000)
@@ -485,8 +515,10 @@ def create_app(
 
     @app.post("/api/track", status_code=204)
     async def track(req: TrackRequest) -> Response:
-        with contextlib.suppress(Exception):  # fire-and-forget
+        try:  # fire-and-forget — 화면에는 항상 204, 저장 실패는 본문 없이 경고만(GPT5 #746)
             await runner().store.add_event(req.model_dump(exclude_none=True))
+        except Exception:  # noqa: BLE001
+            log.warning("track store failed event=%s", req.event)
         return Response(status_code=204)
 
     @app.get("/api/status")
@@ -578,6 +610,9 @@ def create_app(
     from backend.reports.api import router as reports_router
 
     app.include_router(reports_router)  # 익명 꿀팁·오류 제보(교수님 #715)
+    from backend.app.telemetry import router as telemetry_router
+
+    app.include_router(telemetry_router)  # 화면 오류 종류 수집(운영 관측 #747)
 
     @app.get("/tips", include_in_schema=False)
     async def tips_page() -> RedirectResponse:

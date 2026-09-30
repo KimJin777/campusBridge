@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import ipaddress
 import os
 import re
 from datetime import UTC, datetime, timedelta, timezone
@@ -30,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from backend.admin.auth import AdminActor, require_admin
 from backend.app.config import Settings, get_settings
+from backend.app.netutil import client_ip_from, request_ip
 from backend.domain import AppError
 from backend.reports import rules
 from backend.reports.store import FirestoreReportStore, MemoryReportStore, ReportStore, mine
@@ -73,38 +73,12 @@ Store = Annotated[ReportStore, Depends(get_report_store)]
 LLM = Annotated[Any, Depends(get_report_llm)]
 
 
-# 구글 프런트엔드·부하분산 프록시 대역(이 주소는 사용자가 아님)
-GOOGLE_PROXIES = tuple(ipaddress.ip_network(n) for n in ("35.191.0.0/16", "130.211.0.0/22"))
-
-
-def _trusted_proxy(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    return (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or any(ip in net for net in GOOGLE_PROXIES if ip.version == net.version)
-    )
-
-
-def client_ip(xff: str | None, peer: str | None) -> str:
-    """X-Forwarded-For를 오른쪽부터 보며 구글 프록시·사설망을 건너뛴 첫 공인 주소(GPT5 #722-1).
-
-    'client, google-proxy' → client, '위조값, client' → client(오른쪽이 우리 쪽에서 붙인 값).
-    """
-    for part in reversed([p.strip() for p in (xff or "").split(",") if p.strip()]):
-        try:
-            ip = ipaddress.ip_address(part)
-        except ValueError:
-            continue
-        if not _trusted_proxy(ip):
-            return str(ip)
-    return peer or "unknown"
+# 실제 접속 IP 판별은 채팅·사용 기록과 공용(backend/app/netutil.py)
+client_ip = client_ip_from
 
 
 def _client_ip(request: Request) -> str:
-    return client_ip(
-        request.headers.get("x-forwarded-for"), request.client.host if request.client else None
-    )
+    return request_ip(request)
 
 
 def _day() -> str:
