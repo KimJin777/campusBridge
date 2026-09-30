@@ -227,6 +227,10 @@ MAX_WEEKS = 10
 class Docs(Protocol):
     def get(self, collection: str, doc_id: str) -> dict[str, Any] | None: ...
     def merge(self, collection: str, doc_id: str, data: dict[str, Any]) -> None: ...
+    def find(self, collection: str, field: str, value: Any) -> list[tuple[str, dict[str, Any]]]: ...
+
+
+REFRESH_WEEKS = 2  # 다음 주 식단이 먼저 올라와도 이번 주 정정을 반영(GPT5 #667-3)
 
 
 def collect_menus(
@@ -239,13 +243,18 @@ def collect_menus(
     layout_llm: Callable[[str], MenuLayout | None] | None = None,
     ocr: Callable[[bytes, date], OcrWeek | None] | None = None,
 ) -> dict[str, int]:
-    """학교 식단 페이지의 최근 주간 식단표를 날짜별로 저장. 이미 읽은 주는 건너뛰되 최신 주는 매번 다시 읽는다."""
+    """학교 식단 페이지의 최근 주간 식단표를 날짜별로 저장.
+
+    상위 REFRESH_WEEKS주는 매번 다시 읽고, 다시 읽은 주에서 빠진 날(휴무·삭제)은 unavailable로 둔다.
+    """
     stats = {"weeks": 0, "days": 0, "skipped": 0, "failed": 0}
     for cafeteria, path in CAFETERIAS:
         for i, w in enumerate(list_weeks(path)[:MAX_WEEKS]):
             key = f"{cafeteria}_{w['record_id']}"
             known = docs.get("menu_weeks", key)
-            if i > 0 and known is not None and known.get("status") == "ok":  # 실패한 주는 다시 시도
+            if (
+                i >= REFRESH_WEEKS and known is not None and known.get("status") == "ok"
+            ):  # 실패한 주는 다시 시도
                 stats["skipped"] += 1
                 continue
             try:
@@ -270,9 +279,11 @@ def collect_menus(
                 stats["failed"] += 1
                 docs.merge("menu_weeks", key, {"title": w["title"], "status": "failed", "at": now})
                 continue
+            kept: set[str] = set()
             for dm in days:
                 if not dm.sections:
                     continue
+                kept.add(f"{cafeteria}_{dm.day.isoformat()}")
                 docs.merge(
                     "campus_menus",
                     f"{cafeteria}_{dm.day.isoformat()}",
@@ -282,10 +293,16 @@ def collect_menus(
                         "sections": dm.sections,
                         "week_title": w["title"],
                         "source_url": w["url"],
+                        "source_record_id": key,
+                        "status": "ok",
                         "updated_at": now,
                     },
                 )
                 stats["days"] += 1
+            for mid, row in docs.find("campus_menus", "source_record_id", key):
+                if mid not in kept and row.get("status") != "unavailable":
+                    docs.merge("campus_menus", mid, {"status": "unavailable", "updated_at": now})
+                    stats["unavailable"] = stats.get("unavailable", 0) + 1
             docs.merge(
                 "menu_weeks",
                 key,

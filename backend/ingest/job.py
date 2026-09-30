@@ -329,6 +329,13 @@ class FirestoreDocs:
     def merge(self, collection: str, doc_id: str, data: dict[str, Any]) -> None:
         self.db.collection(collection).document(doc_id).set(data, merge=True)
 
+    def find(self, collection: str, field: str, value: Any) -> list[tuple[str, dict[str, Any]]]:
+        """단일 필드 동등 조회(정정 reconcile용 — 단일 필드 자동 색인으로 충분)."""
+        from google.cloud.firestore_v1.base_query import FieldFilter
+
+        q = self.db.collection(collection).where(filter=FieldFilter(field, "==", value))
+        return [(d.id, d.to_dict() or {}) for d in q.stream()]
+
     def claim_run(self, run_id: str) -> bool:
         """ingestion_control/active를 트랜잭션으로 선점한다. 다른 수집이 진행 중이면 False."""
         from google.cloud import firestore

@@ -6,12 +6,17 @@
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
+from functools import lru_cache
+from pathlib import Path
 
 MAX_FOLLOW_UPS = 3
 MAX_LEN = 40
 RECENT_KEEP = 3
+# 기본 질문 회귀 점검 결과(eval/follow_up_check.py) — 답을 못 한 질문은 칩으로 내지 않는다
+COVERAGE_PATH = Path(__file__).resolve().parents[1] / "data" / "follow_up_coverage.json"
 
 # 개인정보를 요구하거나 서비스 범위 밖으로 이끄는 표현
 BLOCK = re.compile(r"학번|주민|전화번호|연락처를 알려|비밀번호|계좌|주식|코인|날씨|연애")
@@ -51,7 +56,7 @@ TOPIC_DEFAULTS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     ),
     (
         ("식단", "메뉴", "학식"),
-        ("내일 학생식당 메뉴 알려줘", "푸드코트 메뉴는 뭐예요?", "지난주 식단도 볼 수 있어요?"),
+        ("내일 학생식당 메뉴 알려줘", "푸드코트 메뉴는 뭐예요?", "지난주 월요일 식단은요?"),
     ),
     (
         ("기숙사", "생활관"),
@@ -62,6 +67,14 @@ TOPIC_DEFAULTS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
         ),
     ),
 )
+
+
+@lru_cache(maxsize=1)
+def failed_defaults() -> frozenset[str]:
+    try:
+        return frozenset(json.loads(COVERAGE_PATH.read_text(encoding="utf-8")).get("failed", []))
+    except (OSError, ValueError):
+        return frozenset()
 
 
 def _norm(text: str) -> str:
@@ -94,7 +107,8 @@ def pick_follow_ups(
                 for q in defaults:
                     if len(out) >= MAX_FOLLOW_UPS:
                         break
-                    add(q)
+                    if q not in failed_defaults():
+                        add(q)
                 break
     return out
 

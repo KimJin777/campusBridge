@@ -485,7 +485,10 @@ async def _menu_from_db(target: date, settings: Settings) -> list[Evidence]:
             if not snap.exists:
                 continue
             d = snap.to_dict() or {}
-            lines = [f"{target.isoformat()} {cafeteria} 식단 ({d.get('week_title', '')})"]
+            if d.get("status") == "unavailable":  # 학교 식단표에서 빠진 날(휴무·정정)
+                continue
+            wd = "월화수목금토일"[target.weekday()]
+            lines = [f"{target.isoformat()}({wd}) {cafeteria} 식단 ({d.get('week_title', '')})"]
             lines += [f"{s['name']}: {', '.join(s['items'])}" for s in d.get("sections", [])]
             items.append(
                 Evidence(

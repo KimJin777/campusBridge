@@ -21,8 +21,25 @@ def test_route_line_and_distance_reach_building_coordinates():
     assert r["line"][0] == [round(v, 1) for v in places["정문"]["xy"]]
     assert r["line"][-1] == [round(v, 1) for v in places["한마관"]["xy"]]
     drawn = sum(math.dist(r["line"][i], r["line"][i + 1]) for i in range(len(r["line"]) - 1))
-    # 간선 길이(len_m)는 원본 골격 기준이라 그린 꺾은선과 1~2% 차이가 난다
-    assert abs(drawn * load()["meters_per_px"] - r["distance_m"]) <= r["distance_m"] * 0.02
+    assert abs(drawn * load()["meters_per_px"] - r["distance_m"]) <= r["distance_m"] * 0.03
+
+
+def test_every_place_route_ends_at_its_coordinates_within_3pct():
+    """전 장소: 끝점 일치, 그린 선 길이와 거리 3% 이내(간선 len_m은 원 골격 기준 — GPT5 #675)."""
+    import math
+
+    from backend.tools.campus_route import load
+
+    data = load()
+    for name, info in data["places"].items():
+        if name == data["start"]:
+            continue
+        r = route(name)
+        assert r and r["line"][-1] == [round(v, 1) for v in info["xy"]], name
+        pts = r["line"]
+        drawn = sum(math.dist(pts[i], pts[i + 1]) for i in range(len(pts) - 1))
+        tol = max(3, r["distance_m"] * 0.03)
+        assert abs(drawn * data["meters_per_px"] - r["distance_m"]) <= tol, name
 
 
 def test_resolve_from_unit_location_and_aliases():

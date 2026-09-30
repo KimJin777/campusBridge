@@ -39,6 +39,9 @@ class Docs:
     def merge(self, c, i, data):
         self.rows.setdefault((c, i), {}).update(data)
 
+    def find(self, c, field, value):
+        return [(i, r) for (cc, i), r in self.rows.items() if cc == c and r.get(field) == value]
+
 
 NOW = dt.datetime(2026, 9, 29, 3, tzinfo=dt.UTC)
 
@@ -287,3 +290,67 @@ def test_campus_events_poster_and_date_missing_and_past_kept():
     assert by_title["선배 행사"]["date_missing"] is True  # 날짜 못 찾음 → 관리자가 입력
     assert by_title["지난 행사"]["end_date"] == "2026-09-05"  # 지난 행사도 기록
     assert stats["event_poster"] == 1 and len(posters) == 3
+
+
+def test_calendar_correction_supersedes_old_row_but_keeps_admin_and_outage():
+    """학사일정 정정: 이전 자동 행은 superseded, 관리자 결정·원천 장애 시는 보존(GPT5 #675)."""
+    cal_url = "https://www.kyungnam.ac.kr/ko/4293/subview.do"
+
+    def collect(rows):
+        return collect_events(
+            docs,
+            today=REF,
+            now=NOW,
+            fetch_calendar=lambda: rows,
+            fetch_notices=lambda b: [],
+        )
+
+    docs = Docs()
+    old = {
+        "title": "중간고사",
+        "start": date(2026, 10, 20),
+        "end": date(2026, 10, 24),
+        "source_url": cal_url,
+    }
+    admin = {
+        "title": "축제",
+        "start": date(2026, 10, 7),
+        "end": date(2026, 10, 8),
+        "source_url": cal_url,
+    }
+    collect([old, admin])
+    by = {r["title"]: (k[1], r) for k, r in docs.rows.items() if k[0] == "campus_events"}
+    docs.merge("campus_events", by["축제"][0], {"reviewed_by": "admin@x", "status": "active"})
+
+    stats = collect([])  # 원천 장애(0건) → 아무것도 대체하지 않음
+    assert stats["superseded"] == 0
+
+    new = {**old, "end": date(2026, 10, 26)}
+    stats = collect([new])
+    rows = [r for k, r in docs.rows.items() if k[0] == "campus_events"]
+    status = sorted((r["title"], r["end_date"], r["status"]) for r in rows)
+    assert status == [
+        ("중간고사", "2026-10-24", "superseded"),
+        ("중간고사", "2026-10-26", "active"),
+        ("축제", "2026-10-08", "active"),  # 관리자가 게시한 행은 원천에서 빠져도 보존
+    ]
+    assert stats["superseded"] == 1
+
+
+def test_notice_correction_supersedes_same_url_row():
+    """같은 공지의 제목·마감이 정정되면 이전 자동 행을 대체(GPT5 #675)."""
+    from backend.ingest.events import upsert_event
+
+    docs = Docs()
+    base = {
+        "source_type": "notice",
+        "source_category": "scholarship",
+        "source_url": "https://www.kyungnam.ac.kr/bbs/1",
+        "extracted_by": "regex",
+        "status": "active",
+        "start": date(2026, 9, 29),
+    }
+    first = upsert_event(docs, {**base, "title": "장학 신청", "end": date(2026, 10, 2)}, NOW)
+    second = upsert_event(docs, {**base, "title": "장학 신청(연장)", "end": date(2026, 10, 6)}, NOW)
+    assert docs.get("campus_events", first)["status"] == "superseded"
+    assert docs.get("campus_events", second)["status"] == "active"

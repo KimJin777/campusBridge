@@ -320,7 +320,7 @@ function sourceLinks(row) {
 }
 
 // ── 학사 일정(#596): 공식 학사일정·공지 자동 추출분은 게시됨, AI 추출분은 검수 대기 ──────
-const EVENT_STATUS = { pending: "검수 대기", active: "게시됨", disabled: "숨김" };
+const EVENT_STATUS = { pending: "검수 대기", active: "게시됨", disabled: "숨김", superseded: "정정되어 대체됨" };
 const EVENT_SOURCE = { calendar: "공식 학사일정", regex: "공지(자동 추출)", llm: "공지(AI 추출)" };
 const EVENT_CATEGORY = { calendar: "학사일정", academic: "학사공지", scholarship: "장학", event: "교내 행사" };
 

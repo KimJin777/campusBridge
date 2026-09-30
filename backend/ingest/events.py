@@ -170,6 +170,54 @@ def _label(text: str, raw: str | None) -> str:
 class Docs(Protocol):
     def get(self, collection: str, doc_id: str) -> dict[str, Any] | None: ...
     def merge(self, collection: str, doc_id: str, data: dict[str, Any]) -> None: ...
+    def find(self, collection: str, field: str, value: Any) -> list[tuple[str, dict[str, Any]]]: ...
+
+
+CALENDAR_WINDOW_DAYS = 90  # 학사일정 수집 창(오늘~120일) 안쪽만 정정 판정
+
+
+def _auto_row(row: dict[str, Any]) -> bool:
+    """관리자가 손대지 않은 자동 수집 행인가(관리자 게시·숨김 결정은 보존)."""
+    return not row.get("reviewed_by") and row.get("status") in ("active", "pending")
+
+
+def _supersede(docs: Docs, eid: str, now: datetime, reason: str) -> None:
+    docs.merge(
+        "campus_events",
+        eid,
+        {"status": "superseded", "superseded_reason": reason, "updated_at": now},
+    )
+
+
+def supersede_same_url(docs: Docs, keep: str, url: str, now: datetime) -> int:
+    """공지·행사는 글 하나에 일정 하나 — 같은 글의 정정 전 행을 대체 처리(GPT5 #675)."""
+    n = 0
+    for eid, row in docs.find("campus_events", "source_url", url):
+        if eid != keep and row.get("source_type") != "calendar" and _auto_row(row):
+            _supersede(docs, eid, now, "같은 공지의 정정본으로 대체")
+            n += 1
+    return n
+
+
+def reconcile_calendar(docs: Docs, seen: set[str], today: date, now: datetime) -> int:
+    """학사일정 원천에서 사라진 자동 게시 행(날짜·제목 정정 전 판)을 superseded로(GPT5 #667-2).
+
+    원천 조회가 비면(장애) 호출하지 않는다. 지난 일정과 수집 창 끝부분은 건드리지 않는다.
+    """
+    horizon = today + timedelta(days=CALENDAR_WINDOW_DAYS)
+    n = 0
+    for eid, row in docs.find("campus_events", "source_type", "calendar"):
+        if eid in seen or not _auto_row(row):
+            continue
+        try:
+            end = date.fromisoformat(row["end_date"])
+            start = date.fromisoformat(row.get("start_date") or row["end_date"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if end >= today and start <= horizon:
+            _supersede(docs, eid, now, "학사일정 원천에서 정정·삭제됨")
+            n += 1
+    return n
 
 
 def upsert_event(docs: Docs, event: dict[str, Any], now: datetime) -> str:
@@ -190,6 +238,8 @@ def upsert_event(docs: Docs, event: dict[str, Any], now: datetime) -> str:
     if docs.get("campus_events", eid) is None:
         row |= {"status": event["status"], "created_at": now}
     docs.merge("campus_events", eid, row)
+    if event["source_type"] != "calendar":
+        supersede_same_url(docs, eid, event["source_url"], now)
     return eid
 
 
@@ -215,9 +265,11 @@ def collect_events(
         "event_auto": 0,
         "event_pending": 0,
         "event_rejected": 0,
+        "superseded": 0,
     }
+    seen: set[str] = set()
     for row in fetch_calendar():
-        upsert_event(
+        eid = upsert_event(
             docs,
             {
                 **row,
@@ -228,7 +280,10 @@ def collect_events(
             },
             now,
         )
+        seen.add(eid)
         stats["calendar"] += 1
+    if seen:  # 원천 조회 실패(0건)면 정정 판정을 하지 않는다
+        stats["superseded"] += reconcile_calendar(docs, seen, today, now)
 
     llm_left = MAX_LLM_PER_RUN
     for board in BOARDS:

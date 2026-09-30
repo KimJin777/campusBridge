@@ -55,12 +55,16 @@ class Docs:
     def merge(self, c, i, d):
         self.rows.setdefault((c, i), {}).update(d)
 
+    def find(self, c, field, value):
+        return [(i, r) for (cc, i), r in self.rows.items() if cc == c and r.get(field) == value]
+
 
 def test_collect_menus_stores_days_and_skips_known_weeks():
     docs = Docs()
     weeks = [
         {"title": "9/28~10/2", "record_id": "10", "url": "u10"},
         {"title": "9/21~9/25", "record_id": "9", "url": "u9"},
+        {"title": "9/14~9/18", "record_id": "8", "url": "u8"},
     ]
     downloads = []
 
@@ -70,11 +74,18 @@ def test_collect_menus_stores_days_and_skips_known_weeks():
 
     now = datetime(2026, 9, 30, tzinfo=UTC)
     stats = collect_menus(docs, today=REF, now=now, list_weeks=lambda p: weeks, download=download)
-    assert stats["weeks"] == 4 and stats["days"] > 0
+    assert stats["weeks"] == 6 and stats["days"] > 0
     assert docs.get("campus_menus", "학생식당_2026-09-28")["sections"]
     downloads.clear()
-    collect_menus(docs, today=REF, now=now, list_weeks=lambda p: weeks, download=download)
-    assert downloads == ["u10", "u10"]  # 이미 읽은 지난 주는 건너뛰고 최신 주만 다시 읽음
+    # 학교 식단표에서 빠진 날(예: 휴무로 삭제) — 같은 주를 다시 읽으면 unavailable
+    docs.merge(
+        "campus_menus", "학생식당_2026-10-03", {"source_record_id": "학생식당_10", "status": "ok"}
+    )
+    stats = collect_menus(docs, today=REF, now=now, list_weeks=lambda p: weeks, download=download)
+    assert downloads == ["u10", "u9", "u10", "u9"]  # 상위 2주만 다시 읽음(GPT5 #667-3)
+    assert docs.get("campus_menus", "학생식당_2026-10-03")["status"] == "unavailable"
+    assert docs.get("campus_menus", "학생식당_2026-09-28")["status"] == "ok"
+    assert stats["unavailable"] == 1
 
 
 def test_collect_menus_ocr_fallback_for_scanned_pdf():

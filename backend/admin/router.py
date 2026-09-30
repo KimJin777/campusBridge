@@ -607,7 +607,7 @@ async def list_events(actor: Actor, store: Store) -> dict[str, Any]:
     page = await store.list_page(
         "campus_events", limit=300, cursor=None, order_by="end_date", descending=True
     )
-    order = {"pending": 0, "active": 1, "disabled": 2}
+    order = {"pending": 0, "active": 1, "disabled": 2, "superseded": 3}
     page["items"].sort(key=lambda r: order.get(str(r.get("status")), 3))
     return page
 

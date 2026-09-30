@@ -22,3 +22,14 @@ def test_no_topic_no_fill_and_recent_window():
     assert pick_follow_ups([], asked=[], topic="기타") == []
     assert next_recent(["a", "b", "c"], "d") == ["b", "c", "d"]
     assert next_recent([], None) == []
+
+
+def test_defaults_skip_questions_failed_in_coverage_check(monkeypatch):
+    """회귀 점검에서 답을 못 한 기본 질문은 칩으로 내지 않는다(GPT5 #675)."""
+    from backend.agent import follow_ups
+
+    monkeypatch.setattr(
+        follow_ups, "failed_defaults", lambda: frozenset({"군휴학 서류는 뭐가 필요해요?"})
+    )
+    out = follow_ups.pick_follow_ups([], asked=[], topic="휴학")
+    assert "군휴학 서류는 뭐가 필요해요?" not in out and len(out) == 2
