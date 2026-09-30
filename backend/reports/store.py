@@ -29,6 +29,9 @@ VOTE_TTL = timedelta(days=180)
 class ReportStore(Protocol):
     async def secret(self) -> bytes: ...
     async def take_quota(self, key: str, limit: int, day: str) -> bool: ...
+    async def take_quotas(self, limits: list[tuple[str, int]], day: str) -> bool:
+        """여러 상한을 한 번에(원자적): 하나라도 차면 아무것도 쓰지 않는다(GPT5 #782)."""
+        ...
     async def claim_text(self, text_hash: str) -> bool: ...
     async def create(self, doc: dict[str, Any]) -> str: ...
     async def get(self, report_id: str) -> dict[str, Any] | None: ...
@@ -147,6 +150,14 @@ class MemoryReportStore:
         self.quota[k] = self.quota.get(k, 0) + 1
         return True
 
+    async def take_quotas(self, limits: list[tuple[str, int]], day: str) -> bool:
+        keys = [(f"{day}_{k}", lim) for k, lim in limits]
+        if any(self.quota.get(k, 0) >= lim for k, lim in keys):
+            return False
+        for k, _ in keys:
+            self.quota[k] = self.quota.get(k, 0) + 1
+        return True
+
     async def claim_text(self, text_hash: str) -> bool:
         if text_hash in self.texts:
             return False
@@ -243,6 +254,29 @@ class FirestoreReportStore:
                 return False
             now = datetime.now(UTC)
             tx.set(ref, {"n": n + 1, "day": day, "updated_at": now, "expire_at": now + QUOTA_TTL})
+            return True
+
+        return await txn(self.db.transaction())
+
+    async def take_quotas(self, limits: list[tuple[str, int]], day: str) -> bool:
+        refs = [
+            (self.db.collection("report_quota").document(f"{day}_{k}"), lim) for k, lim in limits
+        ]
+
+        @self._fs.async_transactional
+        async def txn(tx) -> bool:
+            counts = []
+            for ref, lim in refs:  # 모두 먼저 읽고
+                snap = await ref.get(transaction=tx)
+                n = int((snap.to_dict() or {}).get("n", 0)) if snap.exists else 0
+                if n >= lim:
+                    return False  # 하나라도 차면 쓰기 0회
+                counts.append(n)
+            now = datetime.now(UTC)
+            for (ref, _), n in zip(refs, counts, strict=True):
+                tx.set(
+                    ref, {"n": n + 1, "day": day, "updated_at": now, "expire_at": now + QUOTA_TTL}
+                )
             return True
 
         return await txn(self.db.transaction())

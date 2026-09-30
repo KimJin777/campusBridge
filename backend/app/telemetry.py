@@ -47,9 +47,7 @@ class ClientError(BaseModel):
 async def client_error(body: ClientError, request: Request, store: Store) -> Response:
     day = datetime.now(KST).date().isoformat()
     net = rules.net_hash(await store.secret(), request_ip(request), day)
-    ok = await store.take_quota(f"cerr_{net}", PER_NET_DAY, day) and await store.take_quota(
-        "cerr_all", GLOBAL_DAY, day
-    )
+    ok = await store.take_quotas([("cerr_all", GLOBAL_DAY), (f"cerr_{net}", PER_NET_DAY)], day)
     if ok:
         now = datetime.now(UTC)
         await store.add_client_error(

@@ -18,3 +18,23 @@ test("지문은 짧고 결정적이다", () => {
   assert.equal(hash36("/app.js:10:5"), hash36("/app.js:10:5"));
   assert.match(hash36("/app.js:10:5"), /^[0-9a-z]{1,8}$/);
 });
+
+test("새로고침해도 탭 세션당 3건 상한이 유지된다(GPT5 #782)", async () => {
+  const store = new Map([["campusbridge.cerr.sent", "3"]]);
+  globalThis.sessionStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  let calls = 0;
+  globalThis.fetch = () => {
+    calls += 1;
+    return Promise.resolve({});
+  };
+  const fresh = await import(`../telemetry.js?reload=${Date.now()}`);
+  fresh.reportError("js_error");
+  assert.equal(calls, 0);
+  store.set("campusbridge.cerr.sent", "1");
+  const again = await import(`../telemetry.js?reload=${Date.now() + 1}`);
+  again.reportError("js_error");
+  again.reportError("js_error");
+  again.reportError("js_error");
+  assert.equal(calls, 2);
+  assert.equal(store.get("campusbridge.cerr.sent"), "3");
+});

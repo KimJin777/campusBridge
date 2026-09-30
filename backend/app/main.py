@@ -176,7 +176,8 @@ def client_ip(request: Request) -> str:
 
 
 TRACK_PER_NET_DAY = 500  # 한 네트워크(학교 와이파이 포함)의 하루 클릭 기록 상한
-TRACK_GLOBAL_DAY = 20000
+# 이벤트 1건 = 상한 문서 2건 + 이벤트 1건 쓰기 → 5,000건이면 하루 최대 15,000 쓰기(GPT5 #782)
+TRACK_GLOBAL_DAY = 5000
 
 
 async def track_quota_ok(request: Request) -> bool:
@@ -189,9 +190,9 @@ async def track_quota_ok(request: Request) -> bool:
     store = get_report_store(get_settings())
     day = datetime.now(_KST).date().isoformat()
     net = rules.net_hash(await store.secret(), client_ip(request), day)
-    if not await store.take_quota(f"track_{net}", TRACK_PER_NET_DAY, day):
-        return False
-    return await store.take_quota("track_all", TRACK_GLOBAL_DAY, day)
+    return await store.take_quotas(
+        [("track_all", TRACK_GLOBAL_DAY), (f"track_{net}", TRACK_PER_NET_DAY)], day
+    )
 
 
 VERIFIED_KEEP_DAYS = 30

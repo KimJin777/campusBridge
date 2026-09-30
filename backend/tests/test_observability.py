@@ -110,3 +110,29 @@ def test_track_has_server_side_daily_cap(monkeypatch):
         for _ in range(6)
     }
     assert codes == {204} and len(s.events) - before == 3
+
+
+
+def test_track_global_cap_blocks_new_networks_without_quota_writes(monkeypatch):
+    """전체 상한이 차면 새 네트워크도 상한 문서를 늘리지 않는다(쓰기 0회, GPT5 #782)."""
+    import uuid
+
+    from backend.app import main
+    from backend.reports.api import get_report_store
+    from backend.tests.test_api import client as api_client
+    from backend.tests.test_graph import FakeLLM
+
+    monkeypatch.setattr(main, "TRACK_GLOBAL_DAY", 2)
+    rs = get_report_store(main.get_settings())
+    rs.quota.clear()
+    c, s = api_client(FakeLLM())
+    before = len(s.events)
+
+    def hit(ip):
+        body = {"thread_id": str(uuid.uuid4()), "event": "new_thread"}
+        return c.post("/api/track", json=body, headers={"x-forwarded-for": ip}).status_code
+
+    assert {hit(ip) for ip in ("8.1.1.1", "8.1.1.2", "8.1.1.3", "8.1.1.4")} == {204}
+    assert len(s.events) - before == 2
+    per_net = [k for k in rs.quota if "_track_" in k and not k.endswith("track_all")]
+    assert len(per_net) == 2  # 거부된 두 네트워크는 상한 문서가 생기지 않음
