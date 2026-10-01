@@ -985,6 +985,14 @@ function wrongGuide() {
   return box;
 }
 
+// 밤사이 자동 처리 결과 한 줄(교수님 2026-10-01) — 미응답·제보함 위에 보인다
+async function autoRunLine() {
+  const runs = await api("/auto-runs").then((r) => r.items || []).catch(() => []);
+  const last = runs[0];
+  if (!last) return el("p", "hint", "밤사이 자동 처리: 아직 실행 기록이 없습니다(매일 06:00).");
+  return el("p", "msg", `밤사이 자동 처리(${String(last.id || "").slice(5)}) — ${last.summary || ""}`);
+}
+
 async function viewReports(view) {
   let { items } = await api(`/reports?type=${reportType}`);
   if (reportType === "wrong_info" && (await autoAnalyze(items))) ({ items } = await api(`/reports?type=${reportType}`));
@@ -1029,6 +1037,50 @@ async function viewReports(view) {
     ...actions(row),
     row.undo_action ? btn("되돌리기", () => reportAction(row, "undo", "되돌리기", { ask: false })) : null,
   ];
+  // 잘못된 정보: 골라서·전체를 일괄 재확인(교수님 2026-10-01). 승인이 필요한 조치안은 건너뛴다
+  const picked = new Set();
+  const boxes = [];
+  const pick = (r) => {
+    if (isTip || ["resolved", "rejected", "no_issue"].includes(r.status)) return "";
+    const cb = el("input");
+    cb.type = "checkbox";
+    cb.setAttribute("aria-label", "재확인할 제보 선택");
+    cb.addEventListener("change", () => (cb.checked ? picked.add(r.id) : picked.delete(r.id)));
+    boxes.push([cb, r.id]);
+    return cb;
+  };
+  const progress = el("span", "hint");
+  const bar = el("div", "bulk-bar");
+  const runMany = async (ids) => {
+    if (!ids.length) return flash("재확인할 제보를 고르세요.", true);
+    const n = { resolved: 0, failed: 0, analyzed: 0, approval: 0, other: 0 };
+    bar.querySelectorAll("button").forEach((x) => (x.disabled = true));
+    for (const [i, id] of ids.entries()) {
+      progress.textContent = ` 확인 중 ${i + 1}/${ids.length}…`;
+      const got = await api(`/reports/${encodeURIComponent(id)}/agent/auto`, { method: "POST", body: {} }).catch(() => null);
+      if (got?.action === "verify") n[got.status === "verified" ? "resolved" : "failed"] += 1;
+      else if (got?.action === "analyze") n.analyzed += 1;
+      else if (got?.needs_human) n.approval += 1;
+      else n.other += 1;
+    }
+    await openTab("reports");
+    flash(`${ids.length}건 재확인 — 수정 완료로 닫음 ${n.resolved} · 재확인 실패 ${n.failed} · 조치안 만듦 ${n.analyzed} · 승인 대기 ${n.approval} · 그 밖 ${n.other}`, n.resolved === 0 && n.analyzed === 0);
+  };
+  if (!isTip) {
+    bar.append(
+      btn("전체 선택", () => {
+        const on = boxes.some(([cb]) => !cb.checked);
+        for (const [cb, id] of boxes) {
+          cb.checked = on;
+          if (on) picked.add(id);
+          else picked.delete(id);
+        }
+      }),
+      btn("선택 재확인", () => runMany([...picked]), "act primary"),
+      progress,
+    );
+  }
+  const colsWithPick = isTip ? cols : [[pick, "선택"], ...cols];
   view.replaceChildren(
     el("div", "section-head", "제보함"),
     el("p", "hint", isTip
@@ -1037,7 +1089,10 @@ async function viewReports(view) {
     isTip ? "" : wrongGuide(),
     tabs,
     el("p", "hint", "처리를 잘못 눌렀으면 [되돌리기]로 직전 상태로 돌릴 수 있습니다(마지막 처리 1회, 감사 로그에 남음)."),
-    table(items, cols, withUndo),
+    isTip ? "" : await autoRunLine(),
+    isTip ? "" : el("p", "hint", "[선택 재확인]: 조치안이 없으면 만들고, 반영·연결된 조치는 다시 확인해 2/2 통과면 수정 완료로 닫습니다. 공식 자료를 바꾸는 [승인·반영]은 사람이 누릅니다(승인 대기로 셉니다). 매일 06:00에 같은 처리가 자동으로 돕니다."),
+    isTip ? "" : bar,
+    table(items, colsWithPick, withUndo),
   );
 }
 
@@ -1189,11 +1244,12 @@ async function viewUnanswered(view) {
   );
   view.replaceChildren(
     el("h3", null, "답하지 못한 질문(범위 밖 제외, 빈도순 참고)"),
+    await autoRunLine(),
     el("p", "hint", "자료를 보강한 뒤 [재확인]을 누르면 지금 답할 수 있는지 다시 확인합니다. 답할 수 있으면 '검증완료'로 바뀌고(마우스를 올리면 답변 요약) 30일 뒤 목록에서 사라집니다. 여러 건은 골라서 [선택 재확인], 검증 안 된 것 모두는 [전체 재확인]."),
     bar,
     table(rows, [[pick, "선택"], ["query_masked", "질문(마스킹)"], ["count", "횟수"], ["fallback_reason", "사유"], ["last_at", "최근"], [state, "확인"]]),
     el("h3", null, "피드백"),
-    table(fb.items, [["rating", "평가"], ["comment_masked", "의견"], ["turn_id", "턴"], ["created_at", "시각"]]),
+    table(fb.items, [["rating", "평가"], ["comment_masked", "의견"], [(r) => ({ now_answers: "지금은 답함", still_fails: "여전히 못 답함", no_question: "질문 기록 없음" })[r.recheck?.result] || "—", "밤사이 재확인"], ["turn_id", "턴"], ["created_at", "시각"]]),
   );
 }
 

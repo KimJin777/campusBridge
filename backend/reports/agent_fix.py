@@ -217,3 +217,42 @@ async def revert_place(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
     await d.reports.update(rid, change)
     await _audit(d, actor, rid, "revert_place", fix)
     return fix
+
+
+CLOSED = ("resolved", "rejected", "no_issue")
+
+
+async def auto_step(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
+    """사람 승인이 필요 없는 다음 단계 하나를 자동으로(교수님 2026-10-01: 일괄 재확인·자동 처리).
+
+    - 조치안이 없으면 분석(analyze) — 자료를 바꾸지 않는다
+    - 반영됐거나 미응답에 연결된 조치는 재확인(verify) — 2/2 통과면 자동 종결(되돌리기 가능)
+    - 조치안이 '승인 대기'(proposed)면 건너뛴다: 공식 자료 변경은 사람 승인 1회 뒤에만
+    """
+    row = await d.reports.get(rid)
+    if not row or row.get("type") != "wrong_info":
+        return {"id": rid, "action": "skip", "reason": "not_wrong_info"}
+    if row.get("status") in CLOSED:
+        return {"id": rid, "action": "skip", "reason": "closed"}
+    fix = row.get("agent_fix") or {}
+    kind, status = fix.get("type"), fix.get("status")
+    if not fix:
+        out = await analyze(d, rid, actor)
+        return {"id": rid, "action": "analyze", "status": out.get("status")}
+    verifiable = (
+        (kind == "unanswered" and status in ("linked", "recheck_failed"))
+        or (kind == "place" and status in ("applied", "recheck_failed") and fix.get("place_id"))
+        or (kind == "recollect" and status == "recollecting")
+    )
+    if verifiable:
+        try:
+            out = await verify(d, rid, actor)
+        except AppError as exc:  # 재수집 미완료 등 — 다음에 다시
+            return {"id": rid, "action": "wait", "reason": exc.message}
+        return {"id": rid, "action": "verify", "status": out.get("status")}
+    return {
+        "id": rid,
+        "action": "skip",
+        "status": status,
+        "needs_human": status == "proposed",
+    }

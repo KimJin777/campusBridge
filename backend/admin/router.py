@@ -373,6 +373,13 @@ async def list_feedback(
     return await store.list_page("feedback", limit=limit, cursor=cursor, order_by="created_at")
 
 
+@router.get("/auto-runs")
+async def list_auto_runs(actor: Actor, store: Store) -> dict[str, Any]:
+    """밤사이 자동 처리 결과(backend/app/auto_triage, 교수님 2026-10-01) — 최근 7일."""
+    del actor
+    return await store.list_page("auto_runs", limit=7, cursor=None, order_by="created_at")
+
+
 @router.get("/stats")
 async def get_stats(
     actor: Actor,

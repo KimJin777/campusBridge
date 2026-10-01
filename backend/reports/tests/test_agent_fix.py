@@ -328,3 +328,23 @@ def test_doc_prefix():
     assert resolve.doc_prefix("guide:web-abc:3") == "guide:web-abc:"
     assert resolve.doc_prefix("196_main_30") == "196_"
     assert resolve.doc_prefix("place:rpt-1") == "place:rpt-1"
+
+
+async def test_auto_step_analyzes_then_verifies_but_never_approves():
+    """일괄·밤사이 자동 처리(교수님 2026-10-01): 분석·재확인만, 공식 자료 반영(승인)은 사람에게."""
+    store = MemoryReportStore()
+    rid = report(store, "통학버스는 아무나 탈 수 있나요?")
+    good = ans("통학버스는 재학생이면 누구나 탈 수 있습니다.", cited=["guide:x:1"])
+    d = deps(store, finals=[good, good])
+
+    first = await agent_fix.auto_step(d, rid, ACTOR)  # 조치안 없음 → 분석(미응답 연결)
+    assert first["action"] == "analyze" and first["status"] == "linked"
+    second = await agent_fix.auto_step(d, rid, ACTOR)  # 연결된 조치 → 재확인 2/2 → 종결
+    assert second == {"id": rid, "action": "verify", "status": "verified"}
+    assert store.rows[rid]["status"] == "resolved"
+    assert (await agent_fix.auto_step(d, rid, ACTOR))["reason"] == "closed"
+
+    store.rows[rid].update(status="pending", agent_fix={"type": "place", "status": "proposed"})
+    held = await agent_fix.auto_step(d, rid, ACTOR)  # 승인 대기 → 건너뜀
+    assert held["action"] == "skip" and held["needs_human"] is True
+    assert store.rows[rid]["agent_fix"]["status"] == "proposed"

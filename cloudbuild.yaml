@@ -126,6 +126,27 @@ steps:
       - >-
         --set-env-vars=^;^GCP_PROJECT_ID=$PROJECT_ID;GOOGLE_CLOUD_PROJECT=$PROJECT_ID;FIRESTORE_DB=${_FIRESTORE_DB};RULES_BUCKET=${_BUCKET_NAME};SEARCH_LOCATION=global;SEARCH_DATASTORE_ID=${_DATASTORE_ID};SEARCH_SERVING_CONFIG=${_SERVING_CONFIG};GEMINI_LOCATION=${_GEMINI_LOCATION};GEMINI_MODEL=${_GEMINI_MODEL};GEMINI_FALLBACK_MODEL=${_GEMINI_FALLBACK_MODEL};COLLECTION_CONTACT_EMAIL=${_CONTACT_EMAIL}
 
+  # 밤사이 자동 처리(미응답·피드백·잘못된 정보 제보, 교수님 2026-10-01) — Scheduler campusbridge-auto-daily 06:00 KST
+  - id: deploy-auto-job
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - deploy
+      - campusbridge-auto
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/web:$BUILD_ID
+      - --region=${_REGION}
+      - --service-account=${_SA_NAME}@$PROJECT_ID.iam.gserviceaccount.com
+      - --cpu=1
+      - --memory=1Gi
+      - --task-timeout=3600
+      - --max-retries=0
+      - --command=python
+      - --args=-m,backend.app.auto_triage
+      - >-
+        --set-env-vars=^;^GCP_PROJECT_ID=$PROJECT_ID;GOOGLE_CLOUD_PROJECT=$PROJECT_ID;FIRESTORE_DB=${_FIRESTORE_DB};RULES_BUCKET=${_BUCKET_NAME};SEARCH_LOCATION=global;SEARCH_DATASTORE_ID=${_DATASTORE_ID};SEARCH_SERVING_CONFIG=${_SERVING_CONFIG};GEMINI_LOCATION=${_GEMINI_LOCATION};GEMINI_MODEL=${_GEMINI_MODEL};GEMINI_FALLBACK_MODEL=${_GEMINI_FALLBACK_MODEL};COLLECTION_CONTACT_EMAIL=${_CONTACT_EMAIL}
+
   - id: smoke
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash

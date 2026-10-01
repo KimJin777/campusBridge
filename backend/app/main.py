@@ -375,6 +375,36 @@ def answer_preview(answer: Any) -> str:
     return " ".join(x.text for x in getattr(answer, "sentences", []))[:300]
 
 
+async def recheck_unanswered_row(r: Any, s: Settings, uid: str) -> dict[str, Any]:
+    """미응답 질문 1건 재확인(관리자 버튼·밤사이 자동 처리 공용, 교수님 #765·2026-10-01).
+
+    지금 답할 수 있으면 '검증완료'(30일 뒤 자동 삭제), 아니면 '아직 답 못 함'과 사유를 남긴다.
+    """
+    store = r.store
+    row = await store.get_unanswered(uid)
+    if row is None:
+        raise AppError("BAD_REQUEST", "질문을 찾지 못했습니다.")
+    if row.get("status") == "verified":  # 이미 검증된 질문은 다시 돌리지 않는다
+        return {"id": uid, **_unanswered_view(row)}
+    final = await r.graph.ainvoke(recheck_state(row.get("query_masked") or "", s))
+    now = datetime.now(UTC)
+    if final.get("outcome") == "answer" and final.get("answer"):
+        fields = {
+            "status": "verified",
+            "verified_at": now,
+            "verified_answer": answer_preview(final["answer"]),
+            "expires_at": now + VERIFIED_KEEP,
+        }
+    else:
+        fields = {
+            "status": "unresolved",
+            "rechecked_at": now,
+            "recheck_reason": final.get("fallback_reason") or final.get("outcome"),
+        }
+    await store.update_unanswered(uid, fields)
+    return {"id": uid, **_unanswered_view({**row, **fields})}
+
+
 def _unanswered_view(row: dict[str, Any]) -> dict[str, Any]:
     keep = ("query_masked", "count", "fallback_reason", "last_at", "status", "verified_at")
     return {k: row.get(k) for k in (*keep, "verified_answer", "recheck_reason") if k in row}
@@ -774,7 +804,7 @@ def create_app(
         from backend.reports import agent_fix
 
         actor = await require_admin(authorization)
-        if step not in ("analyze", "apply", "verify", "revert_place") or not re.fullmatch(
+        if step not in ("analyze", "apply", "verify", "revert_place", "auto") or not re.fullmatch(
             r"[A-Za-z0-9]{8,40}", rid
         ):
             raise AppError("BAD_REQUEST", "지원하지 않는 조치입니다.")
@@ -788,6 +818,8 @@ def create_app(
             return await agent_fix.apply(d, rid, actor, str(body.get("run_id") or "") or None)
         if step == "revert_place":
             return await agent_fix.revert_place(d, rid, actor)
+        if step == "auto":  # 일괄 재확인: 사람 승인이 필요 없는 다음 단계 하나(2026-10-01)
+            return await agent_fix.auto_step(d, rid, actor)
         return await agent_fix.verify(d, rid, actor)
 
     @app.post("/api/admin/unanswered/{uid}/recheck")
@@ -800,29 +832,7 @@ def create_app(
         await require_admin(authorization)
         if not re.fullmatch(r"[0-9a-f]{8,64}", uid):
             raise AppError("BAD_REQUEST", "잘못된 질문 번호입니다.")
-        store = runner().store
-        row = await store.get_unanswered(uid)
-        if row is None:
-            raise AppError("BAD_REQUEST", "질문을 찾지 못했습니다.")
-        if row.get("status") == "verified":  # 이미 검증된 질문은 다시 돌리지 않는다
-            return {"id": uid, **_unanswered_view(row)}
-        final = await runner().graph.ainvoke(recheck_state(row.get("query_masked") or "", s))
-        now = datetime.now(UTC)
-        if final.get("outcome") == "answer" and final.get("answer"):
-            fields = {
-                "status": "verified",
-                "verified_at": now,
-                "verified_answer": answer_preview(final["answer"]),
-                "expires_at": now + VERIFIED_KEEP,
-            }
-        else:
-            fields = {
-                "status": "unresolved",
-                "rechecked_at": now,
-                "recheck_reason": final.get("fallback_reason") or final.get("outcome"),
-            }
-        await store.update_unanswered(uid, fields)
-        return {"id": uid, **_unanswered_view({**row, **fields})}
+        return await recheck_unanswered_row(runner(), s, uid)
 
     @app.get("/api/suggestions")
     async def suggestions() -> dict[str, Any]:
