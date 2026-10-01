@@ -110,6 +110,12 @@ def _rule_title(data: dict[str, Any]) -> str:
     if data.get("kind") == "addenda":
         return f"{rule} 부칙"
     no = _int_like(data.get("article_no"))
+    if (
+        data.get("kind") == "appendix"
+    ):  # 별표(교수님 2026-10-01 #883): "… 학칙 [별표 2] 학사학위종별표"
+        sub = _int_like(data.get("article_branch"))
+        label = f"[별표 {no}{f'-{sub}' if sub else ''}]"
+        return f"{rule} {label} {data.get('article_title') or ''}".strip()
     if no is None:
         return str(data.get("article_title") or rule)
     branch_no = _int_like(data.get("article_branch"))

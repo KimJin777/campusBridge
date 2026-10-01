@@ -24,6 +24,8 @@ CHAPTER_HEAD = re.compile(r"^제\s*\d+\s*장(?:\s|$)")
 SECTION_HEAD = re.compile(r"^제\s*\d+\s*절(?:\s|$)")
 ADDENDA_HEAD = re.compile(r"^부\s*칙")
 APPENDIX_HEAD = re.compile(r"^[\(\[]?별(?:표|지)\s*\d*")
+# 별표(표) 머리: "[별표 2]", "(별표 1-1)", "별표 3" — 번호와 가지 번호. 별지(서식)는 색인하지 않는다
+TABLE_APPENDIX_HEAD = re.compile(r"^[\(\[]?\s*별\s*표\s*(\d+)(?:\s*[-의]\s*(\d+))?")
 DELETED = re.compile(r"(?:<\s*삭\s*제\s*>|^\s*삭\s*제(?=\s|<|$))")
 INLINE_NOTE = re.compile(r"<\s*(?:개정|본조신설|전문개정|제목개정)[^>]*>")
 NOTE_LINE = re.compile(r"^[\[<]\s*(?:본조신설|종전|전문개정|제목개정|개정)[^\]>]*[\]>]$")
@@ -65,6 +67,10 @@ class Article:
     def article_id(self) -> str:
         if self.mode is ParseMode.ADDENDA:
             base = f"{self.rule_no}_add_s{self.addenda_seq:02d}_{self.number}"
+        elif self.mode is ParseMode.APPENDIX:
+            base = f"{self.rule_no}_app_{self.number}"
+            if self.branch is not None:
+                base += f"_{self.branch}"
         else:
             base = f"{self.rule_no}_main_{self.number}"
             if self.branch is not None:
@@ -166,13 +172,17 @@ def split_articles(text: str | Iterable[str], *, rule_no: str) -> list[Article]:
     addenda_date: dt.date | None = None
     pending_date_lines = 0
     current: Article | None = None
+    appendix_seen: dict[tuple[int, int | None], int] = {}
 
     def finish() -> None:
         nonlocal current
         if current is None:
             return
         current.body_lines = [_replace_table_tokens(line) for line in current.body_lines]
-        if current.deleted or current.body:
+        unreadable = current.mode is ParseMode.APPENDIX and all(
+            line == "[표 — 원문 참조]" for line in current.body_lines
+        )  # 표를 못 읽은 별표는 내용이 없어 색인하지 않는다
+        if not unreadable and (current.deleted or current.body):
             result.append(current)
         current = None
 
@@ -225,8 +235,40 @@ def split_articles(text: str | Iterable[str], *, rule_no: str) -> list[Article]:
         if APPENDIX_HEAD.match(line):
             finish()
             mode = ParseMode.APPENDIX
+            # 별표는 표를 읽게 된 뒤로 따로 색인(교수님 2026-10-01 #883). 별지(서식)는 건너뜀
+            head = TABLE_APPENDIX_HEAD.match(line)
+            if head is not None:
+                number = int(head.group(1))
+                branch = int(head.group(2)) if head.group(2) else None
+                key = (number, branch)
+                appendix_seen[key] = appendix_seen.get(key, 0) + 1
+                _, notes = _strip_inline_notes(line[head.end() :])
+                current = Article(
+                    rule_no=rule_no,
+                    number=number,
+                    branch=branch,
+                    mode=ParseMode.APPENDIX,
+                    notes=notes,
+                    chunk_suffix=(
+                        f"_v{appendix_seen[key]}" if appendix_seen[key] > 1 else None
+                    ),  # 같은 번호 별표가 또 나오면(신·구) ID 충돌 방지
+                )
             continue
         if mode is ParseMode.APPENDIX and article_match is None:
+            if current is None:
+                continue  # 별지 구간
+            if (
+                current.title is None
+                and not line.startswith(TABLE_PREFIX.strip())
+                and not TABLE_TOKEN.fullmatch(line)
+            ):
+                current.title = _strip_inline_notes(line)[0][:100] or None
+                if current.title is not None:
+                    continue
+            body, notes = _strip_inline_notes(line)
+            current.notes.extend(notes)
+            if body:
+                current.body_lines.append(body)
             continue
 
         if article_match is not None:
@@ -274,6 +316,9 @@ def split_articles(text: str | Iterable[str], *, rule_no: str) -> list[Article]:
 
 
 def _article_heading(article: Article) -> str:
+    if article.mode is ParseMode.APPENDIX:
+        branch = f"-{article.branch}" if article.branch is not None else ""
+        return f"[별표 {article.number}{branch}] {article.title or ''}".strip()
     branch = f"의{article.branch}" if article.branch is not None else ""
     title = f"({article.title})" if article.title else ""
     return f"제{article.number}조{branch}{title}"
@@ -310,10 +355,29 @@ def chunk_article(
                 dataclasses.replace(
                     article,
                     body_lines=[heading, *body_lines],
-                    chunk_suffix=f"_p{paragraph_number}",
+                    chunk_suffix=f"{article.chunk_suffix or ''}_p{paragraph_number}",
                 )
             )
         return chunks
+
+    if article.mode is ParseMode.APPENDIX:
+        # 별표는 표 행 단위로 묶는다(행 중간에서 자르면 머리글·값이 갈라짐)
+        groups: list[list[str]] = [[]]
+        size = 0
+        for line in article.body_lines:
+            if groups[-1] and size + len(line) + 1 > slice_chars:
+                groups.append([])
+                size = 0
+            groups[-1].append(line)
+            size += len(line) + 1
+        return [
+            dataclasses.replace(
+                article,
+                body_lines=[heading, *lines],
+                chunk_suffix=f"{article.chunk_suffix or ''}_c{index}",
+            )
+            for index, lines in enumerate(groups, start=1)
+        ]
 
     body = article.body
     for index, start in enumerate(range(0, len(body), slice_chars), start=1):
@@ -321,7 +385,7 @@ def chunk_article(
             dataclasses.replace(
                 article,
                 body_lines=[heading, body[start : start + slice_chars]],
-                chunk_suffix=f"_c{index}",
+                chunk_suffix=f"{article.chunk_suffix or ''}_c{index}",
             )
         )
     return chunks
@@ -374,9 +438,32 @@ def validate_articles(
     return report
 
 
+_NUMERIC_CELL = re.compile(r"^[\d\s.,:~%()\-]+$")
+
+
+def _header_rows(rows: list[list[str]], spans: set[tuple[int, int]]) -> int:
+    """머리글 행 수(0~2). 첫 행에 숫자 칸이 있으면 머리글이 없는 표로 본다.
+
+    첫 행에 가로 병합(colspan) 칸이 있으면 둘째 행까지 머리글(상위 > 하위)로 묶는다.
+    """
+    if len(rows) < 2 or len(rows[0]) < 2:
+        return 0
+    if any(cell and _NUMERIC_CELL.match(cell) for cell in rows[0]):
+        return 0
+    if any(r == 0 for r, _ in spans) and len(rows) >= 3:
+        if not any(cell and _NUMERIC_CELL.match(cell) for cell in rows[1]):
+            return 2
+    return 1
+
+
 def render_table(table) -> list[str]:
-    """HTML 표 → 행마다 '[표] 칸 | 칸' 한 줄. 병합 칸(rowspan·colspan)은 값을 펼쳐 채운다."""
+    """HTML 표 → 행마다 '[표] 머리글: 값 · 머리글: 값' 한 줄(교수님 2026-10-01 #883).
+
+    병합 칸(rowspan·colspan)은 값을 펼쳐 채운다. 머리글을 행마다 붙여야 검색·근거 대조가
+    "등급 A+ 평점 4.5"처럼 한 행만으로 뜻이 통한다. 머리글이 없는 표는 '칸 | 칸'으로 둔다.
+    """
     grid: dict[tuple[int, int], str] = {}
+    spans: set[tuple[int, int]] = set()  # 가로 병합으로 채운 칸
     for r, tr in enumerate(table.find_all("tr", recursive=False) or table.find_all("tr")):
         c = 0
         for cell in tr.find_all(["td", "th"], recursive=False):
@@ -387,16 +474,36 @@ def render_table(table) -> list[str]:
             for dr in range(rs):
                 for dc in range(cs):
                     grid[(r + dr, c + dc)] = text
+                    if cs > 1:
+                        spans.add((r + dr, c + dc))
             c += cs
     if not grid:
         return []
-    rows = max(r for r, _ in grid) + 1
-    cols = max(c for _, c in grid) + 1
-    out = []
-    for r in range(rows):
-        cells = [grid.get((r, c), "") for c in range(cols)]
-        if any(cells):
-            out.append(TABLE_PREFIX + " | ".join(cells))
+    n_rows = max(r for r, _ in grid) + 1
+    n_cols = max(c for _, c in grid) + 1
+    rows = [[grid.get((r, c), "") for c in range(n_cols)] for r in range(n_rows)]
+    rows = [row for row in rows if any(row)]
+    head = _header_rows(rows, spans)
+    if head == 0:
+        return [TABLE_PREFIX + " | ".join(row) for row in rows]
+    labels = []
+    for c in range(n_cols):
+        parts: list[str] = []
+        for r in range(head):
+            if rows[r][c] and rows[r][c] not in parts:
+                parts.append(rows[r][c])
+        labels.append(" > ".join(parts))
+    out = [TABLE_PREFIX + " | ".join(labels)]
+    for row in rows[head:]:
+        pairs: list[str] = []
+        for label, value in zip(labels, row, strict=True):
+            if not value:
+                continue
+            pair = f"{label}: {value}" if label and label != value else value
+            if not pairs or pairs[-1] != pair:  # 가로 병합으로 같은 값이 이어지면 한 번만
+                pairs.append(pair)
+        if pairs:
+            out.append(TABLE_PREFIX + " · ".join(pairs))
     return out
 
 

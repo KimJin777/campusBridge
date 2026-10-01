@@ -81,7 +81,48 @@ def test_addenda_dates_ids_and_appendix_exclusion() -> None:
     assert articles[1].addenda_date == dt.date(2025, 3, 1)
     assert articles[2].addenda_date == dt.date(2025, 3, 1)
     assert articles[3].addenda_date == dt.date(1968, 1, 23)
-    assert all("[표" not in article.body for article in articles)
+    assert all("[표" not in article.body for article in articles)  # 표를 못 읽은 별표는 내지 않음
+
+
+def test_table_appendix_is_indexed_with_title_and_rows() -> None:
+    """별표는 독립 청크로(교수님 2026-10-01 #883). 별지(서식)는 건너뛴다."""
+    text = """
+제4조(입학정원) 입학정원은 별표 1과 같다.
+부   칙
+이 학칙은 2026년 3월 1일부터 시행한다.
+[별표 1] <개정 2026.6.12.>
+2027학년도 입학정원
+[표] 단과대학 | 학과(부) | 입학정원
+[표] 단과대학: 경영대학 · 학과(부): 경영학과 · 입학정원: 80
+[별표 1-1]
+계약학과의 편성
+[표] 학과(부): 기계융합공학과 · 입학정원: 20
+[별지 제1호서식]
+신청서 양식 칸
+[별표 1]
+옛 입학정원
+[표] 학과(부): 경영학과 · 입학정원: 70
+"""
+
+    articles = split_articles(text, rule_no="29")
+    app = [a for a in articles if a.mode is ParseMode.APPENDIX]
+
+    assert [a.article_id for a in app] == ["29_app_1", "29_app_1_1", "29_app_1_v2"]
+    assert app[0].title == "2027학년도 입학정원"
+    assert "입학정원: 80" in app[0].body and app[0].has_table
+    assert all("신청서 양식" not in a.body for a in articles)
+    assert not validate_articles(articles).errors
+
+
+def test_long_appendix_is_chunked_on_row_boundaries() -> None:
+    rows = [f"[표] 학과(부): 학과{i:03d} · 입학정원: {i}" for i in range(200)]
+    text = "제1조(목적) 목적.\n[별표 1]\n입학정원\n" + "\n".join(rows)
+    chunks = chunk_article(split_articles(text, rule_no="29")[-1])
+
+    assert len(chunks) > 1
+    assert all(c.body_lines[0] == "[별표 1] 입학정원" for c in chunks)
+    assert all(line.startswith("[표] ") for c in chunks for line in c.body_lines[1:])
+    assert [c.article_id for c in chunks][:2] == ["29_app_1_c1", "29_app_1_c2"]
 
 
 def test_date_parser_is_tolerant_but_rejects_invalid_dates() -> None:
@@ -157,12 +198,13 @@ def test_tables_are_filled_in_order_with_merged_cells_expanded():
         "<tr><td>최대 수강신청학점</td><td>18학점</td><td>19학점</td></tr></table>"
     )
     rows = render_table(BeautifulSoup(html, "html.parser").table)
+    # 첫 행 가로 병합 → 머리글 2행(상위 > 하위), 데이터 행마다 머리글을 붙인다(#883)
     assert rows == [
-        "[표] 구분 | 총졸업소요이수학점 | 총졸업소요이수학점",
-        "[표] 구분 | 120학점 | 130학점",
-        "[표] 최대 수강신청학점 | 18학점 | 19학점",
+        "[표] 구분 | 총졸업소요이수학점 > 120학점 | 총졸업소요이수학점 > 130학점",
+        "[표] 구분: 최대 수강신청학점 · 총졸업소요이수학점 > 120학점: 18학점"
+        " · 총졸업소요이수학점 > 130학점: 19학점",
     ]
     text, ok = fill_tables("제30조(학점)\n① 다음과 같다.\n<표>\n② 끝", [rows])
-    assert ok and "[표] 최대 수강신청학점 | 18학점 | 19학점" in text
+    assert ok and "120학점: 18학점" in text
     assert fill_tables("<표> <표>", [rows]) == ("<표> <표>", False)  # 개수가 다르면 그대로
     assert is_excluded_rule("대학원 학칙 시행규정") and not is_excluded_rule("학사운영 규정")

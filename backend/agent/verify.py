@@ -54,6 +54,39 @@ def date_variants(text: str) -> str:
     return text + (" " + " ".join(extra) if extra else "")
 
 
+# 표 행 "[표] 머리글: 값 · …"(backend/ingest/rules.render_table)의 숫자 칸에 머리글의 단위를 붙인다.
+# "졸업학점: 120" → "120학점", "입학정원: 30" → "30명"(교수님 2026-10-01 #883)
+TABLE_PAIR = re.compile(r"([^:·|\]]+?)\s*:\s*(\d+(?:[.,]\d+)*)\s*(?=·|$)")
+LABEL_UNITS = (
+    ("학점", "학점"),
+    ("개월", "개월"),
+    ("학기", "학기"),
+    ("년", "년"),
+    ("시간", "시간"),
+    ("정원", "명"),
+    ("인원", "명"),
+    ("금액", "원"),
+    ("등록금", "원"),
+    ("장학금", "원"),
+    ("비율", "%"),
+    ("횟수", "회"),
+)
+
+
+def table_variants(text: str) -> str:
+    """값은 그대로 두고 표기만 늘린다 — 근거 행에 없는 숫자는 여전히 허용하지 않는다."""
+    extra = []
+    for line in text.splitlines():
+        if not line.startswith("[표]"):
+            continue
+        for label, value in TABLE_PAIR.findall(line[4:]):
+            for key, unit in LABEL_UNITS:
+                if key in label:
+                    extra.append(f"{value}{unit}")
+                    break
+    return text + (" " + " ".join(extra) if extra else "")
+
+
 def normalize(t: str) -> str:
     """NFKC → 공백·문장부호·따옴표 제거 → 소문자."""
     return _STRIP.sub("", unicodedata.normalize("NFKC", t)).lower()
@@ -77,7 +110,8 @@ def check_sentence(s: DraftSentence, ev: dict[str, Evidence], profile: Profile) 
             return "quote_too_short"
         if nq not in normalize(ev[cid].text):
             return "quote_not_found"
-    cited_text = normalize(date_variants(" ".join(ev[c].text for c in s.cite_ids)))
+    cited = "\n".join(ev[c].text for c in s.cite_ids)
+    cited_text = normalize(table_variants(date_variants(cited)))
     allowed = {normalize(f"{v}{u}") for v, u in profile_numbers(profile)}
     body = CITATION_MARK.sub(" ", s.text)
     for m in NUM_FACT.finditer(body):

@@ -207,3 +207,24 @@ def test_notice_dotted_dates_match_korean_dates():
     assert check_sentence(bad, {"n:1": ev}, P) == "number_mismatch"
     dec = Evidence(id="a", kind="article", title="t", text="평점평균이 1.50에 미만인 학생")
     assert "1월50일" not in normalize(date_variants(dec.text))
+
+
+def test_table_row_number_gets_unit_from_header():
+    """표 행 "졸업학점: 120"은 "120학점"으로 대조된다 — 다른 숫자는 여전히 탈락(#883)."""
+    table = Evidence(
+        id="29_app_3",
+        kind="article",
+        title="학칙 [별표 3] 졸업학점",
+        text="[별표 3] 졸업학점\n[표] 단과대학: 공과대학 · 졸업학점: 130 · 입학정원: 80",
+    )
+    ev = {table.id: table}
+    quote = ["단과대학: 공과대학 · 졸업학점: 130"]
+    assert (
+        check_sentence(s("공과대학은 130학점을 이수해야 졸업합니다.", ["29_app_3"], quote), ev, P)
+        is None
+    )
+    assert check_sentence(s("입학정원은 80명입니다.", ["29_app_3"], quote), ev, P) is None
+    assert (
+        check_sentence(s("공과대학은 140학점이 필요합니다.", ["29_app_3"], quote), ev, P)
+        == "number_mismatch"
+    )

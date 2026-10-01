@@ -198,3 +198,14 @@ def test_rule_title_prints_float_article_numbers_as_integers() -> None:
     data = {"rule_name": "학사운영 규정", "article_no": 66.0, "article_title": "휴학기간"}
     assert _rule_title(data) == "학사운영 규정 제66조(휴학기간)"
     assert _rule_title({**data, "article_branch": 2.0}) == "학사운영 규정 제66조의2(휴학기간)"
+
+
+def test_rule_title_for_table_appendix() -> None:
+    from backend.tools.knowledge import _rule_title
+
+    data = {"rule_name": "경남대학교 학칙", "kind": "appendix", "article_no": 2.0}
+    assert (
+        _rule_title({**data, "article_title": "학사학위종별표"})
+        == "경남대학교 학칙 [별표 2] 학사학위종별표"
+    )
+    assert _rule_title({**data, "article_branch": 1.0}) == "경남대학교 학칙 [별표 2-1]"
