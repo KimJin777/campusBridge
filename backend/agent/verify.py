@@ -56,7 +56,9 @@ def date_variants(text: str) -> str:
 
 # 표 행 "[표] 머리글: 값 · …"(backend/ingest/rules.render_table)의 숫자 칸에 머리글의 단위를 붙인다.
 # "졸업학점: 120" → "120학점", "입학정원: 30" → "30명"(교수님 2026-10-01 #883)
-TABLE_PAIR = re.compile(r"([^:·|\]]+?)\s*:\s*(\d+(?:[.,]\d+)*)\s*(?=·|$)")
+TABLE_PAIR = re.compile(r"([^:·|\]]+?)\s*:\s*([￦₩]?)\s*(\d+(?:[.,]\d+)*)\s*(?=·|$)")
+# 원화 기호 "￦1,000"(홈페이지 요금표)은 답변의 "1,000원"과 같은 값이다(#904-4)
+WON_SIGN = re.compile(r"[￦₩]\s*(\d+(?:,\d{3})*)")
 LABEL_UNITS = (
     ("학점", "학점"),
     ("개월", "개월"),
@@ -68,6 +70,8 @@ LABEL_UNITS = (
     ("금액", "원"),
     ("등록금", "원"),
     ("장학금", "원"),
+    ("요금", "원"),
+    ("수수료", "원"),
     ("비율", "%"),
     ("횟수", "회"),
 )
@@ -79,11 +83,15 @@ def table_variants(text: str) -> str:
     for line in text.splitlines():
         if not line.startswith("[표]"):
             continue
-        for label, value in TABLE_PAIR.findall(line[4:]):
+        for label, won, value in TABLE_PAIR.findall(line[4:]):
+            if won:
+                extra.append(f"{value}원")
+                continue
             for key, unit in LABEL_UNITS:
                 if key in label:
                     extra.append(f"{value}{unit}")
                     break
+    extra += [f"{v}원" for v in WON_SIGN.findall(text)]
     return text + (" " + " ".join(extra) if extra else "")
 
 

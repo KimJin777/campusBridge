@@ -566,6 +566,7 @@ def _safe_meta(meta: dict[str, Any]) -> dict[str, Any]:
         "as_of",
         "page_modified",
         "published_at",
+        "fetched_at",  # 홈페이지 안내의 마지막 확인일 — 규정과 충돌 시 날짜 비교용(교수님 #910)
         "semester",
     )
     return {k: (str(v) if isinstance(v, datetime) else v) for k, v in meta.items() if k in keep}

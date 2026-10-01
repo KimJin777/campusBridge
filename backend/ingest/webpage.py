@@ -27,6 +27,7 @@ from backend.ingest.guides import (
     _user_agent,
     build_guide_documents,
     extract_sections,
+    tables_to_rows,
 )
 
 SCHOOL_DOMAIN = "kyungnam.ac.kr"
@@ -128,6 +129,8 @@ def extract_page(html: str, url: str) -> tuple[str, list[dict[str, object]]]:
         for n in soup.find_all(tag):
             n.decompose()
     root = next((r for sel in ROOT_SELECTORS if (r := soup.select_one(sel)) is not None), None)
+    if root is not None:
+        tables_to_rows(root)
     text = _clean_text(root) if root is not None else ""
     if len(text) < MIN_SECTION_CHARS:
         return title, []

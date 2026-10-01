@@ -51,6 +51,23 @@ def load_pages(config_path: Path) -> tuple[list[dict[str, str]], set[str]]:
     return list(guides["pages"]), set(guides["allowed_hosts"])
 
 
+def tables_to_rows(root: Tag) -> None:
+    """본문 안 표를 규정 표와 같은 '[표] 머리글: 값' 행 문단으로 바꾼다(제자리 치환, #904-4).
+
+    get_text로 표를 풀면 칸이 한 줄씩 흩어져(주차요금 환산표) 행·열 관계가 사라진다.
+    """
+    from backend.ingest.rules import render_table
+
+    for table in [t for t in root.find_all("table") if t.find_parent("table") is None]:
+        rows = render_table(table)
+        block = BeautifulSoup("", "html.parser").new_tag("div")
+        for row in rows:
+            line = BeautifulSoup("", "html.parser").new_tag("p")
+            line.string = row
+            block.append(line)
+        table.replace_with(block)
+
+
 def _clean_text(node: Tag) -> str:
     lines = [ln.strip() for ln in node.get_text("\n").splitlines()]
     return "\n".join(ln for ln in lines if ln)
@@ -79,6 +96,7 @@ def extract_sections(
     for sel in DROP_SELECTORS:
         for n in root.select(sel):
             n.decompose()
+    tables_to_rows(root)
     headings = root.select(SECTION_SELECTOR)
     if not headings:
         body = _clean_text(root)

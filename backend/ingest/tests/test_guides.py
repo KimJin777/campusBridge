@@ -57,3 +57,25 @@ def test_intro_before_first_heading_becomes_overview_section():
     _, secs = extract_sections(html, page_id="return", page_url="u", allowed_hosts=set())
     assert secs[0]["n"] == 0 and secs[0]["heading"] == "개요"
     assert "복학절차를 이행" in secs[0]["body"] and secs[1]["n"] == 1
+
+
+def test_tables_become_header_value_rows():
+    """홈페이지 본문 표도 '[표] 머리글: 값' 행으로(#904-4 — 주차요금 환산표)."""
+    from backend.ingest.guides import extract_sections
+
+    html = (
+        "<html><head><title>주차요금안내</title></head><body><div id='_contentBuilder'>"
+        "<h3 class='objHeading_h3'>주차요금 환산표</h3>"
+        "<table><tr><th>시간</th><th>적용요금</th></tr>"
+        "<tr><td>30분</td><td>0</td></tr><tr><td>1시간</td><td>￦1,000</td></tr></table>"
+        "</div></body></html>"
+    )
+    _, sections = extract_sections(
+        html,
+        page_id="p",
+        page_url="https://www.kyungnam.ac.kr/ko/4444/subview.do",
+        allowed_hosts={"www.kyungnam.ac.kr"},
+    )
+    body = str(sections[0]["body"])
+    assert "[표] 시간: 1시간 · 적용요금: ￦1,000" in body
+    assert "\n30분\n" not in body

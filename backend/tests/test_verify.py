@@ -228,3 +228,18 @@ def test_table_row_number_gets_unit_from_header():
         check_sentence(s("공과대학은 140학점이 필요합니다.", ["29_app_3"], quote), ev, P)
         == "number_mismatch"
     )
+
+
+def test_won_sign_matches_won_suffix():
+    """홈페이지 요금표 "￦1,000"은 답변의 "1,000원"과 같다(#904-4)."""
+    page = Evidence(
+        id="guide:web-x:2",
+        kind="guide",
+        title="주차요금안내 — 주차요금 환산표",
+        text="주차요금 환산표\n[표] 시간: 1시간 · 적용요금: ￦1,000 · 장애인,경차(50%): ￦500",
+    )
+    ev = {page.id: page}
+    quote = ["시간: 1시간 · 적용요금: ￦1,000"]
+    assert check_sentence(s("1시간 주차하면 1,000원입니다.", [page.id], quote), ev, P) is None
+    assert check_sentence(s("경차는 500원입니다.", [page.id], quote), ev, P) is None
+    assert check_sentence(s("1시간에 2,000원입니다.", [page.id], quote), ev, P) == "number_mismatch"
