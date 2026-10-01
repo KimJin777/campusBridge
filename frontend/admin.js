@@ -832,7 +832,7 @@ async function reportAction(row, action, label, { ask = true, text = null } = {}
 
 // 제보함 에이전트 조치(교수님 #786·CLI '1번 전부', GPT5 #792): 조치안 → [승인·반영] 1회 → 2/2 재확인
 const FIX_TYPE = { place: "장소 초안", recollect: "원문 재비교", unanswered: "미응답 연결" };
-const FIX_STATUS = { proposed: "조치안 있음", no_draft: "초안 못 만듦", no_change: "원문 그대로", recollecting: "재수집 중", linked: "미응답 목록에 연결됨", applied: "반영함", verified: "재확인 2/2 통과", recheck_failed: "재확인 실패" };
+const FIX_STATUS = { proposed: "조치안 있음", no_draft: "초안 못 만듦", no_change: "원문 그대로", recollecting: "재수집 중", linked: "미응답 목록에 연결됨", applied: "반영함", verified: "재확인 2/2 통과", recheck_failed: "재확인 실패", stale_draft: "출처가 바뀌어 초안 만료", reverted: "장소 반영 되돌림" };
 
 async function agentStep(row, step, body) {
   const out = await api(`/reports/${encodeURIComponent(row.id)}/agent/${step}`, { method: "POST", body: body || {} });
@@ -883,6 +883,13 @@ function agentCell(row) {
   }
   if ((f.type === "recollect" && ["recollecting", "recheck_failed"].includes(f.status)) || (f.type === "unanswered" && ["linked", "recheck_failed"].includes(f.status))) {
     acts.append(btn("다시 확인", () => agentStep(row, "verify"), "act primary"));
+  }
+  // 장소 반영 되돌리기(GPT5 #799-3): 반영 뒤 다른 수정이 없을 때만, 자동 종결도 함께 되돌림
+  if (f.type === "place" && f.place_id && ["applied", "verified", "recheck_failed"].includes(f.status)) {
+    acts.append(btn("장소 반영 되돌리기", () => {
+      if (!confirm(`장소표의 '${f.draft?.name || f.place_id}' 반영을 되돌릴까요?`)) return;
+      return agentStep(row, "revert_place");
+    }));
   }
   if (!["verified", "recollecting", "applied"].includes(f.status)) acts.append(btn("조치안 다시 만들기", () => agentStep(row, "analyze")));
   box.append(acts);
@@ -1137,7 +1144,9 @@ function evalChart(runs) {
     return box;
   }
   const W = 520, H = 160, P = 28;
-  const pts = runs.map((r, i) => [P + (runs.length === 1 ? (W - 2 * P) / 2 : (i * (W - 2 * P)) / (runs.length - 1)), H - P - (r.recovered_rate ?? 0) * (H - 2 * P)]);
+  // 곡선은 고정 코호트(첫 실행일에 있던 질문) 회복률 — 날짜별로 같은 모집단(GPT5 #800)
+  const rateOf = (r) => r.frozen_recovered?.rate ?? r.recovered_rate ?? 0;
+  const pts = runs.map((r, i) => [P + (runs.length === 1 ? (W - 2 * P) / 2 : (i * (W - 2 * P)) / (runs.length - 1)), H - P - rateOf(r) * (H - 2 * P)]);
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.setAttribute("class", "eval-chart");
@@ -1161,8 +1170,10 @@ function evalChart(runs) {
     add("text", { x: pts[i][0], y: H - 6, class: "lbl", "text-anchor": "middle" }, String(r.day).slice(5));
   });
   box.append(svg);
-  box.append(table(runs.map((r) => ({ ...r, rate: r.recovered_rate == null ? "—" : `${Math.round(r.recovered_rate * 100)}%` })), [["day", "날짜"], ["app_version", "버전"], ["total", "실행 질문"], ["ok", "통과"], ["was_failing", "예전 실패"], ["now_ok", "지금 답함"], ["rate", "회복률"]]));
-  box.append(el("p", "hint", "판정은 제보함과 같은 엄격 기준(인용 검증 통과, '찾지 못함'·제보된 답 반복은 실패)입니다. 질문 묶음이 고정되어 있어 곡선이 오르면 서비스가 실제로 나아진 것입니다."));
+  const kn = (x) => (x && x.n ? `${x.k}/${x.n} (${Math.round(x.rate * 100)}%, 95% ${Math.round(x.ci95[0] * 100)}~${Math.round(x.ci95[1] * 100)}%)` : "—");
+  const tr = (t) => (t ? `실패→통과 ${t.fail_to_ok} · 통과→실패 ${t.ok_to_fail} · 신규 ${t.new}` : "—");
+  box.append(table(runs, [["day", "날짜"], ["app_version", "버전"], [(r) => kn(r.strict_pass), "전체 통과"], [(r) => kn(r.frozen_recovered), "회복(고정 코호트)"], [(r) => kn(r.frozen_regression), "회귀(고정 코호트)"], [(r) => kn(r.recovered), "회복(누적 전체)"], [(r) => tr(r.transitions), "직전 대비"]]));
+  box.append(el("p", "hint", "통과 = 원 질문과 고정된 다른 표현 질문이 모두 엄격 기준(인용 검증, '찾지 못함'·제보된 답 반복은 실패)을 통과. 곡선은 첫 실행일 질문만 묶은 고정 코호트라 날짜별로 같은 모집단을 비교합니다. 표본이 작을 때는 95% 신뢰구간을 함께 보세요."));
   return box;
 }
 

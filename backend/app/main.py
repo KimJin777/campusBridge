@@ -276,13 +276,15 @@ def fix_deps(r: Any, s: Settings, actor: Any) -> Any:
         )
         return got.text
 
-    async def save_place(draft: dict[str, Any]) -> str:
+    async def save_place(draft: dict[str, Any]) -> dict[str, Any]:
         from datetime import date
 
         from backend.admin.store import get_admin_store
 
         store = get_admin_store()
         pid = resolve.place_id_for(draft["name"])
+        snap = await store.db.collection("places").document(pid).get()
+        prev = snap.to_dict() if snap.exists else None  # 되돌리기용 반영 전 상태(GPT5 #799-3)
         base = {
             "name": draft["name"][:60],
             "kind": "unit",
@@ -323,7 +325,38 @@ def fix_deps(r: Any, s: Settings, actor: Any) -> Any:
             reason="관리자 승인(제보함)",
             request_id=f"{rid}-v",
         )
-        return pid
+        return {"place_id": pid, "prev": prev, "request_id": f"{rid}-v"}
+
+    async def restore_place(pid: str, prev: dict[str, Any] | None, expected: str) -> None:
+        from backend.admin.store import get_admin_store
+
+        store = get_admin_store()
+        ref = store.db.collection("places").document(pid)
+        cur = await ref.get()
+        if not cur.exists or (cur.to_dict() or {}).get("request_id") != expected:
+            raise AppError("BAD_REQUEST", "반영 뒤 다른 사람이 장소를 고쳐 되돌릴 수 없습니다.")
+        now = datetime.now(UTC)
+        if prev is None:  # 새로 만든 장소 → 검수 대기로(학생에게 안 보임)
+            await ref.set(
+                {"status": "pending", "updated_at": now, "request_id": f"{expected}-revert"},
+                merge=True,
+            )
+        else:
+            await ref.set(prev)
+        await reports.audit(
+            {
+                "actor": actor.email,
+                "actor_sub": actor.subject,
+                "action": "place.revert_from_report",
+                "target": pid,
+                "before": {"request_id": expected},
+                "after": {"restored": prev is not None},
+                "reason": "제보함 장소 반영 되돌리기",
+                "request_id": f"{expected}-revert",
+                "result": "success",
+                "created_at": now,
+            }
+        )
 
     return FixDeps(
         reports=reports,
@@ -334,6 +367,7 @@ def fix_deps(r: Any, s: Settings, actor: Any) -> Any:
         paraphrase=paraphrase,
         save_place=save_place,
         run_status=reports.run_status,
+        restore_place=restore_place,
     )
 
 
@@ -740,7 +774,7 @@ def create_app(
         from backend.reports import agent_fix
 
         actor = await require_admin(authorization)
-        if step not in ("analyze", "apply", "verify") or not re.fullmatch(
+        if step not in ("analyze", "apply", "verify", "revert_place") or not re.fullmatch(
             r"[A-Za-z0-9]{8,40}", rid
         ):
             raise AppError("BAD_REQUEST", "지원하지 않는 조치입니다.")
@@ -752,6 +786,8 @@ def create_app(
             return await agent_fix.analyze(d, rid, actor)
         if step == "apply":
             return await agent_fix.apply(d, rid, actor, str(body.get("run_id") or "") or None)
+        if step == "revert_place":
+            return await agent_fix.revert_place(d, rid, actor)
         return await agent_fix.verify(d, rid, actor)
 
     @app.post("/api/admin/unanswered/{uid}/recheck")

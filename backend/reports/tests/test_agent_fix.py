@@ -29,7 +29,7 @@ def ans(text, cited=("x",), notices=()):
     }
 
 
-def deps(store, *, drafted=None, finals=None, page="", runs=None, placed=None):
+def deps(store, *, drafted=None, finals=None, page="", runs=None, placed=None, restored=None):
     finals = list(finals or [])
 
     async def fetch_text(url):
@@ -50,13 +50,24 @@ def deps(store, *, drafted=None, finals=None, page="", runs=None, placed=None):
 
     async def save_place(draft):
         placed.append(draft)
-        return "rpt-1"
+        return {"place_id": "rpt-1", "prev": None, "request_id": "req-1"}
+
+    async def restore_place(pid, prev, expected):
+        restored.append((pid, prev, expected))
 
     async def run_status(rid):
         return (runs or {}).get(rid)
 
     return agent_fix.FixDeps(
-        store, fetch_text, search, extract, run_turn, paraphrase, save_place, run_status
+        store,
+        fetch_text,
+        search,
+        extract,
+        run_turn,
+        paraphrase,
+        save_place,
+        run_status,
+        restore_place,
     )
 
 
@@ -129,9 +140,16 @@ async def test_place_flow_apply_then_auto_resolve_2_of_2():
         evidence_id=EV["id"],
         quote="반도체부트캠프사업단은 창조관 3층 301호에 있습니다.",
     )
-    placed = []
-    good = ans("반도체부트캠프사업단은 창조관 3층 301호에 있습니다.")
-    d = deps(store, drafted=drafted, finals=[good, good], placed=placed)
+    placed, restored = [], []
+    good = ans("반도체부트캠프사업단은 창조관 3층 301호에 있습니다.", cited=["place:rpt-1"])
+    d = deps(
+        store,
+        drafted=drafted,
+        finals=[good, good],
+        placed=placed,
+        page=EV["text"],
+        restored=restored,
+    )
     fix = await agent_fix.analyze(d, rid, ACTOR)
     assert (
         fix["type"] == "place"
@@ -150,6 +168,10 @@ async def test_place_flow_apply_then_auto_resolve_2_of_2():
         "report.agent.apply",
         "report.agent.verify",
     ]
+    # 장소 반영 되돌리기 → 장소 원상복구 + 자동 종결도 되돌림(GPT5 #799-3)
+    out = await agent_fix.revert_place(d, rid, ACTOR)
+    assert out["status"] == "reverted" and restored == [("rpt-1", None, "req-1")]
+    assert store.rows[rid]["status"] == "pending"
 
 
 @pytest.mark.asyncio
@@ -166,8 +188,12 @@ async def test_place_verify_fails_if_answer_lacks_approved_location():
     d = deps(
         store,
         drafted=drafted,
-        finals=[ans("창조관 3층 301호입니다."), ans("잘 모르겠습니다.")],
+        finals=[
+            ans("창조관 3층 301호입니다.", cited=["place:rpt-1"]),
+            ans("잘 모르겠습니다.", cited=["place:rpt-1"]),
+        ],
         placed=[],
+        page=EV["text"],
     )
     await agent_fix.analyze(d, rid, ACTOR)
     out = await agent_fix.apply(d, rid, ACTOR)
@@ -192,7 +218,10 @@ async def test_stale_source_needs_finished_recollect_before_verify():
         store,
         page="2호차 진해 07:30 출발 (노선 변경)",
         runs=runs,
-        finals=[ans("노선은 ..."), ans("노선은 ...")],
+        finals=[
+            ans("노선은 ...", cited=["guide:web-bus:2"]),
+            ans("노선은 ...", cited=["guide:web-bus:3"]),
+        ],
     )
     fix = await agent_fix.analyze(d, rid, ACTOR)
     assert (
@@ -250,3 +279,52 @@ def test_same_answer_as_reported_is_not_a_fix():
     assert resolve.run_ok(
         ans("통학버스는 재학생 누구나 캐시비카드로 이용합니다."), None, reported=old
     )[0]
+
+
+@pytest.mark.asyncio
+async def test_unrelated_citation_does_not_close_place_report():
+    """GPT5 #799-1: 위치 문자열이 있어도 반영한 장소(place:rpt-1)를 인용하지 않으면 실패."""
+    store = MemoryReportStore()
+    rid = report(store, "반도체부트캠프사업단이 어디있나요?")
+    drafted = resolve.PlaceDraftOut(
+        found=True,
+        name="반도체부트캠프사업단",
+        location="창조관 3층 301호",
+        evidence_id=EV["id"],
+        quote="반도체부트캠프사업단은 창조관 3층 301호에 있습니다.",
+    )
+    fake = ans("반도체부트캠프사업단은 창조관 3층 301호에 있습니다.", cited=["x"])
+    d = deps(store, drafted=drafted, finals=[fake, fake], placed=[], page=EV["text"])
+    await agent_fix.analyze(d, rid, ACTOR)
+    out = await agent_fix.apply(d, rid, ACTOR)
+    assert (
+        out["status"] == "recheck_failed"
+        and out["check"]["runs"][0]["reason"] == "바꾼 자료를 인용하지 않음"
+    )
+    assert store.rows[rid]["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_source_changed_since_draft_expires_it():
+    """GPT5 #799-2: 승인 시 출처를 다시 읽어 인용문이 사라졌으면 반영하지 않는다."""
+    store = MemoryReportStore()
+    rid = report(store, "반도체부트캠프사업단이 어디있나요?")
+    drafted = resolve.PlaceDraftOut(
+        found=True,
+        name="반도체부트캠프사업단",
+        location="창조관 3층 301호",
+        evidence_id=EV["id"],
+        quote="반도체부트캠프사업단은 창조관 3층 301호에 있습니다.",
+    )
+    placed = []
+    d = deps(store, drafted=drafted, placed=placed, page="사업단이 한마관으로 이전했습니다.")
+    await agent_fix.analyze(d, rid, ACTOR)
+    with pytest.raises(AppError):
+        await agent_fix.apply(d, rid, ACTOR)
+    assert not placed and store.rows[rid]["agent_fix"]["status"] == "stale_draft"
+
+
+def test_doc_prefix():
+    assert resolve.doc_prefix("guide:web-abc:3") == "guide:web-abc:"
+    assert resolve.doc_prefix("196_main_30") == "196_"
+    assert resolve.doc_prefix("place:rpt-1") == "place:rpt-1"

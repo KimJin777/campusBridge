@@ -203,7 +203,20 @@ def same_as_reported(new: str, reported: str) -> bool:
     return quote_present(new, reported) or quote_present(reported, new)
 
 
-def run_ok(final: dict[str, Any], must_contain: str | None, reported: str = "") -> tuple[bool, str]:
+def doc_prefix(evidence_id: str) -> str:
+    """같은 문서의 근거 ID 앞부분: 'guide:web-abc:3'→'guide:web-abc:', '196_main_30'→'196_'."""
+    eid = evidence_id or ""
+    if re.match(r"^\d+_", eid):
+        return eid.split("_", 1)[0] + "_"
+    return eid.rsplit(":", 1)[0] + ":" if eid.count(":") >= 2 else eid
+
+
+def run_ok(
+    final: dict[str, Any],
+    must_contain: str | None,
+    reported: str = "",
+    required: list[str] | None = None,
+) -> tuple[bool, str]:
     if final.get("outcome") != "answer" or not final.get("answer"):
         return False, str(final.get("fallback_reason") or final.get("outcome") or "no_answer")
     ans = final["answer"]
@@ -215,6 +228,11 @@ def run_ok(final: dict[str, Any], must_contain: str | None, reported: str = "") 
         return False, "답변이 '찾지 못함'"
     if reported and same_as_reported(answer_text(final), reported):
         return False, "제보된 답과 같음"
+    if required and not any(str(c).startswith(p) for c in ans.cited for p in required):
+        return (
+            False,
+            "바꾼 자료를 인용하지 않음",
+        )  # 다른 옛 자료로 그럴듯하게 답한 경우(GPT5 #799-1)
     if must_contain and _norm(must_contain) not in _norm(answer_text(final)):
         return False, "승인한 위치가 답변에 없음"
     return True, "ok"
@@ -226,6 +244,7 @@ async def verify_fix(
     paraphrase: Callable[[str], Awaitable[str | None]],
     must_contain: str | None = None,
     reported: str = "",
+    required: list[str] | None = None,
 ) -> dict[str, Any]:
     """원 질문 + 바꿔 말한 질문 2개를 새로 실행해 모두 통과해야 passed(GPT5 #792)."""
     other = None
@@ -238,7 +257,7 @@ async def verify_fix(
     runs = []
     for q in (question, other):
         final = await run_turn(q)
-        ok, why = run_ok(final, must_contain, reported)
+        ok, why = run_ok(final, must_contain, reported, required)
         runs.append({"query": q, "ok": ok, "reason": why, "answer": answer_text(final)[:200]})
     return {"passed": all(r["ok"] for r in runs), "runs": runs, "checked_at": datetime.now(UTC)}
 

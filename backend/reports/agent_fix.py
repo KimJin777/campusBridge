@@ -24,8 +24,11 @@ class FixDeps:
     extract: Callable[[str], Awaitable[resolve.PlaceDraftOut]]
     run_turn: Callable[[str], Awaitable[dict[str, Any]]]
     paraphrase: Callable[[str], Awaitable[str | None]]
-    save_place: Callable[[dict[str, Any]], Awaitable[str]]  # 초안 → 검수 완료 장소(place_id)
+    # 초안 → 검수 완료 장소. {place_id, prev(반영 전 문서 또는 None), request_id}
+    save_place: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
     run_status: Callable[[str], Awaitable[dict[str, Any] | None]]
+    # 장소 반영 되돌리기(그 뒤 다른 수정이 없을 때만) — GPT5 #799-3
+    restore_place: Callable[[str, dict[str, Any] | None, str], Awaitable[None]] | None = None
 
 
 async def _audit(d: FixDeps, actor: Any, rid: str, action: str, after: dict[str, Any]) -> None:
@@ -97,7 +100,25 @@ async def apply(d: FixDeps, rid: str, actor: Any, run_id: str | None = None) -> 
                 "BAD_REQUEST", "초안이 오래되었습니다. [조치안 다시 만들기]를 눌러 주세요."
             )
         if fix.get("status") == "proposed":
-            fix["place_id"] = await d.save_place(draft)
+            # 승인 직전에 출처를 다시 읽어 인용문이 아직 있는지 확인(GPT5 #799-2)
+            try:
+                live = await d.fetch_text(str(draft.get("source_url") or ""))
+            except Exception as exc:  # noqa: BLE001
+                raise AppError(
+                    "BAD_REQUEST", "출처 페이지를 다시 읽지 못했습니다. 잠시 뒤 다시 시도하세요."
+                ) from exc
+            if not resolve.quote_present(live, str(draft.get("quote") or "")):
+                fix.update(status="stale_draft", note="출처 원문이 바뀌어 초안을 만료했습니다")
+                await d.reports.update(rid, {"agent_fix": fix})
+                raise AppError(
+                    "BAD_REQUEST", "출처 원문이 바뀌었습니다. [조치안 다시 만들기]를 눌러 주세요."
+                )
+            saved = await d.save_place(draft)
+            fix.update(
+                place_id=saved["place_id"],
+                place_prev=saved.get("prev"),
+                place_request_id=saved.get("request_id"),
+            )
         fix.update(status="applied", applied_at=now, applied_by=actor.email)
         await d.reports.update(rid, {"agent_fix": fix})
         await _audit(d, actor, rid, "apply", fix)
@@ -120,22 +141,31 @@ async def verify(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
     fix = dict(row.get("agent_fix") or {})
     kind, status = fix.get("type"), fix.get("status")
     must = None
+    required: list[str] | None = None
     if kind == "place":
         if status not in ("applied", "recheck_failed") or not fix.get("place_id"):
             raise AppError("BAD_REQUEST", "장소를 반영한 뒤 확인할 수 있습니다.")
         must = (fix.get("draft") or {}).get("location")
+        required = [f"place:{fix['place_id']}"]  # 반영한 장소 자체를 인용해야(GPT5 #799-1)
     elif kind == "recollect":
         run = await d.run_status(str(fix.get("run_id") or "")) if fix.get("run_id") else None
         if not run or run.get("status") != "success":
             raise AppError(
                 "BAD_REQUEST", "재수집이 아직 끝나지 않았습니다. 수집 실행을 확인하세요."
             )
+        required = sorted(
+            {
+                resolve.doc_prefix(p["id"])
+                for p in fix.get("pages") or []
+                if p.get("status") == "changed"
+            }
+        )
     elif kind != "unanswered" or status not in ("linked", "recheck_failed"):
         raise AppError("BAD_REQUEST", "확인할 조치가 없습니다.")
     snap = row.get("snapshot") or {}
     question = snap.get("question_masked") or ""
     result = await resolve.verify_fix(
-        question, d.run_turn, d.paraphrase, must, snap.get("answer_text") or ""
+        question, d.run_turn, d.paraphrase, must, snap.get("answer_text") or "", required
     )
     now = datetime.now(UTC)
     fix.update(status="verified" if result["passed"] else "recheck_failed", check=result)
@@ -161,4 +191,29 @@ async def verify(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
         )
     await d.reports.update(rid, change)
     await _audit(d, actor, rid, "verify", fix)
+    return fix
+
+
+async def revert_place(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
+    """장소 반영 되돌리기(GPT5 #799-3): 반영 뒤 다른 수정이 없을 때만 반영 전 상태로.
+
+    새로 만든 장소였으면 검수 대기(pending)로 돌려 학생에게 보이지 않게 한다.
+    자동 종결된 제보도 함께 원래 상태로 돌린다.
+    """
+    row = await _row(d, rid)
+    fix = dict(row.get("agent_fix") or {})
+    if fix.get("type") != "place" or not fix.get("place_id") or d.restore_place is None:
+        raise AppError("BAD_REQUEST", "되돌릴 장소 반영이 없습니다.")
+    if fix.get("status") == "reverted":
+        raise AppError("BAD_REQUEST", "이미 되돌렸습니다.")
+    await d.restore_place(
+        fix["place_id"], fix.get("place_prev"), str(fix.get("place_request_id") or "")
+    )
+    fix.update(status="reverted", reverted_at=datetime.now(UTC), reverted_by=actor.email)
+    change: dict[str, Any] = {"agent_fix": fix}
+    undo = row.get("undo") or {}
+    if undo.get("action") == "agent_resolve" and row.get("status") == "resolved":
+        change.update({**(undo.get("prev") or {}), "undo": None})
+    await d.reports.update(rid, change)
+    await _audit(d, actor, rid, "revert_place", fix)
     return fix
