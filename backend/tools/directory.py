@@ -70,8 +70,11 @@ def dept_lookup(dept_id: str, *, path: Path | None = None) -> Dept | None:
         ),
         None,
     )
-    book = _directory_rows(settings).get(target) or (
-        _directory_rows(settings).get(_first(place, "name")) if place else None
+    rows_by_name = _directory_rows(settings)
+    book = (
+        rows_by_name.get(target)
+        or next((r for r in rows_by_name.values() if r.get("id") == target), None)
+        or (rows_by_name.get(_first(place, "name")) if place else None)
     )
     if not place and not book:
         return None
@@ -253,6 +256,35 @@ def _verified_rows(settings: Settings, path: Path | None) -> list[dict[str, str]
     return [r for r in merged.values() if _first(r, "status").casefold() == "verified"]
 
 
+def _book_evidence(settings: Settings, normalized_query: str) -> list[Evidence]:
+    """전화번호부 부서 중 질문에 이름이 들어 있는 것(가장 긴 이름 우선, 최대 2개)."""
+    hits = [
+        row
+        for name, row in _directory_rows(settings).items()
+        if name and len(_normalize(name)) >= 3 and _normalize(name) in normalized_query
+    ]
+    hits.sort(key=lambda r: -len(str(r.get("name") or "")))
+    out: list[Evidence] = []
+    for row in hits[:2]:
+        name = str(row.get("name") or "")
+        phones = [str(p) for p in row.get("phones") or []] or (
+            [str(row["phone"])] if row.get("phone") else []
+        )
+        if not phones:
+            continue
+        fax = f" · 팩스 {row['fax']}" if row.get("fax") else ""
+        out.append(
+            Evidence(
+                id=f"dept:{row['id']}",
+                kind="department",
+                title=f"{name} 연락처(교내 전화번호부)",
+                text=f"{name} 전화: {', '.join(phones)}{fax}",
+                meta={"dept_id": str(row["id"]), "source_kind": "phonebook"},
+            )
+        )
+    return out
+
+
 async def find_campus_location(
     query: str,
     *,
@@ -265,7 +297,11 @@ async def find_campus_location(
     if not normalized:
         return ToolResult.fail("BAD_INPUT", "찾을 장소 이름을 입력해 주세요")
     rows = await asyncio.to_thread(_verified_rows, settings, path)
+    # 전화번호부(교수님 2026-10-01: 학과 사무실 = 조교 번호) — "역사학과 전화번호"에 근거로 준다
+    book = [] if path is not None else await asyncio.to_thread(_book_evidence, settings, normalized)
     if not rows:
+        if book:
+            return ToolResult(ok=True, items=book, as_of=utc_now())
         return ToolResult.empty("검수된 장소 정보가 아직 없습니다")
 
     candidates: list[tuple[int, dict[str, str]]] = []
@@ -274,6 +310,8 @@ async def find_campus_location(
         if tier is not None:
             candidates.append((tier, row))
     if not candidates:
+        if book:
+            return ToolResult(ok=True, items=book, as_of=utc_now())
         return ToolResult.empty("해당 장소를 찾지 못했습니다")
     best_tier = min(tier for tier, _ in candidates)
     matches = [row for tier, row in candidates if tier == best_tier]
@@ -320,6 +358,7 @@ async def find_campus_location(
                     meta={"kind": "building_tenants", "count": len(tenants)},
                 )
             )
+    items += [b for b in book if b.id not in {i.id for i in items}]
     if not items:
         return ToolResult.empty("해당 장소를 찾지 못했습니다")
     return ToolResult(

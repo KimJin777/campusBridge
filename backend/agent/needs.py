@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 from typing import Any
+
+CONTACT_Q = re.compile(r"전화|연락처|번호|팩스|사무실")
 
 # 사실 종류 → 검색 kinds(순서 유지: procedure는 guide 우선)
 NEED_KINDS: dict[str, list[str]] = {
@@ -134,6 +137,12 @@ def plan_calls(
         calls.append(
             {"name": "find_campus_tips", "args": {"query": original_query or search_query}}
         )
+
+    # "○○학과 전화번호" → 전화번호부 근거(2026-10-01). 위치 질문이 아니면 꿀팁은 안 부름
+    elif "procedure_and_contact" in evidence_needs and CONTACT_Q.search(
+        original_query or search_query
+    ):
+        calls.append({"name": "find_campus_location", "args": {"query": search_query}})
 
     for i, c in enumerate(calls):
         c["id"] = f"plan_{i}"

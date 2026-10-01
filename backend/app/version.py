@@ -13,6 +13,17 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.33.1",
+        "date": "2026-10-01",
+        "deployed_at": None,
+        "revision": None,
+        "title": "'○○학과 전화번호' 질문에 전화번호부로 답하기",
+        "items": [
+            "전화·연락처를 묻는 질문이면 교내 전화번호부에서 부서 이름을 찾아 근거로 씀(학과는 조교 번호, 여럿이면 모두)",
+            "부서 카드가 전화번호부 부서도 찾아 번호를 모두 표시",
+        ],
+    },
+    {
         "version": "0.33.0",
         "date": "2026-10-01",
         "deployed_at": None,

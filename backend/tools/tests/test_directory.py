@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 from pathlib import Path
@@ -154,3 +155,33 @@ def test_fresh_instance_queries_immediately(monkeypatch):
     monkeypatch.setattr(directory.time, "monotonic", lambda: 12.0)  # 켜진 지 12초
     directory._places_cache.update(at=float("-inf"), rows=[])
     assert directory._firestore_place_rows(Settings(gcp_project_id="p"))[0]["name"] == "학사관리팀"
+
+
+def test_phone_question_gets_phonebook_evidence(monkeypatch) -> None:
+    """'역사학과 전화번호' → 전화번호부 근거(조교 번호 여럿), 부서 카드도 ID로 찾음(교수님 2026-10-01)."""
+    import asyncio
+
+    from backend.tools import directory as D
+
+    rows = {
+        "역사학과": {"id": "u-hist", "name": "역사학과", "phone": "055-249-2147", "phones": ["055-249-2147"], "fax": "0505-999-2138"},
+        "사회복지학과": {"id": "u-sw", "name": "사회복지학과", "phone": "055-249-2173", "phones": ["055-249-2173", "055-249-2118"]},
+    }
+    monkeypatch.setattr(D, "_directory_rows", lambda s: rows)
+    monkeypatch.setattr(D, "_verified_rows", lambda s, p: [])
+    s = Settings(gcp_project_id="p")
+    res = asyncio.run(D.find_campus_location("사회복지학과 사무실 전화번호", settings=s))
+    assert res.ok and res.items[0].id == "dept:u-sw" and res.items[0].kind == "department"
+    assert "055-249-2173, 055-249-2118" in res.items[0].text
+    dept = D.dept_lookup("u-hist")
+    assert dept is not None and dept.phones == ["055-249-2147"]
+
+
+def test_contact_question_plans_directory_lookup() -> None:
+    from backend.agent.needs import plan_calls
+
+    calls = plan_calls(["procedure_and_contact"], search_query="역사학과 사무실 전화번호", original_query="역사학과 사무실 전화번호 알려줘")
+    assert any(c["name"] == "find_campus_location" for c in calls)
+    assert not any(c["name"] == "find_campus_tips" for c in calls)
+    plain = plan_calls(["procedure_and_contact"], search_query="휴학 신청 방법")
+    assert not any(c["name"] == "find_campus_location" for c in plain)
