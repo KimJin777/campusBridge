@@ -13,6 +13,16 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.27.2",
+        "date": "2026-10-01",
+        "deployed_at": None,
+        "revision": None,
+        "title": "관리자 화면 로그인 버튼이 안 나오던 문제 수정",
+        "items": [
+            "admin.js의 여러 줄 문자열 문법 오류로 스크립트 전체가 멈춰 Google 로그인 버튼이 그려지지 않던 문제(0.27.1 회귀)",
+        ],
+    },
+    {
         "version": "0.27.1",
         "date": "2026-10-01",
         "deployed_at": None,
