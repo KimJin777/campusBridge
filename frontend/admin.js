@@ -863,13 +863,39 @@ async function viewWebPages(view) {
       row.status === "stopped" ? act(row, "resume", "재개") : null,
       row.status !== "deleted" ? act(row, "delete", "삭제") : null,
     ]),
+    await crawlSection(items),
   );
+}
+
+// 메뉴 순회로 찾은 학생 생활 페이지 후보(교수님 #909) — 기본 꺼짐, 등록은 사람이 [등록]
+async function crawlSection(registered) {
+  const box = el("div");
+  box.append(el("h3", null, "자동 발굴 후보(메뉴 순회)"));
+  const data = await api("/crawl-candidates").catch(() => ({ items: [], enabled: false }));
+  const known = new Set(registered.filter((r) => r.status !== "deleted").map((r) => r.url));
+  const rows = (data.items || []).filter((c) => !known.has(c.url));
+  const find = btn("후보 찾기", async () => {
+    const r = await api("/ingestion-runs", { method: "POST", body: { source_ids: ["crawl"], idempotency_key: rid() } });
+    flash(`후보 찾기 작업: ${r.id} — 끝나면 이 목록에 나타납니다.`);
+  });
+  if (!data.enabled) {
+    find.disabled = true;
+    box.append(el("p", "hint", "꺼져 있습니다(WEB_CRAWL_ENABLED). 켜면 학교 홈페이지 메뉴를 링크 따라 돌며 학생 생활 안내 페이지를 찾아 여기 후보로 보여 줍니다. 찾은 페이지는 바로 쓰지 않고, [등록]을 눌러야 수집됩니다."));
+  }
+  box.append(find);
+  box.append(table(rows, [["title", "제목"], ["link_text", "메뉴 이름"], [(c) => sourceLink(c.url), "주소"], [(c) => (c.matched || []).join(", "), "걸린 말"], ["seen_at", "발견"]],
+    (c) => [btn("등록", async () => {
+      await api("/web-pages", { method: "POST", body: { url: c.url, note: `자동 발굴 후보: ${c.link_text || c.title || ""}`.slice(0, 200), request_id: rid() } });
+      flash("등록했습니다. [지금 수집]을 누르면 반영됩니다.");
+      openTab("webpages");
+    }, "act primary")]));
+  return box;
 }
 
 // ── 제보함(교수님 #697~#715): 꿀팁 검수 · 잘못된 정보 제보 처리 ─────────────
 const TIP_STATUS = { pending: "관리자 확인 필요", verifying: "검증 중(공개 투표)", student_approved: "학생 확인 승인", approved: "관리자 승인", hidden: "임시 가림", rejected: "반려", withdrawn: "회수" };
 const WRONG_STATUS = { pending: "확인 필요", confirmed: "확인됨(수정 필요)", no_issue: "이상 없음", needs_source_review: "원문 확인 필요", resolved: "수정 완료", rejected: "반려" };
-const WRONG_KIND = { answer_evidence_mismatch: "답변-근거 불일치", stale_source: "원문이 낡음", missing_evidence: "근거 없음", display_error: "화면 오류", other: "기타" };
+const WRONG_KIND = { answer_evidence_mismatch: "답변-근거 불일치", stale_source: "원문이 낡음", missing_evidence: "근거 없음", answer_quality: "답변 품질", display_error: "화면 오류", other: "기타" };
 let reportType = "tip";
 // 잘못된 정보 제보 처리 버튼의 뜻(교수님 #776) — 버튼 툴팁과 안내 표에 같이 쓴다
 const WRONG_ACTION = {
@@ -930,7 +956,8 @@ function agentCell(row) {
   // #919: 제보자가 알려 준 학교 주소 → 등록·수집 후 재확인 / 답변 품질 → 평가셋에 쌓고 재확인
   if (f.type === "register") for (const u of f.urls || []) { const a = sourceLink(u); a.textContent = u; box.append(a); }
   if (f.type === "quality" && f.status === "linked") box.append(el("p", "hint", "자료는 있는데 답이 질문과 어긋나거나 형식이 문제라는 제보입니다. 평가셋에 넣었고, 답변 규칙을 고친 뒤 [다시 확인]하세요."));
-  if (f.status === "verified" && row.admin_note) box.append(el("p", "hint", row.admin_note));  // 반영 내역(#919 P4)
+  if (f.status === "verified" && row.admin_note) box.append(el("p", "hint", row.admin_note));
+  if (f.delegated?.length) box.append(el("p", "hint", `인용한 규정(${f.delegated.join(", ")})이 값을 '따로 고지·공고'로 넘깁니다 → 해당 안내·공지 페이지를 [홈페이지 등록]하세요.`));  // 반영 내역(#919 P4)
   if (f.check) {
     for (const r of f.check.runs || []) box.append(el("p", r.ok ? "hint" : "msg err", `${r.ok ? "통과" : `실패(${r.reason})`} · ${r.query}`));
   }
@@ -1232,6 +1259,15 @@ async function viewReview(view) {
   );
 }
 
+// 규정이 값을 '따로 고지·공고'로 넘긴 질문(#904-3): 학교 안내·공지 페이지를 [홈페이지 등록]하면 답할 수 있다
+function delegatedCell(r) {
+  if (!r.delegated?.length) return "—";
+  const box = el("div", "hint");
+  box.append(el("div", null, `규정이 '따로 고지'로 위임: ${r.delegated.map((d) => d.title).join(", ")}`));
+  box.append(btn("홈페이지 등록으로", () => openTab("webpages")));
+  return box;
+}
+
 async function viewUnanswered(view) {
   const [un, fb] = await Promise.all([api("/unanswered"), api("/feedback")]);
   // 재확인(교수님 #765): 지금 답할 수 있으면 '검증완료'로 바뀌고 30일 뒤 목록에서 사라진다
@@ -1297,7 +1333,7 @@ async function viewUnanswered(view) {
     await autoRunLine(),
     el("p", "hint", "자료를 보강한 뒤 [재확인]을 누르면 지금 답할 수 있는지 다시 확인합니다. 답할 수 있으면 '검증완료'로 바뀌고(마우스를 올리면 답변 요약) 30일 뒤 목록에서 사라집니다. 여러 건은 골라서 [선택 재확인], 검증 안 된 것 모두는 [전체 재확인]."),
     bar,
-    table(rows, [[pick, "선택"], ["query_masked", "질문(마스킹)"], ["count", "횟수"], ["fallback_reason", "사유"], ["last_at", "최근"], [state, "확인"]]),
+    table(rows, [[pick, "선택"], ["query_masked", "질문(마스킹)"], ["count", "횟수"], ["fallback_reason", "사유"], [delegatedCell, "규정 위임"], ["last_at", "최근"], [state, "확인"]]),
     el("h3", null, "피드백"),
     table(fb.items, [["rating", "평가"], ["comment_masked", "의견"], [(r) => ({ now_answers: "지금은 답함", still_fails: "여전히 못 답함", no_question: "질문 기록 없음" })[r.recheck?.result] || "—", "밤사이 재확인"], ["turn_id", "턴"], ["created_at", "시각"]]),
   );

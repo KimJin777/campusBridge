@@ -106,6 +106,10 @@ class Settings:
     )
     collection_mode: str = field(default_factory=lambda: _str("COLLECTION_MODE", "approved"))
     # 관리자 홈페이지 등록 수집(교수님 #688). robots.txt 결정에 따라 WEB_PAGES_ENABLED=0으로 끈다
+    # 메뉴 순회 후보 찾기(#909) — 기본 꺼짐. 실제 순회는 수집 Job의 같은 환경 변수로 켠다
+    web_crawl_enabled: bool = field(
+        default_factory=lambda: _str("WEB_CRAWL_ENABLED", "0").lower() in ("1", "true", "on")
+    )
     web_pages_enabled: bool = field(
         default_factory=lambda: _str("WEB_PAGES_ENABLED", "1").lower() not in ("0", "false", "off")
     )

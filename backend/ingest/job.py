@@ -291,6 +291,29 @@ def run_ingestion(
             log.exception("web page collection failed")
             stats["web_pages_error"] = type(exc).__name__
 
+    # 메뉴 순회로 학생 생활 페이지 후보 찾기(#909) — "crawl"을 명시하고 WEB_CRAWL_ENABLED=1일 때만
+    if "crawl" in set(source_ids):
+        from backend.ingest.crawl import crawl, crawl_enabled, save_candidates
+
+        if not crawl_enabled():
+            stats["crawl"] = {"skipped": "disabled"}
+        else:
+            from urllib.parse import urljoin
+
+            from backend.ingest.guides import BASE_URL, load_pages
+            from backend.ingest.webpage import fetch_html
+
+            _run(deps, run_id, phase="crawl")
+            known = {str(r.get("url")) for _, r in deps.docs.find("web_pages", "status", "active")}
+            guide_pages, _hosts = load_pages(Path("config/sources.yaml"))
+            known |= {urljoin(BASE_URL, p["path"]) for p in guide_pages}
+            found = crawl(lambda u: asyncio.run(fetch_html(u)), known=known)
+            stats["crawl"] = {
+                "pages": found["pages"],
+                "candidates": save_candidates(deps.docs, found, _now()),
+                "stopped": found["stopped"],
+            }
+
     if "events" in wanted and deps.events is not None:
         _run(deps, run_id, phase="events")
         try:

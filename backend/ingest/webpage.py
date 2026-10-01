@@ -26,6 +26,7 @@ from backend.ingest.guides import (
     _clean_text,
     _user_agent,
     build_guide_documents,
+    collect_attachments,
     extract_sections,
     tables_to_rows,
 )
@@ -116,6 +117,41 @@ async def fetch_html(
             await client.aclose()
 
 
+async def fetch_file(
+    url: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+    resolver: Resolver = _resolve,
+    limit: int = 20 * 1024 * 1024,
+) -> bytes:
+    """첨부 파일 내려받기(fetch_html과 같은 주소·IP 검사, 403·429면 멈춤, 20MB 상한)."""
+    own = client is None
+    client = client or httpx.AsyncClient(
+        headers={"User-Agent": _user_agent()}, timeout=30, follow_redirects=False
+    )
+    try:
+        current = normalize_url(url)
+        for _ in range(MAX_REDIRECTS + 1):
+            check_public(urlparse(current).hostname or "", resolver)
+            async with client.stream("GET", current) as r:
+                if r.is_redirect:
+                    current = normalize_url(urljoin(current, r.headers.get("location", "")))
+                    continue
+                if r.status_code in (403, 429):
+                    raise BlockedUrl(f"학교 서버가 요청을 거부했습니다(HTTP {r.status_code}).")
+                r.raise_for_status()
+                body = bytearray()
+                async for chunk in r.aiter_bytes():
+                    body += chunk
+                    if len(body) > limit:
+                        raise BlockedUrl("첨부 파일이 너무 큽니다(20MB 초과).")
+                return bytes(body)
+        raise BlockedUrl("리다이렉트가 너무 많습니다.")
+    finally:
+        if own:
+            await client.aclose()
+
+
 def extract_page(html: str, url: str) -> tuple[str, list[dict[str, object]]]:
     """본문 절 목록. 학교 표준 CMS(#_contentBuilder)면 학사안내 추출기를, 아니면 일반 본문 추출."""
     host = urlparse(url).hostname or ""
@@ -173,6 +209,7 @@ def collect_registered(
     import_docs: Callable[[list[dict[str, object]]], bool],
     fetch: Callable[[str], tuple[str, str]] | None = None,
     interval: float = 1.0,
+    attachments: Callable[[str, str], list[dict[str, object]]] | None = None,
 ) -> dict[str, int]:
     """등록된(active) 페이지를 다시 읽어 색인하고, 중지·삭제된 페이지는 색인에서 뺀다.
 
@@ -181,6 +218,13 @@ def collect_registered(
     import time
 
     fetch = fetch or (lambda u: asyncio.run(fetch_html(u)))
+
+    def _attachments(html: str, final: str) -> list[dict[str, object]]:
+        # 본문 첨부(HWP·PDF 등)도 읽는다(교수님 2026-10-01) — 같은 사이트·학교 도메인 파일만
+        hosts = {urlparse(final).hostname or "", "www.kyungnam.ac.kr"}
+        return asyncio.run(collect_attachments(html, final, hosts, fetch_file))
+
+    attachments = attachments or _attachments
     stats = {"pages": 0, "sections": 0, "failed": 0, "removed": 0}
     plans: list[tuple[str, dict[str, Any], dict[str, Any], list[str]]] = []
     documents: list[dict[str, object]] = []
@@ -189,6 +233,7 @@ def collect_registered(
         try:
             final, html = fetch(row["url"])
             title, sections = extract_page(html, final)
+            sections = list(sections) + attachments(html, final)
             page_docs = build_documents(pid, row["url"], title, sections)
             if not page_docs:
                 raise BlockedUrl("본문을 찾지 못했습니다.")

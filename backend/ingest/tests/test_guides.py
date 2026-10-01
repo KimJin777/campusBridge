@@ -79,3 +79,64 @@ def test_tables_become_header_value_rows():
     body = str(sections[0]["body"])
     assert "[표] 시간: 1시간 · 적용요금: ￦1,000" in body
     assert "\n30분\n" not in body
+
+
+def test_attachment_links_only_school_files_in_content():
+    """본문 첨부(HWP·PDF)만, 학교 도메인만(교수님 2026-10-01: 통학버스 요금 HWP)."""
+    from backend.ingest.guides import attachment_links
+
+    html = (
+        "<div id='_contentBuilder'>"
+        "<a href='/sites/ko/download/2026%ED%95%99%EB%85%84%EB%8F%84%20%EC%9A%94%EA%B8%88.hwp'>안내</a>"
+        "<a href='https://evil.example.com/a.pdf'>외부</a><a href='/ko/4401/subview.do'>메뉴</a></div>"
+        "<footer><a href='/sites/ko/download/privacy.pdf'>개인정보</a></footer>"
+    )
+    links = attachment_links(
+        html, "https://www.kyungnam.ac.kr/ko/4319/subview.do", {"www.kyungnam.ac.kr"}
+    )
+    assert links == [
+        (
+            "https://www.kyungnam.ac.kr/sites/ko/download/2026%ED%95%99%EB%85%84%EB%8F%84%20%EC%9A%94%EA%B8%88.hwp",
+            "2026학년도 요금.hwp",
+        )
+    ]
+
+
+async def test_attachment_text_becomes_numbered_sections():
+    from backend.ingest.guides import ATTACH_N0, collect_attachments
+
+    html = "<div id='_contentBuilder'><a href='/f/요금안내.md'>x</a><a href='/f/a.txt'>y</a></div>"
+    got_urls = []
+
+    async def get_bytes(url):
+        got_urls.append(url)
+        return ("통학버스 요금 안내\n\n밀양 노선 요금은 3,650원입니다. " * 3).encode()
+
+    # md·txt는 첨부 대상 확장자가 아니므로 무시 → 빈 목록
+    assert (
+        await collect_attachments(
+            html,
+            "https://www.kyungnam.ac.kr/ko/1/subview.do",
+            {"www.kyungnam.ac.kr"},
+            get_bytes,
+            interval=0,
+        )
+        == []
+    )
+    html2 = html.replace("요금안내.md", "요금안내.pdf")
+
+    async def pdf_bytes(url):
+        got_urls.append(url)
+        return b"not a pdf"  # 깨진 파일은 건너뛴다(페이지 수집은 계속)
+
+    assert (
+        await collect_attachments(
+            html2,
+            "https://www.kyungnam.ac.kr/ko/1/subview.do",
+            {"www.kyungnam.ac.kr"},
+            pdf_bytes,
+            interval=0,
+        )
+        == []
+    )
+    assert ATTACH_N0 == 100 and got_urls  # 내려받기는 시도함

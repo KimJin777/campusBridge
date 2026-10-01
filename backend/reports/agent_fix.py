@@ -31,6 +31,8 @@ class FixDeps:
     restore_place: Callable[[str, dict[str, Any] | None, str], Awaitable[None]] | None = None
     # 제보 속 학교 주소를 [홈페이지 등록]하고 수집 실행(#919 P1): (urls) → (page_ids, run_id)
     register_pages: Callable[[list[str]], Awaitable[tuple[list[str], str]]] | None = None
+    # 분석할 때 1차 판정(유형)을 다시 — 새 유형(answer_quality)이 생기기 전에 들어온 제보용(#919)
+    rejudge: Callable[[dict[str, Any]], Awaitable[str | None]] | None = None
 
 
 async def _audit(d: FixDeps, actor: Any, rid: str, action: str, after: dict[str, Any]) -> None:
@@ -61,6 +63,11 @@ async def _row(d: FixDeps, rid: str) -> dict[str, Any]:
 async def analyze(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
     row = await _row(d, rid)
     snap = row.get("snapshot") or {}
+    if d.rejudge is not None and row.get("kind") in (None, "other", "missing_evidence"):
+        new_kind = await d.rejudge(row)
+        if new_kind and new_kind != row.get("kind"):
+            row = {**row, "kind": new_kind}
+            await d.reports.update(rid, {"kind": new_kind})
     kind = resolve.fix_type(row)
     fix: dict[str, Any] = {"type": kind, "analyzed_at": datetime.now(UTC)}
     if kind == "register":
@@ -101,6 +108,13 @@ async def analyze(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
     else:  # ③ 미응답 목록에 연결 — 자료 보강 뒤 재확인
         await d.reports.add_unanswered(snap.get("question_masked") or "")
         fix.update(status="linked")
+    # 인용한 규정이 값을 '따로 고지·공고'로 넘겼으면 알려 준다(#904-3) — 홈페이지 안내 등록이 답
+    from backend.ingest.rules import DELEGATION
+
+    quotes = snap.get("cited_quotes") or {}
+    delegated = [cid for cid, text in quotes.items() if DELEGATION.search(str(text or ""))]
+    if delegated:
+        fix["delegated"] = delegated[:3]
     await d.reports.update(rid, {"agent_fix": fix})
     await _audit(d, actor, rid, "analyze", fix)
     return fix

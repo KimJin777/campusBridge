@@ -33,6 +33,12 @@ DOT_DATE = re.compile(r"(?<!\d)(\d{2,4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})(?:\s*
 KOREAN_DATE = re.compile(r"(?<!\d)(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일")
 TABLE_PREFIX = "[표] "  # 표 행 머리(조문 제목 정규식에 걸리지 않게)
 TABLE_TOKEN = re.compile(r"<\s*표\s*>")
+# 위임 조문: 값(요금·기간·인원·방법·기준)을 학교가 따로 고지·공고하도록 넘김(#904-3)
+# → 답은 규정이 아니라 홈페이지 안내·공지에 있다. 예: 교통안전관리 규정 제12조(주차요금)
+DELEGATION = re.compile(
+    r"(따로|별도로)\s*정하여\s*(고지|공고|공지)"
+    r"|(기간|일정|인원|요금|금액|방법|절차|기준|시간|장소)[^.。]{0,20}(공고|고지|공지)(한다|하여야)"
+)
 PARAGRAPH_HEAD = re.compile(r"^([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])")
 
 _CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
@@ -84,6 +90,10 @@ class Article:
     @property
     def has_table(self) -> bool:
         return any(t in self.body for t in ("[표 — 원문 참조]", "<표>", TABLE_PREFIX))
+
+    @property
+    def delegated(self) -> bool:
+        return DELEGATION.search(self.body) is not None
 
     @property
     def indexable(self) -> bool:
@@ -508,11 +518,17 @@ def render_table(table) -> list[str]:
     if head == 0:
         return [TABLE_PREFIX + " | ".join(row) for row in rows]
     labels = []
+
+    def squeeze(text: str) -> str:  # 표 머리 "요 금" → "요금"(글자 띄움 서식)
+        parts = text.split()
+        return "".join(parts) if len(parts) > 1 and all(len(p) == 1 for p in parts) else text
+
     for c in range(n_cols):
         parts: list[str] = []
         for r in range(head):
-            if rows[r][c] and rows[r][c] not in parts:
-                parts.append(rows[r][c])
+            cell = squeeze(rows[r][c])
+            if cell and cell not in parts:
+                parts.append(cell)
         labels.append(" > ".join(parts))
     out = [TABLE_PREFIX + " | ".join(labels)]
     for row in rows[head:]:

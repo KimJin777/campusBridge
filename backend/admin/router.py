@@ -796,6 +796,16 @@ async def _read_page(url: str, settings: Settings) -> tuple[str, str, list[dict[
     return final, title, sections
 
 
+@router.get("/crawl-candidates")
+async def list_crawl_candidates(
+    actor: Actor, store: Store, settings: Annotated[Settings, Depends(get_settings)]
+) -> dict[str, Any]:
+    """메뉴 순회로 찾은 학생 생활 페이지 후보(#909, 기본 꺼짐). 등록은 사람이."""
+    del actor
+    page = await store.list_page("crawl_candidates", limit=200, cursor=None, order_by="seen_at")
+    return {**page, "enabled": settings.web_crawl_enabled}
+
+
 @router.get("/web-pages")
 async def list_web_pages(actor: Actor, store: Store) -> dict[str, Any]:
     del actor

@@ -358,6 +358,20 @@ def fix_deps(r: Any, s: Settings, actor: Any) -> Any:
             }
         )
 
+    async def rejudge(row: dict[str, Any]) -> str | None:
+        from backend.reports.triage import judge_report
+
+        snap = row.get("snapshot") or {}
+        quotes = "\n".join(str(v) for v in (snap.get("cited_quotes") or {}).values())
+        got = await judge_report(
+            r.deps.llm,
+            row.get("text_masked") or "",
+            snap.get("question_masked") or "",
+            snap.get("answer_text") or "",
+            quotes,
+        )
+        return got.kind if got else None
+
     async def register_pages(urls: list[str]) -> tuple[list[str], str]:
         """제보 속 학교 주소를 [홈페이지 등록]과 같은 절차로 등록하고 수집을 실행(#919 P1)."""
         import importlib
@@ -413,6 +427,7 @@ def fix_deps(r: Any, s: Settings, actor: Any) -> Any:
         run_status=reports.run_status,
         restore_place=restore_place,
         register_pages=register_pages,
+        rejudge=rejudge,
     )
 
 
@@ -554,6 +569,12 @@ class TurnRunner:
                     "intent": final.get("intent"),
                     "fallback_reason": reason,
                     "suggested_dept_id": dept.dept_id if dept else None,
+                    # 찾은 규정이 값을 따로 고지·공고로 넘김 — 홈페이지 안내 등록 필요(#904-3)
+                    "delegated": [
+                        {"id": e.id, "title": e.title}
+                        for e in evidence
+                        if (e.meta or {}).get("delegated")
+                    ][:3],
                 }
                 if reason
                 else None

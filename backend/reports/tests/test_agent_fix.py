@@ -403,3 +403,29 @@ def test_tip_with_too_few_votes_goes_to_admin_after_24h():
     assert vote_short(tip, now) is True
     assert vote_short({**tip, "published_at": now - timedelta(hours=2)}, now) is False
     assert vote_short({**tip, "confirm": 3}, now) is False  # 3표면 기준 충족(#926)
+
+
+async def test_analysis_flags_delegated_citation():
+    store = MemoryReportStore()
+    rid = report(
+        store,
+        "주차요금은 얼마인가요?",
+        text="주차요금 답변이 없습니다",
+        quotes={"353_main_12": "② 주차요금 및 징수방법 등에 대해서는 따로 정하여 고지한다."},
+    )
+    fix = await agent_fix.analyze(deps(store), rid, ACTOR)
+    assert fix["delegated"] == ["353_main_12"]
+
+
+async def test_reanalysis_rejudges_old_reports_into_quality():
+    """새 유형이 생기기 전에 들어온 제보도 [조치안 다시 만들기] 때 1차 판정을 다시(#919)."""
+    store = MemoryReportStore()
+    rid = report(store, "2023년 입학생 졸업요건 알려줘", text="원문에 핵심을 말로 해주세요")
+    d = deps(store)
+
+    async def rejudge(row):
+        return "answer_quality"
+
+    d.rejudge = rejudge
+    fix = await agent_fix.analyze(d, rid, ACTOR)
+    assert fix["type"] == "quality" and store.rows[rid]["kind"] == "answer_quality"

@@ -88,7 +88,7 @@ def table_variants(text: str) -> str:
                 extra.append(f"{value}원")
                 continue
             for key, unit in LABEL_UNITS:
-                if key in label:
+                if key in label.replace(" ", ""):
                     extra.append(f"{value}{unit}")
                     break
     extra += [f"{v}원" for v in WON_SIGN.findall(text)]

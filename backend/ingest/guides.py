@@ -142,6 +142,69 @@ def extract_sections(
     return page_title, sections
 
 
+# ── 첨부 파일(교수님 2026-10-01: 통학버스 요금 안내 HWP처럼 내용이 첨부에만 있는 경우) ────────
+ATTACH_EXT = (".hwp", ".hwpx", ".pdf", ".docx")
+MAX_ATTACHMENTS = 5
+MAX_ATTACH_BYTES = 20 * 1024 * 1024
+ATTACH_N0 = 100  # 첨부 절 번호는 100부터(본문 절 번호와 겹치지 않게): guide:{page}:100, :101 …
+
+
+def attachment_links(html: str, page_url: str, allowed_hosts: set[str]) -> list[tuple[str, str]]:
+    """본문 안 학교 도메인 첨부 링크 (주소, 파일 이름). 최대 5개."""
+    from urllib.parse import unquote
+
+    soup = BeautifulSoup(html, "html.parser")
+    root = soup.select_one(CONTENT_SELECTOR) or soup
+    out: list[tuple[str, str]] = []
+    for a in root.find_all("a", href=True):
+        url = urljoin(page_url, str(a["href"]).strip())
+        p = urlparse(url)
+        name = unquote(p.path.rsplit("/", 1)[-1])
+        if p.scheme != "https" or p.hostname not in allowed_hosts:
+            continue
+        if not name.lower().endswith(ATTACH_EXT) or any(u == url for u, _ in out):
+            continue
+        out.append((url, name))
+    return out[:MAX_ATTACHMENTS]
+
+
+def attachment_sections(content: bytes, name: str, start_n: int) -> list[dict[str, object]]:
+    """첨부 1개 → 절 목록(표는 '[표] 머리글: 값' 행, 1,500자 단위). 읽지 못하면 빈 목록."""
+    from backend.admin.document_files import validate_document
+    from backend.ingest.uploads import chunk_text, extract_text
+
+    try:
+        doc = validate_document(name, content)
+        text = extract_text(doc.content, doc.format)
+    except Exception:  # noqa: BLE001 — 첨부 하나 실패가 페이지 수집을 막지 않게
+        return []
+    heading = f"첨부: {name.rsplit('.', 1)[0]}"
+    return [
+        {"n": start_n + i, "heading": heading, "body": f"{heading}\n{chunk}", "links": []}
+        for i, chunk in enumerate(chunk_text(text))
+    ]
+
+
+async def collect_attachments(
+    html: str,
+    page_url: str,
+    allowed_hosts: set[str],
+    get_bytes,
+    *,
+    interval: float = 1.0,
+) -> list[dict[str, object]]:
+    """본문 첨부를 내려받아 절로. get_bytes(url) → bytes (403·429면 예외로 멈춤)."""
+    sections: list[dict[str, object]] = []
+    for i, (url, name) in enumerate(attachment_links(html, page_url, allowed_hosts)):
+        if i:
+            await asyncio.sleep(interval)
+        content = await get_bytes(url)
+        if len(content) > MAX_ATTACH_BYTES:
+            continue
+        sections += attachment_sections(content, name, ATTACH_N0 + len(sections))
+    return sections
+
+
 def build_guide_documents(
     page_id: str, page_url: str, page_title: str, sections: list[dict[str, object]], fetched_at: str
 ) -> list[dict[str, object]]:
@@ -199,6 +262,15 @@ async def collect(
                 title, sections = extract_sections(
                     r.text, page_id=page["id"], page_url=url, allowed_hosts=allowed_hosts
                 )
+
+                async def get_bytes(file_url: str) -> bytes:
+                    got = await client.get(file_url)
+                    if got.status_code in (403, 429):
+                        raise RuntimeError(f"collection stopped: HTTP {got.status_code}")
+                    got.raise_for_status()
+                    return got.content
+
+                sections += await collect_attachments(r.text, url, allowed_hosts, get_bytes)
                 page_docs = build_guide_documents(page["id"], url, title, sections, fetched)
                 docs += page_docs
                 report[page["id"]] = {

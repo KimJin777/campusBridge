@@ -250,3 +250,29 @@ def test_appendix_chunk_title_follows_subheading() -> None:
     )
     chunks = chunk_article(split_articles(text, rule_no="29")[-1])
     assert chunks[0].title == "2027학년도 입학정원" and chunks[-1].title == "2026학년도 입학정원"
+
+
+def test_delegation_clause_is_flagged() -> None:
+    """값을 '따로 정하여 고지'로 넘긴 조문 표시(#904-3) — 답은 홈페이지 안내에 있다."""
+    text = (
+        "제12조(주차요금) ① 주차요금을 징수할 수 있다.\n"
+        "② 주차요금 및 징수방법 등에 대해서는 따로 정하여 고지한다.\n"
+        "제13조(목적) 이 규정은 교통안전을 목적으로 한다."
+    )
+    a12, a13 = split_articles(text, rule_no="353")
+    assert a12.delegated and not a13.delegated
+
+
+def test_spaced_letter_headers_are_squeezed() -> None:
+    """HWP 표 머리 '요 금'·'노 선' → '요금'·'노선'(첨부 요금표, 2026-10-01)."""
+    from bs4 import BeautifulSoup
+
+    from backend.ingest.rules import render_table
+
+    html = (
+        "<table><tr><td>노 선</td><td>요 금</td></tr><tr><td>밀양</td><td>3,650</td></tr></table>"
+    )
+    assert render_table(BeautifulSoup(html, "html.parser").table) == [
+        "[표] 노선 | 요금",
+        "[표] 노선: 밀양 · 요금: 3,650",
+    ]

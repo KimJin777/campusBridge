@@ -80,6 +80,7 @@ def build_structured_document(
         "source_url": rule.hwp_url,
         "source_kind": "rule",
         "has_table": article.has_table,
+        "delegated": article.delegated,  # 값은 학교 고지·공고에(#904-3)
         "access": "public",
         "content_hash": manifest.content_hash,
         "body": article.body,
