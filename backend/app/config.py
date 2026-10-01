@@ -61,6 +61,10 @@ class Settings:
     gemini_fallback_model: str = field(
         default_factory=lambda: _str("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lite")
     )
+    # 교내 문서 업로드 칸 자동 채움(교수님 2026-10-01: 정확도 최고 모델, Vertex 실측 사용 가능)
+    doc_extract_model: str = field(
+        default_factory=lambda: _str("DOC_EXTRACT_MODEL", "gemini-3.1-pro-preview")
+    )
 
     # classify·act의 thinking 수준(3.x 모델). 2026-09-29 실측: low ≈ 2.2초 안정, 기본값 ≈ 4.6초
     classify_thinking: str = field(default_factory=lambda: _str("GEMINI_CLASSIFY_THINKING", "low"))

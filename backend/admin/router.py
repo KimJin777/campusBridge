@@ -21,6 +21,14 @@ from backend.admin.auth import (
     require_google_user,
     require_super_admin,
 )
+from backend.admin.doc_extract import (
+    ExtractionRecords,
+    FieldExtractor,
+    extract_document_fields,
+    get_extraction_records,
+    get_field_extractor,
+    locked_mismatch,
+)
 from backend.admin.document_files import (
     DocumentStorage,
     document_id_for_request,
@@ -52,10 +60,13 @@ from backend.app.config import Settings, get_settings
 from backend.domain import AppError
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+logger = logging.getLogger("campusbridge.admin")
 Actor = Annotated[AdminActor, Depends(require_admin)]
 Store = Annotated[AdminStore, Depends(get_admin_store)]
 Launcher = Annotated[JobLauncher, Depends(get_job_launcher)]
 Documents = Annotated[DocumentStorage, Depends(get_document_storage)]
+Extractor = Annotated[FieldExtractor, Depends(get_field_extractor)]
+Extractions = Annotated[ExtractionRecords, Depends(get_extraction_records)]
 Limit = Annotated[int, Query(ge=1, le=200)]
 Cursor = Annotated[str | None, Query(max_length=200)]
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
@@ -471,6 +482,32 @@ def _ingestion_run_view(item: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in item.items() if key in allowed}
 
 
+@router.post("/documents/extract")
+async def extract_document(
+    actor: Actor,
+    extractor: Extractor,
+    records: Extractions,
+    settings: Annotated[Settings, Depends(get_settings)],
+    file: Annotated[UploadFile, File()],
+) -> dict[str, Any]:
+    """파일을 읽어 업로드 칸을 채울 값을 돌려준다(교수님 2026-10-01). 저장·게시는 하지 않는다."""
+    content = await file.read(20 * 1024 * 1024 + 1)
+    document = validate_document(file.filename, content)
+    try:
+        return await extract_document_fields(
+            document,
+            extractor=extractor,
+            records=records,
+            actor_email=actor.email,
+            model=settings.doc_extract_model,
+        )
+    except AppError:
+        raise
+    except Exception as exc:
+        logger.warning("document field extraction failed: %s", type(exc).__name__)
+        raise AppError("INTERNAL", "문서를 읽지 못했습니다. 직접 입력해 주세요.") from exc
+
+
 @router.post("/documents", status_code=202)
 async def upload_document(
     actor: Actor,
@@ -488,6 +525,8 @@ async def upload_document(
     expires_at_doc: Annotated[date, Form()],
     reason: Annotated[str, Form(min_length=1, max_length=300)],
     request_id: Annotated[str, Form(min_length=8, max_length=100)],
+    records: Extractions,
+    extraction_id: Annotated[str | None, Form(max_length=100)] = None,
 ) -> dict[str, Any]:
     if not settings.rules_bucket or not settings.gcp_project_id or not settings.ingestion_job_name:
         raise AppError("BAD_REQUEST", "문서 저장소 또는 변환 Job 설정이 없습니다.")
@@ -495,6 +534,24 @@ async def upload_document(
         raise AppError("BAD_REQUEST", "문서 만료일은 시행일보다 빠를 수 없습니다.")
     content = await file.read(20 * 1024 * 1024 + 1)
     document = validate_document(file.filename, content)
+    auto_filled: list[str] = []
+    if extraction_id:
+        record = await records.get(_valid_id(extraction_id))
+        if record is None:
+            msg = "자동 채움 기록을 찾지 못했습니다. 취소 후 다시 선택해 주세요."
+            raise AppError("BAD_REQUEST", msg)
+        submitted = {
+            "title": title,
+            "department": department,
+            "doc_date": doc_date.isoformat(),
+            "effective_from": effective_from.isoformat(),
+            "expires_at_doc": expires_at_doc.isoformat(),
+            "source": source,
+        }
+        problem = locked_mismatch(record, document.sha256, submitted)
+        if problem:
+            raise AppError("BAD_REQUEST", problem)
+        auto_filled = sorted(record.get("fields") or {})
     document_id = document_id_for_request(request_id.strip())
     staging_path = await storage.upload_staging(document_id, document)
     item, created = await store.create_document(
@@ -511,6 +568,9 @@ async def upload_document(
             "format": document.format,
             "size_bytes": len(document.content),
             "gcs_staging_path": staging_path,
+            # 문서에서 자동으로 채워 사람이 고치지 못한 칸(교수님 2026-10-01)
+            "extraction_id": extraction_id or None,
+            "auto_filled": auto_filled,
         },
         actor=actor,
         reason=_required_text(reason, "변경 사유"),

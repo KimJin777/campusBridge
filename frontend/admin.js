@@ -512,7 +512,67 @@ async function viewDocuments(view) {
   );
   const up = el("button", "act primary", "업로드(검토 대기)");
   up.type = "submit";
-  form.append(up);
+  // 파일을 고르면 문서에서 칸을 채우고 잠근다(교수님 2026-10-01). 승인 근거·사유는 사람이 입력
+  const cancel = el("button", "act", "취소");
+  cancel.type = "button";
+  const note = el("p", "hint");
+  form.append(up, cancel, note);
+  const AUTO = ["title", "department", "doc_date", "effective_from", "expires_at_doc", "source"];
+  const fileInput = form.elements.file;
+  let seq = 0; // 파일을 바꾸거나 취소하면 늦게 온 이전 응답은 버린다
+  const unlock = () => {
+    form.querySelector('input[name="extraction_id"]')?.remove();
+    for (const name of AUTO) {
+      const input = form.elements[name];
+      input.readOnly = false;
+      input.classList.remove("autofill");
+      input.removeAttribute("title");
+    }
+  };
+  cancel.addEventListener("click", () => {
+    seq += 1;
+    form.reset();
+    unlock();
+    note.textContent = "";
+    up.disabled = false;
+  });
+  fileInput.addEventListener("change", async () => {
+    const my = ++seq;
+    unlock();
+    for (const name of AUTO) form.elements[name].value = "";
+    const file = fileInput.files[0];
+    note.textContent = "";
+    if (!file) return;
+    up.disabled = true;
+    note.textContent = "문서를 읽고 칸을 채우는 중입니다(최대 1분)…";
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const r = await api("/documents/extract", { method: "POST", form: fd });
+      if (my !== seq) return;
+      const hidden = el("input");
+      hidden.type = "hidden";
+      hidden.name = "extraction_id";
+      hidden.value = r.extraction_id;
+      form.append(hidden);
+      const filled = Object.entries(r.fields || {});
+      for (const [name, f] of filled) {
+        const input = form.elements[name];
+        if (!input) continue;
+        input.value = f.value;
+        input.readOnly = true;
+        input.classList.add("autofill");
+        input.title = `자동 채움(수정 불가) — 근거: ${f.evidence}`;
+      }
+      note.textContent = filled.length
+        ? `문서에서 ${filled.length}칸을 채웠습니다. 노란 칸은 고칠 수 없습니다(바꾸려면 [취소]). 빈 칸과 승인 근거·사유를 입력하세요.`
+        : "문서에서 채울 값을 찾지 못했습니다. 직접 입력하세요.";
+    } catch (err) {
+      if (my === seq && err.message !== "unauthorized") note.textContent = `자동 채움 실패: ${err.message}`;
+    } finally {
+      if (my === seq) up.disabled = false;
+    }
+  });
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(form);
