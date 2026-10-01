@@ -72,3 +72,44 @@ def test_crawl_stops_on_block():
 
     out = C.crawl(fetch, known=set(), sleep=lambda s: None)
     assert out["stopped"] and out["pages"] == 2 and out["candidates"] == []
+
+
+def test_bootstrap_indexes_student_pages_only_and_records_all(monkeypatch):
+    """1회성 전체 수집(#943): 학생 관련만 색인(auto_collected), 무관·개인정보 메뉴는 분류만 기록."""
+    site = {
+        HOME: page(
+            "홈",
+            ("/ko/4444/subview.do", "주차요금안내"),
+            ("/ko/9000/subview.do", "교직원 채용"),
+            ("/ko/9100/subview.do", "대학 연혁"),
+        ),
+        "https://www.kyungnam.ac.kr/ko/4444/subview.do": page("주차요금안내").replace(
+            "</h2>", "</h2><p>최초 30분 무료, 이후 15분당 500원입니다. 1일 최대 15,000원.</p>"
+        ),
+        "https://www.kyungnam.ac.kr/ko/9000/subview.do": page("교직원 채용"),
+        "https://www.kyungnam.ac.kr/ko/9100/subview.do": page("대학 연혁"),
+    }
+    rows = {}
+
+    class Docs:
+        def merge(self, col, doc_id, data):
+            rows[doc_id] = data
+
+    docs, stats = C.bootstrap(
+        lambda u: (u, site[u]),
+        lambda html, final: [],
+        known=set(),
+        docs=Docs(),
+        now="2026-10-02",
+        sleep=lambda s: None,
+    )
+    cats = {r["url"].rsplit("/", 2)[-2]: r["category"] for r in rows.values()}
+    assert cats == {"4444": "student", "9000": "excluded", "9100": "other"}
+    assert docs and all(d["structData"]["auto_collected"] for d in docs)
+    assert all("crawl-" in d["structData"]["article_id"] for d in docs)
+    assert stats["indexed_pages"] == 1 and stats["excluded"] == 1
+
+
+def test_bootstrap_is_off_unless_flag(monkeypatch):
+    monkeypatch.delenv("CRAWL_BOOTSTRAP", raising=False)
+    assert C.bootstrap_enabled() is False

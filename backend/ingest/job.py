@@ -314,6 +314,41 @@ def run_ingestion(
                 "stopped": found["stopped"],
             }
 
+    # 1회성 전체 수집(교수님 #943) — 그 실행에만 CRAWL_BOOTSTRAP=1을 주고 source_ids로 명시
+    if "crawl_bootstrap" in set(source_ids):
+        from backend.ingest.crawl import bootstrap, bootstrap_enabled
+
+        if not bootstrap_enabled():
+            stats["crawl_bootstrap"] = {"skipped": "disabled"}
+        else:
+            from urllib.parse import urljoin, urlparse
+
+            from backend.ingest.guides import BASE_URL, collect_attachments, load_pages
+            from backend.ingest.webpage import fetch_file, fetch_html
+
+            _run(deps, run_id, phase="crawl_bootstrap")
+            known = {str(r.get("url")) for _, r in deps.docs.find("web_pages", "status", "active")}
+            guide_pages, _hosts = load_pages(Path("config/sources.yaml"))
+            known |= {urljoin(BASE_URL, p["path"]) for p in guide_pages}
+
+            def attach(html: str, final: str) -> list[dict[str, object]]:
+                hosts = {urlparse(final).hostname or "", "www.kyungnam.ac.kr"}
+                return asyncio.run(collect_attachments(html, final, hosts, fetch_file))
+
+            documents, boot = bootstrap(
+                lambda u: asyncio.run(fetch_html(u)),
+                attach,
+                known=known,
+                docs=deps.docs,
+                now=_now(),
+            )
+            if documents:
+                out = workdir / "crawl_bootstrap.jsonl"
+                _write_jsonl(out, documents)
+                if deps.index.import_jsonl(out, object_prefix=f"runs/{run_id}/crawl"):
+                    boot["import_error"] = True
+            stats["crawl_bootstrap"] = boot
+
     if "events" in wanted and deps.events is not None:
         _run(deps, run_id, phase="events")
         try:

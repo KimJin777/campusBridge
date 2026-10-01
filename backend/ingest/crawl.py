@@ -123,8 +123,12 @@ def crawl(
     max_pages: int = MAX_PAGES,
     interval: float = INTERVAL_S,
     sleep: Callable[[float], None] = time.sleep,
+    on_page: Callable[[str, str, int, str], None] | None = None,
 ) -> dict[str, Any]:
-    """너비 우선 순회. 반환: {candidates: [...], pages, stopped}. 색인·저장은 하지 않는다."""
+    """너비 우선 순회. 반환: {candidates: [...], pages, stopped}. 색인·저장은 하지 않는다.
+
+    on_page(최종 주소, html, 깊이, 링크 글자): 1회성 전체 수집(bootstrap)이 페이지마다 처리할 때 쓴다.
+    """
     from backend.ingest.webpage import BlockedUrl
 
     queue: deque[tuple[str, int, str]] = deque((u, 0, "") for u in start_urls)
@@ -145,6 +149,8 @@ def crawl(
             break
         except Exception:  # noqa: BLE001 — 한 페이지 실패는 건너뛴다
             continue
+        if on_page is not None:
+            on_page(final, html, depth, link_text)
         title = page_title(html)
         words = is_student_page(link_text, title)
         if depth > 0 and words and final not in known:
@@ -169,3 +175,79 @@ def save_candidates(docs: Any, found: dict[str, Any], now: Any) -> int:
     for c in found["candidates"]:
         docs.merge("crawl_candidates", candidate_id(c["url"]), {**c, "seen_at": now})
     return len(found["candidates"])
+
+
+# ── 1회성 전체 수집(교수님 #943: 정기 수집은 보류, 서버가 한가할 때 한 번만) ────────────────
+BOOTSTRAP_DEPTH = 5
+BOOTSTRAP_PAGES = 2000
+# 학생과 무관하거나 직원 개인정보가 주로 있는 메뉴 — 색인하지 않는다
+EXCLUDE_WORDS = (
+    "입찰", "채용", "인사", "공사", "보도", "동정", "발전기금", "기부", "교직원", "조직", "직원",
+    "감사", "예결산", "회의록", "정보공개", "언론", "총장실", "법인",
+)
+
+
+def bootstrap_enabled() -> bool:
+    return os.getenv("CRAWL_BOOTSTRAP", "0").lower() in ("1", "true", "on")
+
+
+def classify(link_text: str, title: str) -> str:
+    """student(색인) / excluded(학생 무관·개인정보) / other(분류만 기록)."""
+    joined = f"{link_text} {title}"
+    if any(w in joined for w in EXCLUDE_WORDS):
+        return "excluded"
+    return "student" if is_student_page(link_text, title) else "other"
+
+
+def bootstrap(
+    fetch: Callable[[str], tuple[str, str]],
+    attachments: Callable[[str, str], list[dict[str, object]]],
+    *,
+    known: set[str],
+    docs: Any,
+    now: Any,
+    sleep: Callable[[float], None] = time.sleep,
+    max_depth: int = BOOTSTRAP_DEPTH,
+    max_pages: int = BOOTSTRAP_PAGES,
+) -> tuple[list[dict[str, object]], dict[str, Any]]:
+    """메뉴 전체를 한 번 돌아 학생 관련 페이지(+본문 첨부)를 색인 문서로 만든다.
+
+    이미 수집 중인 페이지(sources.yaml·등록 페이지)는 건너뛴다. 모든 페이지의 분류는 crawl_candidates에 남긴다.
+    반환: (색인 문서, 통계). 색인 가져오기는 호출하는 쪽(수집 Job)이 한다.
+    """
+    from backend.ingest.guides import build_guide_documents
+    from backend.ingest.webpage import extract_page
+
+    out: list[dict[str, object]] = []
+    stats = {"student": 0, "excluded": 0, "other": 0, "indexed_pages": 0, "documents": 0, "known": 0}
+
+    def on_page(final: str, html: str, depth: int, link_text: str) -> None:
+        if depth == 0:
+            return
+        title = page_title(html)
+        kind = classify(link_text, title)
+        stats[kind] += 1
+        cid = candidate_id(final)
+        row: dict[str, Any] = {"url": final, "title": title, "link_text": link_text, "depth": depth, "category": kind, "seen_at": now}
+        if kind == "student" and final in known:
+            stats["known"] += 1
+            row["status"] = "known"
+        elif kind == "student":
+            try:
+                page_t, sections = extract_page(html, final)
+                sections = list(sections) + attachments(html, final)
+            except Exception:  # noqa: BLE001 — 한 페이지 실패는 건너뛴다
+                sections = []
+            page_docs = build_guide_documents(f"crawl-{cid}", final, page_t or title, sections, str(now))
+            for d in page_docs:
+                d["structData"]["auto_collected"] = True  # type: ignore[index]
+            out.extend(page_docs)
+            stats["indexed_pages"] += 1 if page_docs else 0
+            stats["documents"] += len(page_docs)
+            row.update(status="indexed" if page_docs else "empty", vertex_ids=[str(d["id"]) for d in page_docs])
+        docs.merge("crawl_candidates", cid, row)
+
+    found = crawl(fetch, known=set(), max_depth=max_depth, max_pages=max_pages, sleep=sleep, on_page=on_page)
+    stats.update(pages=found["pages"], stopped=found["stopped"])
+    return out, stats
+

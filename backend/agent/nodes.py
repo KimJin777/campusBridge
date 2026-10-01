@@ -566,6 +566,7 @@ def _safe_meta(meta: dict[str, Any]) -> dict[str, Any]:
         "as_of",
         "page_modified",
         "published_at",
+        "auto_collected",  # 1회성 전체 수집으로 들어온 페이지(#943) — 보조 근거
         "fetched_at",  # 홈페이지 안내의 마지막 확인일 — 규정과 충돌 시 날짜 비교용(교수님 #910)
         "semester",
     )

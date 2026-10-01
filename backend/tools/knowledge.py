@@ -141,6 +141,7 @@ def _as_evidence(document_id: str, data: dict[str, Any], kind: SourceKind) -> Ev
         "rule_level",
         "has_table",
         "delegated",
+        "auto_collected",
         "page_modified",
         "fetched_at",
     )
