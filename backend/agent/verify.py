@@ -108,15 +108,25 @@ def check_sentence(s: DraftSentence, ev: dict[str, Evidence], profile: Profile) 
     """통과하면 None, 탈락이면 사유 코드."""
     if not s.cite_ids:
         return "no_cite"
-    if len(s.cite_ids) != len(s.supporting_quotes):
-        return "len_mismatch"  # zip이 조용히 자르는 것 방지
+    if not s.supporting_quotes:
+        return "len_mismatch"
     if any(cid not in ev for cid in s.cite_ids):
         return "unknown_id"
-    for cid, q in zip(s.cite_ids, s.supporting_quotes, strict=True):
+    if len(s.cite_ids) == len(s.supporting_quotes):
+        pairs = [
+            (normalize(ev[cid].text), q)
+            for cid, q in zip(s.cite_ids, s.supporting_quotes, strict=True)
+        ]
+    else:
+        # 근거 여러 개에 인용문 수가 어긋나도(모델 형식 실수) 문장을 버리지 않는다 —
+        # 인용문마다 인용한 근거들 중 어딘가에 그대로 있어야 한다(밀양 통학버스 요금, 2026-10-01)
+        union = normalize("\n".join(ev[c].text for c in s.cite_ids))
+        pairs = [(union, q) for q in s.supporting_quotes]
+    for text, q in pairs:
         nq = normalize(q)
         if len(nq) < MIN_QUOTE_LEN:
             return "quote_too_short"
-        if nq not in normalize(ev[cid].text):
+        if nq not in text:
             return "quote_not_found"
     cited = "\n".join(ev[c].text for c in s.cite_ids)
     cited_text = normalize(table_variants(date_variants(cited)))

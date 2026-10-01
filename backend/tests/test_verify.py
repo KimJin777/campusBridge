@@ -46,10 +46,11 @@ def test_pass():
 
 def test_reasons():
     assert check_sentence(s("x", [], []), EV, P) == "no_cite"
-    assert (
-        check_sentence(s("x", ["101_main_32", "guide:4390:1"], ["휴학은 통산 3년을"]), EV, P)
-        == "len_mismatch"
-    )
+    # 근거 2개·인용 1개(모델 형식 실수): 근거들 중 어딘가에 인용이 있으면 통과(2026-10-01)
+    two = ["101_main_32", "guide:4390:1"]
+    assert check_sentence(s("x", two, ["휴학은 통산 3년을"]), EV, P) is None
+    assert check_sentence(s("x", two, ["휴학은 통산 5년을"]), EV, P) == "quote_not_found"
+    assert check_sentence(s("x", ["101_main_32"], []), EV, P) == "len_mismatch"
     assert check_sentence(s("x", ["nope"], ["휴학은 통산 3년을"]), EV, P) == "unknown_id"
     assert check_sentence(s("x", ["101_main_32"], ["휴학"]), EV, P) == "quote_too_short"
     assert (
