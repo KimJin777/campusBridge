@@ -348,3 +348,58 @@ async def test_auto_step_analyzes_then_verifies_but_never_approves():
     held = await agent_fix.auto_step(d, rid, ACTOR)  # 승인 대기 → 건너뜀
     assert held["action"] == "skip" and held["needs_human"] is True
     assert store.rows[rid]["agent_fix"]["status"] == "proposed"
+
+
+async def test_report_with_school_url_registers_page_then_verifies():
+    """#919 P1: 제보 글의 학교 주소 → 승인 1회로 등록·수집 → 수집 끝나면 그 페이지를 인용해야 종결."""
+    store = MemoryReportStore()
+    rid = report(
+        store,
+        "밀양 통학버스 요금은 얼마인가요?",
+        text="https://www.kyungnam.ac.kr/ko/4319/subview.do 원문에 비용이 있어요",
+    )
+    good = ans("밀양 노선 요금은 2,000원입니다.", cited=["guide:web-p1:2"])
+    d = deps(store, finals=[good, good], runs={"run-1": {"status": "success"}})
+    registered = []
+
+    async def register_pages(urls):
+        registered.append(urls)
+        return ["p1"], "run-1"
+
+    d.register_pages = register_pages
+    fix = await agent_fix.analyze(d, rid, ACTOR)
+    assert fix["type"] == "register" and fix["urls"] == [
+        "https://www.kyungnam.ac.kr/ko/4319/subview.do"
+    ]
+    assert (await agent_fix.auto_step(d, rid, ACTOR))["needs_human"] is True  # 등록은 사람 승인
+    out = await agent_fix.apply(d, rid, ACTOR)
+    assert registered and out["status"] == "recollecting" and out["run_id"] == "run-1"
+    done = await agent_fix.auto_step(d, rid, ACTOR)
+    assert done["status"] == "verified" and store.rows[rid]["status"] == "resolved"
+    assert "홈페이지 등록·수집" in store.rows[rid]["admin_note"]  # P4 반영 내역
+
+
+async def test_answer_quality_report_goes_to_eval_set_not_data_fix():
+    """#919 P2: '말로 요약해 주세요' 같은 품질 제보는 평가셋 후보 + 재확인(같은 답 반복이면 실패)."""
+    store = MemoryReportStore()
+    rid = report(store, "2023년 입학생 졸업요건 알려줘", text="원문에 핵심을 말로 해주세요")
+    store.rows[rid]["kind"] = "answer_quality"
+    d = deps(store)
+    fix = await agent_fix.analyze(d, rid, ACTOR)
+    assert fix["type"] == "quality" and fix["status"] == "linked"
+    assert store.eval[rid]["kind"] == "answer_quality"
+
+
+def test_tip_with_too_few_votes_goes_to_admin_after_24h():
+    from backend.reports.rules import vote_short
+
+    now = datetime.now(UTC)
+    tip = {
+        "status": "verifying",
+        "published_at": now - timedelta(hours=25),
+        "confirm": 2,
+        "dispute": 0,
+    }
+    assert vote_short(tip, now) is True
+    assert vote_short({**tip, "published_at": now - timedelta(hours=2)}, now) is False
+    assert vote_short({**tip, "confirm": 3}, now) is False  # 3표면 기준 충족(#926)

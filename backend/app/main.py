@@ -358,6 +358,50 @@ def fix_deps(r: Any, s: Settings, actor: Any) -> Any:
             }
         )
 
+    async def register_pages(urls: list[str]) -> tuple[list[str], str]:
+        """제보 속 학교 주소를 [홈페이지 등록]과 같은 절차로 등록하고 수집을 실행(#919 P1)."""
+        import importlib
+
+        from backend.admin.jobs import get_job_launcher
+        from backend.admin.store import get_admin_store
+        from backend.ingest.webpage import normalize_url, page_id
+
+        admin_router = importlib.import_module("backend.admin.router")
+        store = get_admin_store()
+        stamp = int(time.time())
+        ids: list[str] = []
+        for url in urls:
+            _final, title, sections = await admin_router._read_page(url, s)
+            nu = normalize_url(url)
+            pid = page_id(nu)
+            try:
+                await store.save_web_page(
+                    pid,
+                    {
+                        "url": nu,
+                        "title": title,
+                        "note": "제보 출처(#919)",
+                        "status": "active",
+                        "sections": len(sections),
+                    },
+                    create=True,
+                    action="create",
+                    actor=actor,
+                    reason="잘못된 정보 제보에 적힌 학교 주소 등록(관리자 승인)",
+                    request_id=f"report-reg-{pid}-{stamp}",
+                )
+            except AppError:
+                pass  # 이미 등록된 주소 — 다시 수집만 한다
+            ids.append(pid)
+        if not ids:
+            raise AppError("BAD_REQUEST", "등록할 학교 주소가 없습니다.")
+        run, _ = await store.create_ingestion_run(
+            ["web_pages"], idempotency_key=f"report-reg-{stamp}-{ids[0]}", actor=actor
+        )
+        op = await get_job_launcher().start(str(run["id"]), ["web_pages"])
+        await store.mark_ingestion_launch(str(run["id"]), actor=actor, operation_name=op)
+        return ids, str(run["id"])
+
     return FixDeps(
         reports=reports,
         fetch_text=fetch_text,
@@ -368,6 +412,7 @@ def fix_deps(r: Any, s: Settings, actor: Any) -> Any:
         save_place=save_place,
         run_status=reports.run_status,
         restore_place=restore_place,
+        register_pages=register_pages,
     )
 
 

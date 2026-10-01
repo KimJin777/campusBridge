@@ -893,7 +893,7 @@ async function reportAction(row, action, label, { ask = true, text = null } = {}
 }
 
 // 제보함 에이전트 조치(교수님 #786·CLI '1번 전부', GPT5 #792): 조치안 → [승인·반영] 1회 → 2/2 재확인
-const FIX_TYPE = { place: "장소 초안", recollect: "원문 재비교", unanswered: "미응답 연결" };
+const FIX_TYPE = { place: "장소 초안", recollect: "원문 재비교", unanswered: "미응답 연결", register: "제보 속 학교 주소 등록", quality: "답변 품질" };
 const FIX_STATUS = { proposed: "조치안 있음", no_draft: "초안 못 만듦", no_change: "원문 그대로", recollecting: "재수집 중", linked: "미응답 목록에 연결됨", applied: "반영함", verified: "재확인 2/2 통과", recheck_failed: "재확인 실패", stale_draft: "출처가 바뀌어 초안 만료", reverted: "장소 반영 되돌림" };
 
 async function agentStep(row, step, body) {
@@ -907,7 +907,7 @@ function agentCell(row) {
   const f = row.agent_fix;
   const box = el("div", "agent-fix");
   if (!f) {
-    box.append(btn("조치안 만들기", () => agentStep(row, "analyze")));
+    box.append(el("p", "hint", "아직 조치안이 없습니다 → 오른쪽 ① 조치안 만들기"));
     return box;
   }
   box.append(el("strong", null, `${FIX_TYPE[f.type] || f.type} · ${FIX_STATUS[f.status] || f.status}`));
@@ -927,35 +927,69 @@ function agentCell(row) {
     if (f.status === "no_change") box.append(el("p", "hint", "인용한 원문이 그대로입니다. 학생 주장이 맞다면 학교 원문이 낡은 것이니 [원문 확인 필요]로 담당 부서에 알리세요."));
   }
   if (f.type === "unanswered" && f.status === "linked") box.append(el("p", "hint", "자료를 보강한 뒤(홈페이지 등록·용어 사전 등) [다시 확인]을 누르세요."));
+  // #919: 제보자가 알려 준 학교 주소 → 등록·수집 후 재확인 / 답변 품질 → 평가셋에 쌓고 재확인
+  if (f.type === "register") for (const u of f.urls || []) { const a = sourceLink(u); a.textContent = u; box.append(a); }
+  if (f.type === "quality" && f.status === "linked") box.append(el("p", "hint", "자료는 있는데 답이 질문과 어긋나거나 형식이 문제라는 제보입니다. 평가셋에 넣었고, 답변 규칙을 고친 뒤 [다시 확인]하세요."));
+  if (f.status === "verified" && row.admin_note) box.append(el("p", "hint", row.admin_note));  // 반영 내역(#919 P4)
   if (f.check) {
     for (const r of f.check.runs || []) box.append(el("p", r.ok ? "hint" : "msg err", `${r.ok ? "통과" : `실패(${r.reason})`} · ${r.query}`));
   }
-  const acts = el("div");
-  if (f.type === "place" && ["proposed", "recheck_failed"].includes(f.status) && f.draft?.ok) {
-    acts.append(btn(f.status === "proposed" ? "승인·반영" : "다시 확인", () => {
-      if (f.status === "proposed" && !confirm(`장소표에 반영합니다.\n${f.draft.name} — ${f.draft.location}\n근거: ${f.draft.quote}`)) return;
-      return f.status === "proposed" ? agentStep(row, "apply") : agentStep(row, "verify");
+  return box;
+}
+
+// 제보 처리 버튼을 일의 순서대로 한 줄에(교수님 #928): ① 조치안 → ② 반영 → ③ 재확인 → ④ 판정 → 되돌리기
+function agentSteps(row) {
+  const f = row.agent_fix;
+  const g = { plan: [], apply: [], check: [], revert: [] };
+  if (!f) {
+    g.plan.push(btn("① 조치안 만들기", () => agentStep(row, "analyze"), "act primary"));
+    return g;
+  }
+  if (!["verified", "recollecting", "applied"].includes(f.status)) g.plan.push(btn("① 조치안 다시 만들기", () => agentStep(row, "analyze")));
+  if (f.type === "place" && f.status === "proposed" && f.draft?.ok) {
+    g.apply.push(btn("② 승인·반영", () => {
+      if (!confirm(`장소표에 반영합니다.\n${f.draft.name} — ${f.draft.location}\n근거: ${f.draft.quote}`)) return;
+      return agentStep(row, "apply");
+    }, "act primary"));
+  }
+  if (f.type === "register" && f.status === "proposed") {
+    g.apply.push(btn("② 등록하고 수집", () => {
+      const urls = (f.urls || []).join("\n");
+      if (!confirm(`이 주소를 [홈페이지 등록]하고 수집합니다. 수집이 끝나면 다시 확인합니다.\n${urls}`)) return;
+      return agentStep(row, "apply");
     }, "act primary"));
   }
   if (f.type === "recollect" && f.status === "proposed") {
-    acts.append(btn("재수집하고 다시 확인", async () => {
+    g.apply.push(btn("② 재수집", async () => {
       const r = await api("/ingestion-runs", { method: "POST", body: { source_ids: f.source_ids, idempotency_key: rid() } });
       await agentStep(row, "apply", { run_id: r.id });
     }, "act primary"));
   }
-  if ((f.type === "recollect" && ["recollecting", "recheck_failed"].includes(f.status)) || (f.type === "unanswered" && ["linked", "recheck_failed"].includes(f.status))) {
-    acts.append(btn("다시 확인", () => agentStep(row, "verify"), "act primary"));
-  }
+  const recheck =
+    (f.type === "place" && f.status === "recheck_failed" && f.draft?.ok) ||
+    (["recollect", "register"].includes(f.type) && ["recollecting", "recheck_failed"].includes(f.status)) ||
+    (["unanswered", "quality"].includes(f.type) && ["linked", "recheck_failed"].includes(f.status));
+  if (recheck) g.check.push(btn("③ 다시 확인", () => agentStep(row, "verify"), "act primary"));
   // 장소 반영 되돌리기(GPT5 #799-3): 반영 뒤 다른 수정이 없을 때만, 자동 종결도 함께 되돌림
   if (f.type === "place" && f.place_id && ["applied", "verified", "recheck_failed"].includes(f.status)) {
-    acts.append(btn("장소 반영 되돌리기", () => {
+    g.revert.push(btn("장소 반영 되돌리기", () => {
       if (!confirm(`장소표의 '${f.draft?.name || f.place_id}' 반영을 되돌릴까요?`)) return;
       return agentStep(row, "revert_place");
     }));
   }
-  if (!["verified", "recollecting", "applied"].includes(f.status)) acts.append(btn("조치안 다시 만들기", () => agentStep(row, "analyze")));
-  box.append(acts);
-  return box;
+  return g;
+}
+
+// 단계 묶음을 '›'로 이어 한 줄로(빈 단계는 건너뜀)
+function flow(groups) {
+  const out = [];
+  for (const grp of groups) {
+    const items = grp.filter(Boolean);
+    if (!items.length) continue;
+    if (out.length) out.push(el("span", "flow-sep", "›"));
+    out.push(...items);
+  }
+  return out;
 }
 
 // 새 제보는 화면을 열 때 에이전트가 스스로 조치안을 만든다(한 번에 3건)
@@ -1005,7 +1039,7 @@ async function viewReports(view) {
   const cols = isTip
     ? [[(r) => (r.seq ? `#${r.seq}` : "—"), "번호"], [(r) => badge(r.status), "상태"], [(r) => statusMap[r.status] || r.status, "설명"], ["text_masked", "제보 내용(마스킹)"], ["published_text", "다듬은 문장"],
        [(r) => `${r.confirm ?? 0} / ${r.dispute ?? 0} / 신고 ${r.flags ?? 0}`, "맞아요/달라요/신고"],
-       [(r) => [r.safety && "안전", r.contested && "이견 많음", r.burst_risk && "몰표 의심", r.flag_review && "신고 확인 필요", r.recheck && "확인 권장"].filter(Boolean).join(" · ") || "—", "표시"],
+       [(r) => [r.vote_short && "투표 부족(관리자 승인 필요)", r.safety && "안전", r.contested && "이견 많음", r.burst_risk && "몰표 의심", r.flag_review && "신고 확인 필요", r.recheck && "확인 권장"].filter(Boolean).join(" · ") || "—", "표시"],
        ["agent_reason", "에이전트 의견"], ["reason", "반려 사유"], ["created_at", "제보"]]
     : [[(r) => (r.seq ? `#${r.seq}` : "—"), "번호"], [(r) => badge(r.status), "상태"], [(r) => statusMap[r.status] || r.status, "설명"], [(r) => WRONG_KIND[r.kind] || "—", "유형"], ["text_masked", "제보 내용"],
        [(r) => r.snapshot?.question_masked || "—", "질문"], [(r) => (r.snapshot?.answer_text || "").slice(0, 160) || "—", "답변(당시)"],
@@ -1013,25 +1047,37 @@ async function viewReports(view) {
        [(r) => { const w = el("span"); for (const c of r.snapshot?.cards || []) { const a = sourceLink(c.url); a.textContent = c.title || c.id; w.append(a, document.createTextNode(" ")); } return w; }, "인용 근거"],
        ["agent_reason", "에이전트 의견"], [agentCell, "에이전트 조치"], ["created_at", "제보"]];
   const actions = (row) => isTip
-    ? [
-        ["pending", "verifying", "student_approved", "hidden"].includes(row.status) ? btn("승인", async () => {
+    ? flow([
+        // 꿀팁도 일의 순서대로(교수님 #928): ① 공개 투표 › ② 승인 › 반려·가림·복구·회수
+        [row.status === "pending" && !row.vote_short ? btn("① 공개 투표로", () => reportAction(row, "to_vote", "공개 투표로 전환", { ask: false })) : null],
+        [["pending", "verifying", "student_approved", "hidden"].includes(row.status) ? btn("② 승인", async () => {
           const edited = prompt("학생 답변에 쓸 문장으로 다듬을 수 있습니다(그대로 두면 원문).", row.published_text || row.text_masked || "");
           if (edited === null) return;
           await reportAction(row, "approve", "승인", { ask: false, text: edited });
-        }, "act primary") : null,
-        row.status === "pending" ? btn("공개 투표로", () => reportAction(row, "to_vote", "공개 투표로 전환", { ask: false })) : null,
-        ["pending", "verifying"].includes(row.status) ? btn("반려", () => reportAction(row, "reject", "반려")) : null,
-        ["verifying", "student_approved", "approved"].includes(row.status) ? btn("가림", () => reportAction(row, "hide", "가림")) : null,
-        row.status === "hidden" ? btn("복구", () => reportAction(row, "restore", "복구")) : null,
-        ["student_approved", "approved"].includes(row.status) ? btn("회수", () => reportAction(row, "withdraw", "회수")) : null,
-      ]
-    : [
-        row.status !== "confirmed" && row.status !== "resolved" ? tip(btn("확인됨", () => reportAction(row, "confirm", "확인됨"), "act primary"), "confirm") : null,
-        row.status !== "resolved" ? tip(btn("수정 완료", () => reportAction(row, "resolve", "수정 완료")), "resolve") : null,
-        ["pending", "confirmed"].includes(row.status) ? tip(btn("원문 확인 필요", () => reportAction(row, "needs_source_review", "원문 확인 필요")), "needs_source_review") : null,
-        row.status === "pending" ? tip(btn("이상 없음", () => reportAction(row, "no_issue", "이상 없음")), "no_issue") : null,
-        row.status === "pending" ? tip(btn("반려", () => reportAction(row, "reject", "반려")), "reject") : null,
-      ];
+        }, "act primary") : null],
+        [
+          ["pending", "verifying"].includes(row.status) ? btn("반려", () => reportAction(row, "reject", "반려")) : null,
+          ["verifying", "student_approved", "approved"].includes(row.status) ? btn("가림", () => reportAction(row, "hide", "가림")) : null,
+          row.status === "hidden" ? btn("복구", () => reportAction(row, "restore", "복구")) : null,
+          ["student_approved", "approved"].includes(row.status) ? btn("회수", () => reportAction(row, "withdraw", "회수")) : null,
+        ],
+      ])
+    : (() => {
+        const g = agentSteps(row);
+        return flow([
+          g.plan,
+          g.apply,
+          g.check,
+          [row.status !== "confirmed" && row.status !== "resolved" ? tip(btn("④ 확인됨", () => reportAction(row, "confirm", "확인됨")), "confirm") : null],
+          [row.status !== "resolved" ? tip(btn("⑤ 수정 완료", () => reportAction(row, "resolve", "수정 완료")), "resolve") : null],
+          [
+            ["pending", "confirmed"].includes(row.status) ? tip(btn("원문 확인 필요", () => reportAction(row, "needs_source_review", "원문 확인 필요")), "needs_source_review") : null,
+            row.status === "pending" ? tip(btn("이상 없음", () => reportAction(row, "no_issue", "이상 없음")), "no_issue") : null,
+            row.status === "pending" ? tip(btn("반려", () => reportAction(row, "reject", "반려")), "reject") : null,
+          ],
+          g.revert,
+        ]);
+      })();
   // 되돌리기(교수님 #763): 마지막 처리를 직전 상태로 — 그 뒤 상태가 바뀌었으면 서버가 거부
   const withUndo = (row) => [
     ...actions(row),
@@ -1084,7 +1130,7 @@ async function viewReports(view) {
   view.replaceChildren(
     el("div", "section-head", "제보함"),
     el("p", "hint", isTip
-      ? "학생 꿀팁: 에이전트가 광고·개인정보·범위 밖은 자동 반려하고, 통과한 것은 공개 투표(24시간·10표·맞아요 80%)로 학생 확인 승인됩니다. 안전 관련·이견 많음·몰표 의심은 관리자가 결정합니다. 이벤트 경품은 관리자 확인 건만 인정합니다."
+      ? "학생 꿀팁: 에이전트가 광고·개인정보·범위 밖은 자동 반려하고, 통과한 것은 공개 투표(24시간·3표·맞아요 60%, 미달이면 관리자 승인 대기)로 학생 확인 승인됩니다. 안전 관련·이견 많음·몰표 의심은 관리자가 결정합니다. 이벤트 경품은 관리자 확인 건만 인정합니다."
       : "잘못된 정보 제보: 답변과 인용 원문의 숫자·날짜가 명백히 다를 때만 에이전트가 '확인됨'으로 표시합니다. 원문과 일치한다는 이유로 자동 반려하지 않습니다(원문이 낡았을 수 있음)."),
     isTip ? "" : wrongGuide(),
     tabs,
@@ -1092,7 +1138,11 @@ async function viewReports(view) {
     isTip ? "" : await autoRunLine(),
     isTip ? "" : el("p", "hint", "[선택 재확인]: 조치안이 없으면 만들고, 반영·연결된 조치는 다시 확인해 2/2 통과면 수정 완료로 닫습니다. 공식 자료를 바꾸는 [승인·반영]은 사람이 누릅니다(승인 대기로 셉니다). 매일 06:00에 같은 처리가 자동으로 돕니다."),
     isTip ? "" : bar,
-    table(items, colsWithPick, withUndo),
+    (() => {
+      const t = table(items, colsWithPick, withUndo);
+      t.classList.add("flow-actions");  // 처리 버튼 한 줄(교수님 #928)
+      return t;
+    })(),
   );
 }
 

@@ -29,6 +29,8 @@ class FixDeps:
     run_status: Callable[[str], Awaitable[dict[str, Any] | None]]
     # 장소 반영 되돌리기(그 뒤 다른 수정이 없을 때만) — GPT5 #799-3
     restore_place: Callable[[str, dict[str, Any] | None, str], Awaitable[None]] | None = None
+    # 제보 속 학교 주소를 [홈페이지 등록]하고 수집 실행(#919 P1): (urls) → (page_ids, run_id)
+    register_pages: Callable[[list[str]], Awaitable[tuple[list[str], str]]] | None = None
 
 
 async def _audit(d: FixDeps, actor: Any, rid: str, action: str, after: dict[str, Any]) -> None:
@@ -61,7 +63,24 @@ async def analyze(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
     snap = row.get("snapshot") or {}
     kind = resolve.fix_type(row)
     fix: dict[str, Any] = {"type": kind, "analyzed_at": datetime.now(UTC)}
-    if kind == "place":
+    if kind == "register":
+        urls = resolve.school_urls(row.get("text_masked") or "", snap.get("question_masked") or "")
+        fix.update(status="proposed", urls=urls)
+    elif kind == "quality":
+        # 답변 품질(#919 P2): 평가셋 후보로 쌓고, 재확인은 미응답처럼 2/2(제보된 답 반복이면 실패)
+        await d.reports.add_eval_candidate(
+            rid,
+            {
+                "status": "candidate",
+                "kind": "answer_quality",
+                "created_at": datetime.now(UTC),
+                "question_masked": snap.get("question_masked") or "",
+                "reported_answer": (snap.get("answer_text") or "")[:1500],
+                "complaint": (row.get("text_masked") or "")[:300],
+            },
+        )
+        fix.update(status="linked")
+    elif kind == "place":
         draft = await resolve.draft_place(
             snap.get("question_masked") or "", row.get("text_masked") or "", d.search, d.extract
         )
@@ -123,6 +142,22 @@ async def apply(d: FixDeps, rid: str, actor: Any, run_id: str | None = None) -> 
         await d.reports.update(rid, {"agent_fix": fix})
         await _audit(d, actor, rid, "apply", fix)
         return await verify(d, rid, actor)
+    if fix.get("type") == "register" and fix.get("status") == "proposed":
+        if d.register_pages is None:
+            raise AppError("BAD_REQUEST", "홈페이지 등록을 할 수 없는 환경입니다.")
+        page_ids, run = await d.register_pages(list(fix.get("urls") or []))
+        fix.update(
+            status="recollecting",
+            run_id=run[:80],
+            page_ids=page_ids,
+            # 해결 판정에 쓰는 '바뀐 문서' 목록 — 새로 등록한 페이지를 인용해야 통과
+            pages=[{"id": f"guide:web-{p}:1", "status": "changed", "source": "web_pages"} for p in page_ids],
+            applied_at=now,
+            applied_by=actor.email,
+        )
+        await d.reports.update(rid, {"agent_fix": fix})
+        await _audit(d, actor, rid, "apply", fix)
+        return fix
     if fix.get("type") == "recollect" and fix.get("status") == "proposed":
         if not run_id:
             raise AppError("BAD_REQUEST", "재수집 실행 번호가 없습니다.")
@@ -147,7 +182,7 @@ async def verify(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
             raise AppError("BAD_REQUEST", "장소를 반영한 뒤 확인할 수 있습니다.")
         must = (fix.get("draft") or {}).get("location")
         required = [f"place:{fix['place_id']}"]  # 반영한 장소 자체를 인용해야(GPT5 #799-1)
-    elif kind == "recollect":
+    elif kind in ("recollect", "register"):
         run = await d.run_status(str(fix.get("run_id") or "")) if fix.get("run_id") else None
         if not run or run.get("status") != "success":
             raise AppError(
@@ -160,7 +195,7 @@ async def verify(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
                 if p.get("status") == "changed"
             }
         )
-    elif kind != "unanswered" or status not in ("linked", "recheck_failed"):
+    elif kind not in ("unanswered", "quality") or status not in ("linked", "recheck_failed"):
         raise AppError("BAD_REQUEST", "확인할 조치가 없습니다.")
     snap = row.get("snapshot") or {}
     question = snap.get("question_masked") or ""
@@ -176,7 +211,7 @@ async def verify(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
                 "status": "resolved",
                 "reviewed_by": "agent-verify",
                 "reviewed_at": now,
-                "admin_note": "에이전트 재확인 2/2 통과로 종결",
+                "admin_note": f"에이전트 재확인 2/2 통과로 종결 — {fixed_by(fix)}",
                 "undo": {
                     "action": "agent_resolve",
                     "after": "resolved",
@@ -192,6 +227,21 @@ async def verify(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
     await d.reports.update(rid, change)
     await _audit(d, actor, rid, "verify", fix)
     return fix
+
+
+def fixed_by(fix: dict[str, Any]) -> str:
+    """무엇으로 고쳐졌는지 한 줄(#919 P4) — 제보 카드·감사 로그에 남는다."""
+    kind = fix.get("type")
+    if kind == "register":
+        return "홈페이지 등록·수집: " + ", ".join(fix.get("urls") or [])
+    if kind == "recollect":
+        return "원문 재수집: " + ", ".join(fix.get("source_ids") or [])
+    if kind == "place":
+        dr = fix.get("draft") or {}
+        return f"장소표 반영: {dr.get('name', '')} {dr.get('location', '')}".strip()
+    if kind == "quality":
+        return "답변 품질 재확인(평가셋 등록)"
+    return "자료 보강 뒤 재확인"
 
 
 async def revert_place(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
@@ -240,9 +290,9 @@ async def auto_step(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
         out = await analyze(d, rid, actor)
         return {"id": rid, "action": "analyze", "status": out.get("status")}
     verifiable = (
-        (kind == "unanswered" and status in ("linked", "recheck_failed"))
+        (kind in ("unanswered", "quality") and status in ("linked", "recheck_failed"))
         or (kind == "place" and status in ("applied", "recheck_failed") and fix.get("place_id"))
-        or (kind == "recollect" and status == "recollecting")
+        or (kind in ("recollect", "register") and status == "recollecting")
     )
     if verifiable:
         try:

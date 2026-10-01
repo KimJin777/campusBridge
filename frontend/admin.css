@@ -358,3 +358,6 @@ section.tile ul { margin: 7px 0 0; padding-left: 19px; font-size: 12px; }
 .eval-chart .lbl { fill: var(--muted); font-size: 10px; }
 /* 교내 문서: 문서에서 자동으로 채워 잠근 칸(교수님 2026-10-01) */
 .autofill { background: var(--warn-soft); cursor: not-allowed; }
+/* 제보함: 처리 버튼을 일의 순서대로 한 줄에(교수님 #928) */
+.flow-actions .row-actions { white-space: nowrap; }
+.flow-sep { color: var(--muted); margin: 0 2px; font-weight: 700; }

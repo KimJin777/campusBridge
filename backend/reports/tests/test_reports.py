@@ -82,11 +82,11 @@ def _tip(**kw):
 
 
 def test_student_approval_needs_all_conditions():
-    """10표·80%·24시간·몰표 없음·안전 아님이면 학생 확인 승인(교수님 #709, GPT5 #713)."""
+    """3표·60%·24시간·몰표 없음·안전 아님이면 학생 확인 승인(교수님 #709, 기준 #926 2026-10-01)."""
     assert rules.evaluate_tip(_tip(), NOW)["status"] == "student_approved"
     assert "status" not in rules.evaluate_tip(_tip(published_at=NOW - timedelta(hours=2)), NOW)
-    assert "status" not in rules.evaluate_tip(_tip(confirm=7, dispute=2), NOW)  # 9표
-    assert "status" not in rules.evaluate_tip(_tip(confirm=7, dispute=3), NOW)  # 70%
+    assert "status" not in rules.evaluate_tip(_tip(confirm=1, dispute=1), NOW)  # 2표
+    assert "status" not in rules.evaluate_tip(_tip(confirm=2, dispute=2), NOW)  # 50%
     assert "status" not in rules.evaluate_tip(_tip(safety=True), NOW)  # 안전 정보는 관리자
     burst = rules.evaluate_tip(_tip(net_counts={"a": 8, "b": 2}), NOW)
     assert burst == {"burst_risk": True}  # 한 네트워크 몰표 → 보류

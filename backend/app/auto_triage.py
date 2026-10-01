@@ -111,6 +111,21 @@ async def run_feedback(
     return c
 
 
+async def sweep_tips(reports: Any, now: datetime) -> dict[str, int]:
+    """공개 투표가 기준에 못 미친 꿀팁 → 관리자 승인 대기(pending) + '투표 부족' 표시(#919 P3)."""
+    from backend.reports.rules import vote_short
+
+    moved = 0
+    for tip in await reports.list(type_="tip", statuses=("verifying",)):
+        if vote_short(tip, now):
+            await reports.update(
+                str(tip["id"]),
+                {"status": "pending", "vote_short": True, "vote_short_at": now},
+            )
+            moved += 1
+    return {"to_admin": moved}
+
+
 def summary_line(s: dict[str, Any]) -> str:
     """관리자 화면 한 줄: '밤사이 자동 처리 — 미응답 검증완료 3 · 제보 종결 1 · 승인 대기 2'."""
     u, r, f = s.get("unanswered", {}), s.get("reports", {}), s.get("feedback", {})
@@ -120,6 +135,7 @@ def summary_line(s: dict[str, Any]) -> str:
         f"제보 분석 {r.get('analyzed', 0)}",
         f"승인 대기 {r.get('needs_approval', 0)}",
         f"피드백 지금 답함 {f.get('now_answers', 0)}/{sum(f.values())}",
+        f"꿀팁 투표 부족 → 승인 대기 {(s.get('tips') or {}).get('to_admin', 0)}",
     ]
     return " · ".join(parts)
 
@@ -142,6 +158,7 @@ async def run_all(db: Any, r: Any, s: Any) -> dict[str, Any]:
         str(x.get("id")) for x in rows if x.get("status") not in agent_fix.CLOSED and x.get("id")
     ]
     reports = await run_reports(rids, lambda rid: agent_fix.auto_step(d, rid, actor))
+    tips = await sweep_tips(d.reports, datetime.now(UTC))
 
     fb_rows = [(x.id, x.to_dict() or {}) async for x in db.collection("feedback").stream()]
     fb_rows = [(i, x) for i, x in fb_rows if x.get("rating") == -1 and not x.get("recheck")]
@@ -161,6 +178,7 @@ async def run_all(db: Any, r: Any, s: Any) -> dict[str, Any]:
         "unanswered": dict(unanswered),
         "reports": dict(reports),
         "feedback": dict(feedback),
+        "tips": tips,
         "app_version": s.app_version,
         "created_at": datetime.now(UTC),
     }

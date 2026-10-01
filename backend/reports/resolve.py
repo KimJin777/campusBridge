@@ -31,13 +31,35 @@ def _norm(text: str) -> str:
     return re.sub(r"\s+", "", text or "")
 
 
+URL_RE = re.compile(r"https?://[^\s<>\"'）)\]]+")
+
+
+def school_urls(*texts: str) -> list[str]:
+    """제보 글·질문 속 학교 도메인 주소(교수님 #919: 제보자가 준 출처를 쓴다). 최대 3개."""
+    out: list[str] = []
+    for text in texts:
+        for raw in URL_RE.findall(text or ""):
+            url = raw.rstrip(".,;:!?")
+            if is_school_url(url) and url not in out:
+                out.append(url)
+    return out[:3]
+
+
 def fix_type(report: dict[str, Any]) -> str:
-    """제보를 어느 조치로 다룰지(결정적). place > recollect > unanswered."""
+    """제보를 어느 조치로 다룰지(결정적). register > place > recollect > quality > unanswered.
+
+    - register: 제보에 학교 주소가 있으면 그 페이지를 등록해 수집하는 조치(#919 P1)
+    - quality: 자료는 있는데 답이 어긋나거나 형식이 문제(#919 P2) — 평가셋에 쌓고 재확인
+    """
     question = (report.get("snapshot") or {}).get("question_masked") or ""
+    if school_urls(report.get("text_masked") or "", question):
+        return "register"
     if PLACE_Q.search(question):
         return "place"
     if report.get("kind") == "stale_source":
         return "recollect"
+    if report.get("kind") == "answer_quality":
+        return "quality"
     return "unanswered"
 
 

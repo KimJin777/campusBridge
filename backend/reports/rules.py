@@ -4,7 +4,7 @@
 - 사전검사: 결정적으로 판정 가능한 위반만 자동 반려(광고·연락처·욕설·범위 밖).
   애매한 것(주입 시도처럼 보이는 문장 등)은 반려하지 않고 관리자 확인으로 보낸다.
 - 제보 번호: 80비트 난수. 서버에는 해시만 저장(이벤트 때 번호 소지자 확인용).
-- 꿀팁 자동 승인: 공개 24시간 + 유효 투표 10표 + '맞아요' 80% + 미해결 신고 없음 + 몰표 위험 없음.
+- 꿀팁 자동 승인: 공개 24시간 + 유효 투표 3표 + '맞아요' 60% + 미해결 신고 없음 + 몰표 위험 없음.
   안전 관련 꿀팁은 표가 모여도 관리자 확인. 반대가 많으면 삭제가 아니라 '이견 많음' 표시.
 """
 
@@ -33,8 +33,8 @@ VOTES_PER_TOKEN_DAY = 30
 VOTES_PER_NET_DAY = 2000  # 비용 보호용 느슨한 상한(교내 NAT 수천 명 고려). 판정 보호는 네트워크 다양성 규칙이 맡는다
 
 # 자동 승인 기준(교수님 #709) — 운영 중 조정 가능
-MIN_VOTES = 10
-MIN_CONFIRM_RATIO = 0.8
+MIN_VOTES = 3  # 교수님 #926(2026-10-01): 이용자가 적은 동안 3표·60%
+MIN_CONFIRM_RATIO = 0.6
 MIN_PUBLIC_HOURS = 24
 MAX_NET_SHARE = 0.5  # 한 네트워크가 표의 절반을 넘으면 몰표 위험 → 자동 승인 보류
 CONTEST_RATIO = 0.5  # 반대가 이보다 많으면 '이견 많음'(삭제 아님)
@@ -264,3 +264,16 @@ def public_badge(status: str) -> str:
         "student_approved": "학생 확인",
         "verifying": "검증 중",
     }.get(status, "")
+
+
+def vote_short(tip: dict[str, Any], now: datetime) -> bool:
+    """공개 투표 시간이 지났는데 표가 기준에 못 미침 → 관리자 승인 대기로(교수님 #925 진단).
+
+    이용자가 적을 때 24시간 안에 기준 표수가 안 모이면 꿀팁이 영구 대기가 된다.
+    """
+    if tip.get("status") != "verifying":
+        return False
+    published = tip.get("published_at")
+    if not isinstance(published, datetime) or now - published < timedelta(hours=MIN_PUBLIC_HOURS):
+        return False
+    return int(tip.get("confirm", 0)) + int(tip.get("dispute", 0)) < MIN_VOTES
