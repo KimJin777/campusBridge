@@ -324,6 +324,43 @@ def _article_heading(article: Article) -> str:
     return f"제{article.number}조{branch}{title}"
 
 
+# 별표 안 소제목: "2026학년도 입학정원", "2025년도 …", "1. …"(#898 — 학년도별 표가 여러 벌)
+APPENDIX_SUBHEAD = re.compile(r"^(?:\d{4}\s*(?:학년도|년도)|\d{1,2}\.\s)")
+
+
+def _chunk_appendix(article: Article, slice_chars: int) -> list[Article]:
+    """별표는 표 행 경계로 나누고, 소제목이 바뀌면 새 청크를 연다.
+
+    청크 머리는 "[별표 N] 현재 소제목" — 머리를 첫 소제목으로만 달면 뒤쪽 연도 표가
+    첫 연도로 보인다(2026-10-01 실측: 2025·2024학년도 정원이 2027로 섞여 답변됨).
+    """
+    branch = f"-{article.branch}" if article.branch is not None else ""
+    label = f"[별표 {article.number}{branch}]"
+    groups: list[tuple[str, list[str]]] = [(article.title or "", [])]
+    size = 0
+    for line in article.body_lines:
+        if APPENDIX_SUBHEAD.match(line) and not line.startswith(TABLE_PREFIX.strip()):
+            if groups[-1][1]:
+                groups.append((line, []))
+            else:
+                groups[-1] = (line, [])
+            size = 0
+            continue
+        if groups[-1][1] and size + len(line) + 1 > slice_chars:
+            groups.append((groups[-1][0], []))
+            size = 0
+        groups[-1][1].append(line)
+        size += len(line) + 1
+    return [
+        dataclasses.replace(
+            article,
+            body_lines=[f"{label} {sub}".strip(), *lines],
+            chunk_suffix=f"{article.chunk_suffix or ''}_c{index}",
+        )
+        for index, (sub, lines) in enumerate((g for g in groups if g[1]), start=1)
+    ]
+
+
 def chunk_article(
     article: Article,
     *,
@@ -334,6 +371,8 @@ def chunk_article(
 
     if len(article.body) <= max_chars:
         return [article]
+    if article.mode is ParseMode.APPENDIX:
+        return _chunk_appendix(article, slice_chars)
 
     heading = _article_heading(article)
     paragraphs: list[tuple[int, list[str]]] = []
@@ -359,25 +398,6 @@ def chunk_article(
                 )
             )
         return chunks
-
-    if article.mode is ParseMode.APPENDIX:
-        # 별표는 표 행 단위로 묶는다(행 중간에서 자르면 머리글·값이 갈라짐)
-        groups: list[list[str]] = [[]]
-        size = 0
-        for line in article.body_lines:
-            if groups[-1] and size + len(line) + 1 > slice_chars:
-                groups.append([])
-                size = 0
-            groups[-1].append(line)
-            size += len(line) + 1
-        return [
-            dataclasses.replace(
-                article,
-                body_lines=[heading, *lines],
-                chunk_suffix=f"{article.chunk_suffix or ''}_c{index}",
-            )
-            for index, lines in enumerate(groups, start=1)
-        ]
 
     body = article.body
     for index, start in enumerate(range(0, len(body), slice_chars), start=1):

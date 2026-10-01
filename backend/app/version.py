@@ -13,6 +13,17 @@ from typing import Any
 
 CHANGELOG: list[dict[str, Any]] = [
     {
+        "version": "0.29.1",
+        "date": "2026-10-01",
+        "deployed_at": None,
+        "revision": None,
+        "title": "학년도별 별표 답변이 섞이던 문제 수정(게시판 #898)",
+        "items": [
+            "한 별표에 학년도별 표가 여러 벌이면 '2026학년도 입학정원'처럼 소제목마다 따로 색인 — 2025·2024학년도 정원이 2027학년도로 보이던 문제",
+            "질문에 학년도가 없으면 가장 늦은 학년도 값을 먼저 쓰고 'OO학년도 기준'을 밝힘",
+        ],
+    },
+    {
         "version": "0.29.0",
         "date": "2026-10-01",
         "deployed_at": None,

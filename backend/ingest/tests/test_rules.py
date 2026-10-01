@@ -208,3 +208,29 @@ def test_tables_are_filled_in_order_with_merged_cells_expanded():
     assert ok and "120학점: 18학점" in text
     assert fill_tables("<표> <표>", [rows]) == ("<표> <표>", False)  # 개수가 다르면 그대로
     assert is_excluded_rule("대학원 학칙 시행규정") and not is_excluded_rule("학사운영 규정")
+
+
+def test_appendix_chunks_follow_year_subheadings() -> None:
+    """한 별표에 학년도별 표가 여러 벌이면 청크 머리가 그 학년도를 따른다(#898)."""
+    rows = [f"[표] 학과(부): 학과{i:03d} · 입학정원: {i}" for i in range(60)]
+    text = "\n".join(
+        [
+            "제1조(목적) 목적.",
+            "[별표 1]",
+            "2027학년도 입학정원",
+            *rows,
+            "※ 주석은 소제목이 아님",
+            "2026학년도 입학정원",
+            *rows,
+        ]
+    )
+    chunks = chunk_article(split_articles(text, rule_no="29")[-1])
+    heads = [c.body_lines[0] for c in chunks]
+
+    assert heads[0] == "[별표 1] 2027학년도 입학정원"
+    assert heads[-1] == "[별표 1] 2026학년도 입학정원"
+    assert all(h.endswith(("2027학년도 입학정원", "2026학년도 입학정원")) for h in heads)
+    assert not any(
+        "2026학년도" in c.body for c in chunks if c.body_lines[0].endswith("2027학년도 입학정원")
+    )
+    assert any("※ 주석은 소제목이 아님" in c.body for c in chunks)
