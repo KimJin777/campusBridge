@@ -234,3 +234,19 @@ def test_appendix_chunks_follow_year_subheadings() -> None:
         "2026학년도" in c.body for c in chunks if c.body_lines[0].endswith("2027학년도 입학정원")
     )
     assert any("※ 주석은 소제목이 아님" in c.body for c in chunks)
+
+
+def test_appendix_chunk_title_follows_subheading() -> None:
+    rows = [f"[표] 학과(부): 학과{i:03d} · 입학정원: {i}" for i in range(60)]
+    text = "\n".join(
+        [
+            "제1조(목적) 목적.",
+            "[별표 1]",
+            "2027학년도 입학정원",
+            *rows,
+            "2026학년도 입학정원",
+            *rows,
+        ]
+    )
+    chunks = chunk_article(split_articles(text, rule_no="29")[-1])
+    assert chunks[0].title == "2027학년도 입학정원" and chunks[-1].title == "2026학년도 입학정원"

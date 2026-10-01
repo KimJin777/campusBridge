@@ -5,12 +5,14 @@
 - **직원 이름은 저장하지 않는다.** 부서 줄에 번호가 없으면 바로 아래 첫 내선번호(보통 부서장 자리)를
   대표 번호로 쓰고 `basis="first_listed"`로 표시한다
 - 내선 4자리는 055-249-XXXX, 3~4자리-4자리는 055-XXX-XXXX로 정규화, (F)는 팩스
+- 학과 사무실 전화 = 그 학과 아래 "이름(조교) 번호" 줄의 번호(교수님 2026-10-01). 조교가 여럿이면
+  번호도 여럿(`phones`), 대표 `phone`은 첫 조교 번호, `basis="assistant_line"`. 이름은 버린다
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 UNIT_MARK = re.compile(r"^\s*([￭¤▣■◆●]|[\U000F0000-\U000FFFFF])\s*")
 NUM = re.compile(
@@ -61,6 +63,9 @@ TITLES = (
 )
 GENERIC = {"부속실", "사무실", "교학행정실", "행정실"}
 HANGUL_NAME = re.compile(r"^[가-힣]{2,4}$")
+ASSISTANT = re.compile(
+    r"\(\s*조교\s*\)|^\s*조교\s*[가-힣]{2,4}"
+)  # "노주은(조교) 2147", "조교김예진 2722"
 PRIVATE_USE = re.compile(r"[-󰀀-󿿿]")
 # 시설 줄 이름은 사람 이름("서지원", "최동원")과 헷갈리지 않도록 뚜렷한 접미사 + 4자 이상만
 FACILITY_SUFFIX = (
@@ -93,7 +98,8 @@ class DirectoryEntry:
     parent: str | None
     phone: str | None
     fax: str | None
-    basis: str  # unit_line | first_listed | facility_line
+    basis: str  # unit_line | first_listed | facility_line | assistant_line
+    phones: list[str] = field(default_factory=list)  # 학과 사무실(조교) 번호들
 
 
 def normalize_number(raw: str) -> str:
@@ -186,6 +192,13 @@ def parse_phonebook(text: str) -> list[DirectoryEntry]:
             if stripped.endswith(UNIT_SUFFIX) and len(stripped) <= 20 and " " not in stripped:
                 parent = clean(stripped)  # "산학협력단" 같은 구획 머리글
             continue
+        if current is not None and ASSISTANT.search(line):
+            for number in phones:
+                if number not in current.phones:
+                    current.phones.append(number)
+            if current.basis in ("first_listed", "assistant_line") or current.phone is None:
+                current.phone, current.basis = current.phones[0], "assistant_line"
+            continue
         body = _strip_numbers(line)
         if _is_person(body):
             if current is not None and current.phone is None:
@@ -237,6 +250,7 @@ def apply_directory(
                 "name": e.name,
                 "parent": e.parent,
                 "phone": e.phone,
+                "phones": e.phones or ([e.phone] if e.phone else []),
                 "fax": e.fax,
                 "basis": e.basis,
                 "source": source,

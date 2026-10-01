@@ -81,6 +81,7 @@ def dept_lookup(dept_id: str, *, path: Path | None = None) -> Dept | None:
         name=_first(place, "name") if place else str(book.get("name")),
         # 전화는 최신 전화번호부 우선, 위치는 검수된 장소 표에서
         phone=(book or {}).get("phone") or (_first(place, "phone") if place else None) or None,
+        phones=[str(n) for n in (book or {}).get("phones") or []],
         location_text=(_first(place, "raw_location") if place else "") or None,
         source_url=source if source and is_school_url(source) else None,
         snapshot_at=(_first(place, "snapshot_at") if place else None)

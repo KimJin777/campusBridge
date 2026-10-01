@@ -70,6 +70,8 @@ class Dept(BaseModel):
     dept_id: str
     name: str
     phone: str | None = None
+    # 학과처럼 사무실 번호가 여럿이면 전부(전화번호부 조교 줄, 2026-10-01). phone은 첫 번호
+    phones: list[str] = Field(default_factory=list)
     duties: str | None = None
     location_text: str | None = None
     source_url: str | None = None

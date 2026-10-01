@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 import unicodedata
 from collections import Counter
@@ -450,6 +451,13 @@ class Nodes:
             state.get("profile") or Profile(),
             state.get("resolution"),
         )
+        if report.dropped:  # 탈락 사유 코드만(문장·인용문은 남기지 않음) — 진단용(2026-10-01)
+            logging.getLogger("campusbridge.agent").info(
+                "verify dropped %d/%d: %s",
+                len(report.dropped),
+                report.total,
+                ",".join(f"{d.section}[{d.index}]={d.reason}" for d in report.dropped),
+            )
         out: dict[str, Any] = {
             "draft": verified,
             "verify_report": report,

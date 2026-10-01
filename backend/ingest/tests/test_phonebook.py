@@ -64,3 +64,22 @@ def test_job_applies_directory_and_rejects_bad_files():
     assert process_phonebook("x/book.txt", d, apply)["error_code"] == "TOO_FEW_ENTRIES"
     assert d.docs.docs["phonebook"]["status"] == "failed"
     assert process_phonebook("x/none.hwp", _deps({}), apply)["error_code"] == "SOURCE_MISSING"
+
+
+def test_department_office_phone_is_assistant_line():
+    """학과 번호 = "이름(조교) 번호" 줄. 조교가 여럿이면 번호도 여럿, 이름은 버림(2026-10-01)."""
+    book = """
+￭역사학과  0505-999-2138(F)
+  학과장 조정우 6442
+    윤상현 6371
+    홍길동(조교) 2147
+￭사회복지학과 0505-999-2138(F)
+  학과장 이선미 2108
+    김철수(조교) 2173
+    조교이영희 2118
+"""
+    es = {e.name: e for e in parse_phonebook(book)}
+    assert es["역사학과"].phone == "055-249-2147" and es["역사학과"].basis == "assistant_line"
+    assert es["역사학과"].fax == "0505-999-2138"  # (F)는 팩스
+    assert es["사회복지학과"].phones == ["055-249-2173", "055-249-2118"]
+    assert all("홍길동" not in str(v) for e in es.values() for v in vars(e).values())

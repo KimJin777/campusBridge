@@ -354,6 +354,7 @@ def _chunk_appendix(article: Article, slice_chars: int) -> list[Article]:
     return [
         dataclasses.replace(
             article,
+            title=sub or article.title,  # 근거 카드 제목도 현재 소제목(#898 후속)
             body_lines=[f"{label} {sub}".strip(), *lines],
             chunk_suffix=f"{article.chunk_suffix or ''}_c{index}",
         )

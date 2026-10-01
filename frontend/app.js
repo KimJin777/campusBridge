@@ -239,9 +239,12 @@ class Turn {
     box.append(head);
     if (d.location_text) box.append(el("div", "dept-location", d.location_text));
     if (d.duties) box.append(el("div", "dept-duties", d.duties));
-    const phone = typeof d.phone === "string" ? d.phone.trim() : "";
-    const dial = phone.replace(/[^0-9+]/g, "");
-    if (phone && dial) {
+    // 학과 사무실처럼 번호가 여럿이면 모두 보여 준다(교수님 2026-10-01: 조교 번호 = 학과 번호)
+    const phones = Array.isArray(d.phones) && d.phones.length ? d.phones : [d.phone];
+    for (const raw of phones) {
+      const phone = typeof raw === "string" ? raw.trim() : "";
+      const dial = phone.replace(/[^0-9+]/g, "");
+      if (!phone || !dial) continue;
       const call = el("a", "phone-link");
       call.href = `tel:${dial}`;
       call.append(icon("phone", 15), document.createTextNode(phone));
