@@ -31,7 +31,13 @@ log = logging.getLogger("campusbridge.eval")
 KST = timezone(timedelta(hours=9), "KST")
 SEED = Path(__file__).resolve().parents[1] / "data" / "eval_seed.jsonl"
 MAX_ITEMS = 150
-CONCURRENCY = 3
+CONCURRENCY = (
+    1  # 3이면 분당 호출 한도(429)에 걸려 '가짜 회귀'가 났다(2026-10-02 03:30, 게시판 #1027)
+)
+GAP_SEC = 1.0  # 문항 사이 간격
+QUOTA_RETRIES = 3  # 429가 섞여 실패한 문항은 2·4·8초 뒤 다시 잰다
+QUOTA_BACKOFF = 2.0
+QUOTA_EXCEEDED = "quota_exceeded"  # 끝내 429 → '측정 불가'(통과·실패 어느 쪽에도 넣지 않음)
 HISTORY_KEEP = 30
 
 
@@ -77,7 +83,10 @@ def _prev(item: dict[str, Any], day: str) -> bool | None:
 def summarize(
     items: list[dict[str, Any]], day: str, version: str, baseline_day: str
 ) -> dict[str, Any]:
-    ran = [i for i in items if i.get("last_day") == day]
+    ran = [i for i in items if i.get("last_day") == day and i.get("last_reason") != QUOTA_EXCEEDED]
+    unmeasured = sum(
+        1 for i in items if i.get("last_day") == day and i.get("last_reason") == QUOTA_EXCEEDED
+    )
     failing = [i for i in ran if was_failing(i)]
     frozen = [i for i in ran if i.get("cohort") == baseline_day]
     f_fail = [i for i in frozen if was_failing(i)]
@@ -110,6 +119,7 @@ def summarize(
         "app_version": version,
         "baseline_day": baseline_day,
         "total": len(ran),
+        "unmeasured": unmeasured,
         "ok": sum(bool(i.get("last_ok")) for i in ran),
         "strict_pass": _rate(sum(bool(i.get("last_ok")) for i in ran), len(ran)),
         "was_failing": len(failing),
@@ -177,13 +187,35 @@ class FirestoreEval:
 
 
 async def run_all(
-    store: Any, run_turn: Any, paraphrase: Any, version: str, day: str
+    store: Any,
+    run_turn: Any,
+    paraphrase: Any,
+    version: str,
+    day: str,
+    *,
+    quota_hits: Any = None,
+    sleep: Any = asyncio.sleep,
 ) -> dict[str, Any]:
+    """quota_hits: 지금까지의 429 횟수를 돌려주는 함수(문항 전후 차이로 그 문항이 한도에 걸렸는지 본다).
+
+    CONCURRENCY=1(차례 실행)이라 전후 차이가 그 문항 몫이다.
+    """
     baseline = await store.baseline_day() or day
     items = await store.collect()
     items.sort(key=lambda i: (i["source"] != "seed", str(i.get("added_at"))))  # 오래된 것부터
     todo = items[:MAX_ITEMS]
     sem = asyncio.Semaphore(CONCURRENCY)
+
+    async def measure(it: dict[str, Any], para: str) -> tuple[bool, str]:
+        results = []
+        for q in (it["query_masked"], para):
+            try:
+                final = await run_turn(q)
+                results.append(run_ok(final, None, it.get("reported_answer") or ""))
+            except Exception as exc:  # noqa: BLE001 — 한 문항 실패가 전체를 막지 않게
+                results.append((False, type(exc).__name__))
+        ok = all(r[0] for r in results)
+        return ok, ("ok" if ok else next(r[1] for r in results if not r[0]))
 
     async def one(it: dict[str, Any]) -> None:
         async with sem:
@@ -196,28 +228,45 @@ async def run_all(
                     para = None
                 para = para or f"{it['query_masked'].rstrip('?？ ')} 알려 주세요"
                 fields["paraphrase"] = para
-            results = []
-            for q in (it["query_masked"], para):
-                try:
-                    final = await run_turn(q)
-                    results.append(run_ok(final, None, it.get("reported_answer") or ""))
-                except Exception as exc:  # noqa: BLE001 — 한 문항 실패가 전체를 막지 않게
-                    results.append((False, type(exc).__name__))
-            ok = all(r[0] for r in results)
-            why = "ok" if ok else next(r[1] for r in results if not r[0])
-            hist = dict(it.get("history") or {})
-            hist[day] = ok
-            hist = dict(sorted(hist.items())[-HISTORY_KEEP:])
-            fields.update({"last_ok": ok, "last_reason": why, "last_day": day, "history": hist})
-            if "first_ok" not in it:
-                fields.update(first_ok=ok, cohort=day)
+            for attempt in range(QUOTA_RETRIES + 1):
+                before = quota_hits() if quota_hits else 0
+                ok, why = await measure(it, para)
+                hit = bool(quota_hits) and quota_hits() > before
+                if ok or not hit:
+                    break
+                if attempt < QUOTA_RETRIES:
+                    await sleep(QUOTA_BACKOFF * 2**attempt)
+            else:
+                ok, why = False, QUOTA_EXCEEDED
+            if why == QUOTA_EXCEEDED:  # 측정 불가: 통과 이력·첫 결과를 건드리지 않는다
+                fields.update({"last_reason": why, "last_day": day})
+            else:
+                hist = dict(it.get("history") or {})
+                hist[day] = ok
+                hist = dict(sorted(hist.items())[-HISTORY_KEEP:])
+                fields.update({"last_ok": ok, "last_reason": why, "last_day": day, "history": hist})
+                if "first_ok" not in it:
+                    fields.update(first_ok=ok, cohort=day)
             it.update(fields)
             await store.save_item(it["id"], fields)
+            await sleep(GAP_SEC)
 
     await asyncio.gather(*(one(it) for it in todo))
     summary = summarize(todo, day, version, baseline)
     await store.save_run(summary)
     return summary
+
+
+class QuotaCounter(logging.Handler):
+    """campusbridge.clients의 external_call 로그에서 429로 끝난 호출을 센다(공용 호출 코드는 그대로 둔다)."""
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.INFO)
+        self.hits = 0
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if '"result": "status:429"' in record.getMessage():
+            self.hits += 1
 
 
 def main() -> int:
@@ -251,7 +300,11 @@ def main() -> int:
 
     t0 = time.monotonic()
     day = datetime.now(KST).date().isoformat()
-    summary = asyncio.run(run_all(store, run_turn, paraphrase, s.app_version, day))
+    quota = QuotaCounter()
+    logging.getLogger("campusbridge.clients").addHandler(quota)
+    summary = asyncio.run(
+        run_all(store, run_turn, paraphrase, s.app_version, day, quota_hits=lambda: quota.hits)
+    )
     log.info(
         json.dumps(
             {
