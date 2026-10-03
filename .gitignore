@@ -26,3 +26,4 @@ service-account*.json
 
 # 평가 캐시(재실행 가능)
 eval/cache/
+CLAUDE.md
