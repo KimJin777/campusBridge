@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import hmac
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -91,6 +92,14 @@ async def analyze(d: FixDeps, rid: str, actor: Any) -> dict[str, Any]:
         draft = await resolve.draft_place(
             snap.get("question_masked") or "", row.get("text_masked") or "", d.search, d.extract
         )
+        if draft["ok"]:
+            # 승인 직전에 대조할 출처 페이지 전체 해시(GPT5 #1460). 못 읽으면 비워 두고 승인 때 만료
+            try:
+                draft["page_hash"] = resolve.page_hash(
+                    await d.fetch_text(str(draft.get("source_url") or ""))
+                )
+            except Exception:  # noqa: BLE001
+                draft["page_hash"] = None
         fix.update(status="proposed" if draft["ok"] else "no_draft", draft=draft)
     elif kind == "recollect":
         pages = await resolve.compare_sources(snap, d.fetch_text)
@@ -140,7 +149,10 @@ async def apply(d: FixDeps, rid: str, actor: Any, run_id: str | None = None) -> 
                 raise AppError(
                     "BAD_REQUEST", "출처 페이지를 다시 읽지 못했습니다. 잠시 뒤 다시 시도하세요."
                 ) from exc
-            if not resolve.quote_present(live, str(draft.get("quote") or "")):
+            # 페이지 전체가 초안 때와 같아야 한다 — 인용 조각이 남아 있어도 다른 내용이 바뀌었으면 만료(GPT5 #1460)
+            want = str(draft.get("page_hash") or "")
+            same_page = bool(want) and hmac.compare_digest(want, resolve.page_hash(live))
+            if not same_page or not resolve.quote_present(live, str(draft.get("quote") or "")):
                 fix.update(status="stale_draft", note="출처 원문이 바뀌어 초안을 만료했습니다")
                 await d.reports.update(rid, {"agent_fix": fix})
                 raise AppError(

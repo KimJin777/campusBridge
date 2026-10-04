@@ -31,6 +31,14 @@ def _norm(text: str) -> str:
     return re.sub(r"\s+", "", text or "")
 
 
+def page_hash(text: str) -> str:
+    """출처 페이지 전체의 정규화 해시 — 초안 때와 승인 직전을 대조한다(GPT5 #1460).
+
+    content_hash는 검색 색인 조각의 해시라 다시 읽은 페이지 전체와는 원래 다르다.
+    """
+    return hashlib.sha256(_norm(text).encode()).hexdigest()
+
+
 URL_RE = re.compile(r"https?://[^\s<>\"'）)\]]+")
 
 

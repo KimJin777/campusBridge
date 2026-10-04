@@ -324,6 +324,56 @@ async def test_source_changed_since_draft_expires_it():
     assert not placed and store.rows[rid]["agent_fix"]["status"] == "stale_draft"
 
 
+@pytest.mark.asyncio
+async def test_page_changed_but_quote_kept_expires_draft():
+    """GPT5 #1460: 인용문은 남았어도 출처 페이지의 다른 내용이 바뀌었으면 반영하지 않는다."""
+    store = MemoryReportStore()
+    rid = report(store, "반도체부트캠프사업단이 어디있나요?")
+    drafted = resolve.PlaceDraftOut(
+        found=True,
+        name="반도체부트캠프사업단",
+        location="창조관 3층 301호",
+        evidence_id=EV["id"],
+        quote="반도체부트캠프사업단은 창조관 3층 301호에 있습니다.",
+    )
+    placed = []
+    d = deps(store, drafted=drafted, placed=placed, page=EV["text"] + " 운영시간 09~18시")
+    await agent_fix.analyze(d, rid, ACTOR)
+    assert store.rows[rid]["agent_fix"]["draft"]["page_hash"] == resolve.page_hash(
+        EV["text"] + " 운영시간 09~18시"
+    )
+    pages = [EV["text"] + " 운영시간 10~17시"]
+
+    async def changed(url):
+        return pages[0]
+
+    d.fetch_text = changed
+    with pytest.raises(AppError):
+        await agent_fix.apply(d, rid, ACTOR)
+    assert not placed and store.rows[rid]["agent_fix"]["status"] == "stale_draft"
+
+
+@pytest.mark.asyncio
+async def test_old_draft_without_page_hash_expires():
+    """GPT5 #1460: 페이지 해시가 없는 초안(이전 버전이 만든 것)은 승인하지 않는다."""
+    store = MemoryReportStore()
+    rid = report(store, "반도체부트캠프사업단이 어디있나요?")
+    drafted = resolve.PlaceDraftOut(
+        found=True,
+        name="반도체부트캠프사업단",
+        location="창조관 3층 301호",
+        evidence_id=EV["id"],
+        quote="반도체부트캠프사업단은 창조관 3층 301호에 있습니다.",
+    )
+    placed = []
+    d = deps(store, drafted=drafted, placed=placed, page=EV["text"])
+    await agent_fix.analyze(d, rid, ACTOR)
+    store.rows[rid]["agent_fix"]["draft"].pop("page_hash")
+    with pytest.raises(AppError):
+        await agent_fix.apply(d, rid, ACTOR)
+    assert not placed and store.rows[rid]["agent_fix"]["status"] == "stale_draft"
+
+
 def test_doc_prefix():
     assert resolve.doc_prefix("guide:web-abc:3") == "guide:web-abc:"
     assert resolve.doc_prefix("196_main_30") == "196_"

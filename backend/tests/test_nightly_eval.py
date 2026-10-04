@@ -221,3 +221,22 @@ def test_quota_counter_counts_only_429_external_calls():
 def test_wilson_interval_is_wide_for_small_samples():
     lo, hi = ne.wilson(4, 5)
     assert lo < 0.5 < 0.8 < hi and ne.wilson(0, 0) is None
+
+
+@pytest.mark.asyncio
+async def test_run_meta_is_saved_with_each_run():
+    """GPT5 #1460: 그날 평가의 모델·프롬프트·색인 버전을 결과와 함께 남긴다(원인 귀속용)."""
+    items = [{"id": "a", "query_masked": "통학버스 노선", "source": "unanswered"}]
+
+    async def run_turn(q):
+        return ans("1호차는 마산역에서 07:40에 출발합니다.")
+
+    async def paraphrase(q):
+        return q + " (다른 표현)"
+
+    store = FakeStore(items)
+    meta = {"model_id": "m1", "prompt_hash": "p1", "index_snapshot": {"hash": "i1"}}
+    s = await ne.run_all(store, run_turn, paraphrase, "0.33.4", "2026-10-04", run_meta=meta)
+    assert s["run_meta"] == meta and store.runs[0]["run_meta"]["prompt_hash"] == "p1"
+    s2 = ne.summarize([], "2026-10-04", "0.33.4", "2026-10-01")
+    assert s2["run_meta"] == {}

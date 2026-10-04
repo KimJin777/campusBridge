@@ -81,8 +81,13 @@ def _prev(item: dict[str, Any], day: str) -> bool | None:
 
 
 def summarize(
-    items: list[dict[str, Any]], day: str, version: str, baseline_day: str
+    items: list[dict[str, Any]],
+    day: str,
+    version: str,
+    baseline_day: str,
+    run_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """run_meta: 모델·프롬프트·색인 버전(GPT5 #1460). 같은 값끼리의 날만 전후 비교의 주 증거로 쓴다."""
     ran = [i for i in items if i.get("last_day") == day and i.get("last_reason") != QUOTA_EXCEEDED]
     unmeasured = sum(
         1 for i in items if i.get("last_day") == day and i.get("last_reason") == QUOTA_EXCEEDED
@@ -131,6 +136,7 @@ def summarize(
         "frozen_regression": _rate(sum(not i.get("last_ok") for i in f_pass), len(f_pass)),
         "transitions": trans,
         "by_source": by_source,
+        "run_meta": dict(run_meta or {}),
         "created_at": datetime.now(UTC),
     }
 
@@ -181,6 +187,24 @@ class FirestoreEval:
     async def save_run(self, summary: dict[str, Any]) -> None:
         await self.db.collection("eval_runs").document(summary["day"]).set(summary)
 
+    async def index_snapshot(self) -> dict[str, Any] | None:
+        """최근 수집 실행 5건 — 그날 평가가 어떤 색인 위에서 돌았는지 남긴다(GPT5 #1460)."""
+        from google.cloud import firestore
+
+        try:
+            q = (
+                self.db.collection("ingestion_runs")
+                .order_by("created_at", direction=firestore.Query.DESCENDING)
+                .limit(5)
+            )
+            runs = [
+                f"{d.id}:{(d.to_dict() or {}).get('status')}:{(d.to_dict() or {}).get('finished_at')}"
+                async for d in q.stream()
+            ]
+        except Exception:  # noqa: BLE001 — 평가는 계속 돌린다
+            return None
+        return {"runs": runs, "hash": hashlib.sha256("|".join(runs).encode()).hexdigest()[:16]}
+
     async def baseline_day(self) -> str | None:
         days = [d.id async for d in self.db.collection("eval_runs").stream()]
         return min(days) if days else None
@@ -195,6 +219,7 @@ async def run_all(
     *,
     quota_hits: Any = None,
     sleep: Any = asyncio.sleep,
+    run_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """quota_hits: 지금까지의 429 횟수를 돌려주는 함수(문항 전후 차이로 그 문항이 한도에 걸렸는지 본다).
 
@@ -252,7 +277,7 @@ async def run_all(
             await sleep(GAP_SEC)
 
     await asyncio.gather(*(one(it) for it in todo))
-    summary = summarize(todo, day, version, baseline)
+    summary = summarize(todo, day, version, baseline, run_meta)
     await store.save_run(summary)
     return summary
 
@@ -302,9 +327,28 @@ def main() -> int:
     day = datetime.now(KST).date().isoformat()
     quota = QuotaCounter()
     logging.getLogger("campusbridge.clients").addHandler(quota)
-    summary = asyncio.run(
-        run_all(store, run_turn, paraphrase, s.app_version, day, quota_hits=lambda: quota.hits)
-    )
+    from backend.agent import prompts
+
+    prompt_hash = hashlib.sha256(Path(prompts.__file__).read_bytes()).hexdigest()[:16]
+
+    async def go() -> dict[str, Any]:
+        meta = {
+            "model_id": s.gemini_model,
+            "fallback_model_id": s.gemini_fallback_model,
+            "prompt_hash": prompt_hash,
+            "index_snapshot": await store.index_snapshot(),
+        }
+        return await run_all(
+            store,
+            run_turn,
+            paraphrase,
+            s.app_version,
+            day,
+            quota_hits=lambda: quota.hits,
+            run_meta=meta,
+        )
+
+    summary = asyncio.run(go())
     log.info(
         json.dumps(
             {
